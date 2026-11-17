@@ -63,3 +63,18 @@ See [architecture and next steps](docs/ARCHITECTURE.md).
 ## Licence
 
 GPL-3.0, as selected when this repository was created. This foundation contains original implementation; Nuvio source and branding have not been copied. Third-party dependencies retain their licences.
+
+## Android startup fix (0.1.1)
+
+Download the new `AniKatha-android-debug` artifact from the startup-fix PR's successful workflow. Install its `*-Signed.apk` over 0.1.0; it retains the application ID and local data. The APK now embeds its managed assemblies instead of relying on a separate development deployment. CI also installs and launches the downloadable APK on an emulator and retains logs/screenshots as `android-startup-diagnostics`.
+
+If the updated APK still closes, connect the phone with USB debugging enabled and capture its actual exception:
+
+```sh
+adb logcat -c
+adb shell am force-stop co.zyma.anikatha
+adb shell monkey -p co.zyma.anikatha -c android.intent.category.LAUNCHER 1
+adb logcat -d -v threadtime > anikatha-startup.txt
+```
+
+Review the log for private information before sharing it. Clearing cache is not the packaging fix, and clearing app data is unnecessary for this update.
