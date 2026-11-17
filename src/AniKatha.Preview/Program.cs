@@ -1,0 +1,13 @@
+using AniKatha.Core;
+using AniKatha.Preview.Components;
+var builder=WebApplication.CreateBuilder(args);
+builder.WebHost.UseStaticWebAssets();
+builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder.Services.AddSingleton(new LocalStore(Path.Combine(builder.Environment.ContentRootPath,"App_Data","preview.db3")));
+builder.Services.AddSingleton(new AniListClient(new HttpClient { Timeout=TimeSpan.FromSeconds(25) }));
+builder.Services.AddSingleton(new AddonClient(new HttpClient(new HttpClientHandler { AllowAutoRedirect=false }) { Timeout=TimeSpan.FromSeconds(20) }));
+var app=builder.Build();
+app.UseStaticFiles();app.UseAntiforgery();
+app.MapGet("/health",()=>Results.Ok(new {status="ok"}));
+app.MapRazorComponents<App>().AddInteractiveServerRenderMode().AddAdditionalAssemblies(typeof(AniKatha.UI.Routes).Assembly);
+app.Run();

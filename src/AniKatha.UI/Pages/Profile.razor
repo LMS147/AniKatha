@@ -1,0 +1,22 @@
+@page "/profile"
+@inject LocalStore Store
+@inject AddonClient Addons
+<header class="page-header"><span class="eyebrow">MAKE IT YOURS</span><h1>Profile</h1><p>Your stories. Your space.</p></header>
+<section class="profile-card"><div class="avatar large">A</div><div><h2>Story explorer</h2><p class="muted">Local profile · No account required</p></div><span class="pill">ON DEVICE</span></section>
+@if(message is not null){<div class="notice" role="status">@message</div>}
+<h2>Tracking</h2><section class="settings-card anilist-card"><span class="eyebrow">ANILIST</span><h3>Bring your lists together</h3><p>Browse AniList now. Account login and two-way progress sync are planned for the next stage.</p><span class="pill">Not connected</span></section>
+<h2>Appearance</h2><section class="settings-card"><h3>Accent colour</h3><p class="muted">Choose a colour, then reload or reopen the app to apply it.</p><div class="swatches">@foreach(var colour in colours){<button style="background:@colour.Value" aria-label="@colour.Key" aria-pressed="@(accent==colour.Value)" @onclick="()=>SetAccent(colour.Value)">@(accent==colour.Value?"✓":"")</button>}</div></section>
+<h2>Content & discovery</h2><section class="settings-card"><h3>Manage add-ons</h3><p class="muted">Install a public HTTPS manifest. This first stage validates and saves manifests; provider browsing and playback are not implemented yet.</p>
+<form @onsubmit="Install" @onsubmit:preventDefault><label>Manifest URL<input type="url" @bind="url" placeholder="https://provider.example/manifest.json" required /></label><button class="primary" type="submit" disabled="@installing">@(installing?"Checking manifest…":"Add source")</button></form>
+@foreach(var addon in installed){<div class="addon-row"><div><strong>@addon.Name</strong><small>v@addon.Version · Manifest saved</small><p>@addon.Description</p></div><button class="secondary" @onclick="()=>Remove(addon)">Remove</button></div>}
+@if(installed.Count==0){<p class="source-note">No add-ons installed.</p>}</section>
+<section class="settings-card"><h3>Playback & reader</h3><p class="muted">Native video playback, chapter reading, and their controls are planned. No media files are bundled.</p></section>
+<section class="settings-card"><h3>About AniKatha</h3><p>Anime and manga, one story at a time.</p><small class="muted">Foundation 0.1.0 · .NET MAUI Blazor Hybrid</small></section>
+@code {
+ string url="",accent="#b5a0ff";string? message;bool installing;List<InstalledAddon> installed=[];
+ Dictionary<string,string> colours=new(){["Violet"]="#b5a0ff",["Ocean"]="#83c8ff",["Rose"]="#ffa3c7",["Emerald"]="#8cdeb7",["Amber"]="#ffd28a",["White"]="#f4f4fa"};
+ protected override async Task OnInitializedAsync(){try{installed=await Store.GetAddonsAsync();accent=await Store.GetSettingAsync("accent")??accent;}catch{message="Could not load settings.";}}
+ async Task SetAccent(string value){try{await Store.SetSettingAsync("accent",value);accent=value;message="Colour saved. Reload or reopen the app to apply it.";}catch{message="Could not save appearance.";}}
+ async Task Install(){installing=true;message=null;try{var addon=await Addons.InspectAsync(url);await Store.SaveAddonAsync(addon);installed=await Store.GetAddonsAsync();url="";message="Manifest saved. Provider execution will be added in a later stage.";}catch(Exception ex){message=ex is InvalidOperationException?ex.Message:"Could not load this manifest. Check the address and connection.";}finally{installing=false;}}
+ async Task Remove(InstalledAddon addon){try{await Store.RemoveAddonAsync(addon.Url);installed.Remove(addon);message="Add-on removed.";}catch{message="Could not remove the add-on.";}}
+}

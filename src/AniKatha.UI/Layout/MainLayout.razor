@@ -1,0 +1,16 @@
+@inherits LayoutComponentBase
+@inject LocalStore Store
+<div class="app-shell" style="--accent:@accent">
+ <main id="main-content">@Body</main>
+ <nav class="bottom-nav" aria-label="Main navigation">
+  <NavLink href="/" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
+  <NavLink href="/anime"><Icon Name="play" /><span>Anime</span></NavLink>
+  <NavLink href="/manga"><Icon Name="book" /><span>Manga</span></NavLink>
+  <NavLink href="/library"><Icon Name="library" /><span>Library</span></NavLink>
+  <NavLink href="/profile"><Icon Name="user" /><span>Profile</span></NavLink>
+ </nav>
+</div>
+@code {
+ string accent="#b5a0ff";
+ protected override async Task OnInitializedAsync() { accent=await Store.GetSettingAsync("accent")??accent; }
+}
