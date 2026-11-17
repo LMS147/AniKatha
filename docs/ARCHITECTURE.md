@@ -33,3 +33,9 @@ UI text is rendered as text, never raw upstream HTML. Artwork is loaded from Ani
 The offline checks use a real temporary SQLite database and captured HTTP responses to verify reopening persistence, concurrent initialisation, progress edits, settings, add-on install/removal, unsafe manifest URLs, nullable AniList fields, GraphQL errors and rate limiting. CI separately compiles Razor UI and the MAUI Android shell.
 
 An Android build alone cannot establish playback support or validate a device experience. Run the APK on a physical Android device before calling a release ready.
+
+## Android standalone install regression (0.1.1)
+
+The original Debug artifact did not explicitly disable fast deployment. Downloaded APKs must carry their managed assemblies, so `EmbedAssembliesIntoApk` is now true. App page resolution is deferred until `CreateWindow` instead of constructing the page before the Application constructor runs. SQLite service construction is lazy. The Android manifest explicitly selects the generated app icon.
+
+CI inspects the APK for managed assemblies, its Blazor host page, and phone/emulator architectures, then installs the same APK on an API 29 emulator without IDE deployment. It verifies that the app stays alive, remains foreground, has no package crash entry, and exposes navigation after the first request timeout window. Startup logs and a screenshot are uploaded even on failure. This checks startup on an emulator; the user's Samsung crash cannot be conclusively matched without its logcat trace.
