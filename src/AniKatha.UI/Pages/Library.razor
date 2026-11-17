@@ -1,0 +1,17 @@
+@page "/library"
+@inject LocalStore Store
+<header class="page-header"><span class="eyebrow">STORIES YOU KEEP</span><h1>Library</h1><p>Your collection, always close.</p></header>
+<div class="tabs" role="group" aria-label="Library format">@foreach(var tab in new[]{"All","Anime","Manga"}){<button class="@(filter==tab?"selected":"")" @onclick="()=>filter=tab">@tab</button>}</div>
+@if(error is not null){<div class="notice" role="alert">@error</div>}
+@if(loading){<p role="status">Opening your library…</p>}
+else if(!Visible.Any()){<div class="empty"><Icon Name="library"/><h2>A shelf full of possibilities</h2><p>Save titles from Anime or Manga. They’ll stay on this device even when you’re offline.</p><a class="primary" href="/anime">Find a story</a></div>}
+else{<div class="library-list">@foreach(var item in Visible){<article class="library-item" @key="item.Id">@if(item.Poster is not null){<img src="@item.Poster" alt="" loading="lazy"/>}<div><small class="eyebrow">@item.Kind</small><h3>@item.Title</h3><label>Status<select value="@item.Status" @onchange="e=>UpdateStatus(item,e)"><option value="PLANNING">Planned</option><option value="CURRENT">In progress</option><option value="COMPLETED">Completed</option><option value="PAUSED">Paused</option><option value="DROPPED">Dropped</option></select></label><div class="progress-control"><span>@item.Progress @(item.Kind=="ANIME"?"episodes":"chapters")</span><button aria-label="Decrease progress" disabled="@(item.Progress==0)" @onclick="()=>Progress(item,-1)">−</button><button aria-label="Increase progress" @onclick="()=>Progress(item,1)">+</button></div><button class="text-link" @onclick="()=>Remove(item)">Remove from library</button></div></article>}</div>}
+<p class="source-note">Stored locally · AniList account syncing is not connected yet.</p>
+@code {
+ List<SavedTitle> items=[];string filter="All";string? error;bool loading=true;
+ IEnumerable<SavedTitle> Visible=>items.Where(x=>filter=="All"||x.Kind==filter.ToUpperInvariant());
+ protected override async Task OnInitializedAsync(){try{items=await Store.GetLibraryAsync();}catch{error="Could not open the library.";}finally{loading=false;}}
+ async Task UpdateStatus(SavedTitle item,ChangeEventArgs e){var previous=item.Status;item.Status=e.Value?.ToString()??"PLANNING";try{await Store.SaveAsync(item);error=null;}catch{item.Status=previous;error="Could not save the change.";}}
+ async Task Progress(SavedTitle item,int delta){var previous=item.Progress;item.Progress=Math.Max(0,item.Progress+delta);try{await Store.SaveAsync(item);error=null;}catch{item.Progress=previous;error="Could not save progress.";}}
+ async Task Remove(SavedTitle item){try{await Store.RemoveAsync(item.Id);items.Remove(item);error=null;}catch{error="Could not remove this title.";}}
+}

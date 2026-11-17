@@ -1,0 +1,22 @@
+@inject LocalStore Store
+@if(Item is not null) {
+<div class="modal-backdrop" @onclick="Close"><section class="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabindex="-1" @onkeydown="HandleKey" @onclick:stopPropagation="true">
+ <button class="close" aria-label="Close details" @onclick="Close">✕</button>
+ @if(Item.Banner is not null){<img class="detail-banner" src="@Item.Banner" alt="" />}
+ <div class="detail-content"><span class="eyebrow">@Item.Kind · @Item.Format?.Replace('_',' ')</span><h2 id="detail-title">@Item.Title</h2>
+ <p class="muted">@Item.Year · @(Item.Score is null ? "Unrated" : $"{Item.Score / 10.0}/10") · @(Item.Kind=="ANIME" ? $"{Item.Episodes?.ToString()??"?"} episodes" : $"{Item.Chapters?.ToString()??"?"} chapters")</p>
+ <div class="chips">@foreach(var genre in Item.Genres){<span>@genre</span>}</div>
+ <p>@Item.Description</p><button class="primary" @onclick="Save" disabled="@saved">@(saved?"Saved to library":"Save to library")</button>
+ @if(error is not null){<p role="alert">@error</p>}
+ <div class="notice">@(Item.Kind=="ANIME"?"Episode sources and playback":"Chapter sources and reading") are coming in the next development stage. This is a live AniList catalogue entry.</div>
+ </div></section></div>
+}
+@code {
+ [Parameter] public Media? Item {get;set;}
+ [Parameter] public EventCallback Closed {get;set;}
+ int lastId; bool saved; string? error;
+ protected override void OnParametersSet(){if(Item?.Id!=lastId){saved=false;error=null;lastId=Item?.Id??0;}}
+ Task Close()=>Closed.InvokeAsync();
+ async Task HandleKey(KeyboardEventArgs e){if(e.Key=="Escape")await Close();}
+ async Task Save(){try{if(Item is not null){var existing=(await Store.GetLibraryAsync()).FirstOrDefault(x=>x.Id==Item.Id);if(existing is null)await Store.SaveAsync(Item);saved=true;}}catch{error="Could not save this title. Try again.";}}
+}
