@@ -40,6 +40,7 @@ jobs:
           $apk = Get-ChildItem src/AniKatha.Mobile/bin/Debug/net10.0-android/*-Signed.apk | Select-Object -First 1
           python scripts/check_apk.py $apk.FullName
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: AniKatha-android-debug
           path: src/AniKatha.Mobile/bin/Debug/net10.0-android/*-Signed.apk
@@ -64,7 +65,7 @@ jobs:
       - name: Install and launch the downloadable APK
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: 35
           arch: x86_64
           target: google_apis
           disable-animations: true
