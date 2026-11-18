@@ -36,4 +36,15 @@ public sealed class LocalStore
    throw new ArgumentOutOfRangeException(nameof(seconds));
   return SetSettingAsync($"playback:{episodeKey}", seconds.ToString("R", CultureInfo.InvariantCulture));
  }
+ public async Task<int> GetReadingPageAsync(string chapterKey)
+ {
+  var value = await GetSettingAsync($"reading:{chapterKey}");
+  return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var page)
+   && page >= 1 ? page : 1;
+ }
+ public Task SaveReadingPageAsync(string chapterKey, int page)
+ {
+  ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+  return SetSettingAsync($"reading:{chapterKey}", page.ToString(CultureInfo.InvariantCulture));
+ }
 }

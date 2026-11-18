@@ -10,10 +10,11 @@ Implemented:
 - SQLite saved titles, per-title status and episode/chapter counts, saved add-on manifests, and accent selection. Reopen/reload to apply the saved accent.
 - Public HTTPS manifest validation, installation and removal. **Manifest management is implemented; provider execution is not.**
 - In-app sample trailer with play, pause, seeking, and a resume position saved in SQLite. From Home, open **Big Buck Bunny → Episode 1**.
+- Offline three-page manga sample with Previous and Next controls and automatic page resume. Open **Manga → The Midnight Lighthouse → Read chapter 1**.
 - Android project, shared Razor components, desktop-browser development preview, offline integration checks, and GitHub Actions debug APK build.
 
 Not implemented yet:
-- AniList OAuth/account sync, provider-backed video playback, manga page positions, chapter reader, downloads, background notifications, watch parties, and cloud accounts.
+- AniList OAuth/account sync, provider-backed video playback, provider-backed manga chapters, downloads, background notifications, watch parties, and cloud accounts.
 - Playback sources for Anikoto, chapter/page sources for Comix or MangaDex, Stremio resource execution, or JavaScript plugin execution. These need independently tested provider integrations; adding a manifest does not enable playback in this foundation.
 - iOS/Windows packaging. The current mobile target is Android 7+; shared code can be extended to other MAUI platforms later.
 
