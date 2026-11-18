@@ -2,37 +2,138 @@
 @page "/manga"
 @implements IDisposable
 @inject AniListClient Api
+@inject JikanCatalogue Jikan
+@inject LocalStore Store
 @inject NavigationManager Navigation
 <header class="page-header"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
 <form @onsubmit="Search" @onsubmit:preventDefault>
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
  <div class="filters">
+ <label>Source<select aria-label="Catalogue source" value="@source" @onchange="ChangeSource">
+ <option value="">AniList catalogue</option>
+ @foreach (var addon in sources) { <option value="@addon.Url">@addon.Name</option> }
+ </select></label>
+ @if (!UsingAddon) {
  <label>Genre<select @bind="genre"><option value="">All genres</option>@foreach(var g in genres){<option>@g</option>}</select></label>
  <label>Year<input type="number" min="1900" max="2100" placeholder="Any year" @bind="year"/></label>
  @if(kind=="ANIME"){<label>Season<select @bind="season"><option value="">All seasons</option><option value="WINTER">Winter</option><option value="SPRING">Spring</option><option value="SUMMER">Summer</option><option value="FALL">Autumn</option></select></label>}
  <label>Format<select @bind="format"><option value="">All formats</option>@foreach(var f in formats){<option value="@f">@f.Replace('_',' ')</option>}</select></label>
- <label>Source<select aria-label="Catalogue source"><option>AniList catalogue</option></select></label>
  <label>Sort<select @bind="sort"><option value="TRENDING_DESC">Trending</option><option value="POPULARITY_DESC">Popular</option><option value="SCORE_DESC">Top rated</option><option value="START_DATE_DESC">Newest</option></select></label>
- </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit" disabled="@busy">Apply filters</button></div>
+ }
+ </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit" disabled="@busy">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
 </form>
-<p class="source-note">Browsing AniList metadata. Playable/readable provider search will be added separately.</p>
+@if (UsingAddon) { <p class="source-note">Titles and covers from Jikan. Use Search to find a title.</p> }
+else { <p class="source-note">Titles and covers from AniList.</p> }
 @if(error is not null){<div class="notice" role="alert">@error <button @onclick="Search">Retry</button></div>}
-<div class="section-title"><h2>@(string.IsNullOrWhiteSpace(search)?"Discover":"Search results")</h2><span class="muted">@items.Count titles</span></div>
-@if(busy&&items.Count==0){<div class="loading" role="status">Finding stories…</div>}
-else if(items.Count==0&&error is null){<div class="empty"><Icon/><h3>No matching titles</h3><p>Try a different search or reset your filters.</p></div>}
-<MediaGrid Items="items" Selected="Select"/>
+<div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch)?"Discover":"Search results")</h2><span class="muted">@ResultCount titles</span></div>
+@if(busy&&ResultCount==0){<div class="loading" role="status">Finding stories…</div>}
+else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching titles</h3><p>Try a different search or reset your filters.</p></div>}
+@if (UsingAddon)
+{
+ <div class="poster-grid">
+ @foreach (var title in addonItems)
+ {
+  <div class="poster-card" @key="title.Id">
+   <div class="poster-image">
+    @if (title.Poster is not null) { <img src="@title.Poster" alt="" loading="lazy" /> }
+    else { <span>AniKatha</span> }
+   </div>
+   <strong>@title.Name</strong>
+   <small>@title.Format</small>
+   @if (!string.IsNullOrWhiteSpace(title.Description))
+   {
+    <details><summary>Synopsis</summary><p>@title.Description</p></details>
+   }
+  </div>
+ }
+ </div>
+}
+else { <MediaGrid Items="items" Selected="Select"/> }
 @if(hasMore){<button class="secondary load-more" disabled="@busy" @onclick="More">@(busy?"Loading…":"Load more")</button>}
 <MediaDetails Item="selected" Closed="()=>selected=null"/>
 @code {
  string kind="",search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];Media? selected;
  CancellationTokenSource? request;
+ List<InstalledAddon> sources = [];
+ List<AddonTitle> addonItems = [];
+ string source = "", appliedSearch = "";
+ bool UsingAddon => source.Length != 0;
+ int ResultCount => UsingAddon ? addonItems.Count : items.Count;
  string[] genres=["Action","Adventure","Comedy","Drama","Ecchi","Fantasy","Horror","Mahou Shoujo","Mecha","Music","Mystery","Psychological","Romance","Sci-Fi","Slice of Life","Sports","Supernatural","Thriller"];
  string[] formats=>kind=="ANIME"?["TV","TV_SHORT","MOVIE","SPECIAL","OVA","ONA","MUSIC"]:["MANGA","NOVEL","ONE_SHOT"];
- protected override async Task OnParametersSetAsync(){var next=new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/').EndsWith("/manga")?"MANGA":"ANIME";if(next!=kind){kind=next;await Reset();}}
- async Task Reset(){search=genre=season=format="";year=null;sort="TRENDING_DESC";await Search();}
- Task Search(){page=1;items=[];hasMore=false;return Load();}
- async Task More(){page++;await Load();}
- async Task Load(){request?.Cancel();request?.Dispose();var current=request=new();busy=true;error=null;try{var result=await Api.SearchAsync(new(kind,search,genre,year,season,format,sort,page),current.Token);if(!current.IsCancellationRequested){items.AddRange(result.Items.Where(x=>items.All(y=>y.Id!=x.Id)));hasMore=result.HasNextPage;}}catch(OperationCanceledException){}catch(Exception ex){if(!current.IsCancellationRequested){error=ex is InvalidOperationException?ex.Message:"Could not load titles. Check your connection and try again.";if(page>1)page--;}}finally{if(ReferenceEquals(request,current))busy=false;}}
+ protected override async Task OnInitializedAsync()
+ {
+  try { sources = (await Store.GetAddonsAsync()).Where(addon => addon.CatalogueProvider == JikanCatalogue.Provider).ToList(); }
+  catch { /* AniList remains available if local storage cannot be opened. */ }
+ }
+
+ protected override async Task OnParametersSetAsync()
+ {
+  var next = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/').EndsWith("/manga") ? "MANGA" : "ANIME";
+  if (next != kind) { kind = next; await Reset(); }
+ }
+
+ Task ChangeSource(ChangeEventArgs change)
+ {
+  var url = change.Value as string ?? "";
+  source = sources.Any(addon => addon.Url == url) ? url : "";
+  selected = null;
+  return Search();
+ }
+
+ Task Reset()
+ {
+  search = genre = season = format = "";
+  year = null;
+  sort = "TRENDING_DESC";
+  return Search();
+ }
+
+ Task Search()
+ {
+  appliedSearch = search;
+  page = 1;
+  items = [];
+  addonItems = [];
+  hasMore = false;
+  return Load();
+ }
+
+ async Task More() { page++; await Load(); }
+
+ async Task Load()
+ {
+  request?.Cancel();
+  request?.Dispose();
+  var current = request = new();
+  var token = current.Token;
+  busy = true;
+  error = null;
+  try
+  {
+   if (UsingAddon)
+   {
+    var result = await Jikan.SearchAsync(kind, appliedSearch, page, token);
+    if (token.IsCancellationRequested) return;
+    addonItems.AddRange(result.Items.Where(item => addonItems.All(existing => existing.Id != item.Id)));
+    hasMore = result.HasNextPage;
+   }
+   else
+   {
+    var result = await Api.SearchAsync(new(kind, appliedSearch, genre, year, season, format, sort, page), token);
+    if (token.IsCancellationRequested) return;
+    items.AddRange(result.Items.Where(item => items.All(existing => existing.Id != item.Id)));
+    hasMore = result.HasNextPage;
+   }
+  }
+  catch (Exception ex) when (!token.IsCancellationRequested)
+  {
+   error = ex is InvalidOperationException ? ex.Message : "Could not load titles. Check your connection and try again.";
+   if (page > 1) page--;
+  }
+  catch (Exception) when (token.IsCancellationRequested) {}
+  finally { if (ReferenceEquals(request, current)) busy = false; }
+ }
  void Select(Media item)=>selected=item;
  public void Dispose(){request?.Cancel();request?.Dispose();}
 }

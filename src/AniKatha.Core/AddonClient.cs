@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 namespace AniKatha.Core;
-// Manifest metadata only. Remote JavaScript is never evaluated in the application WebView.
+// Manifest inspection. Catalogue adapters are implemented in the app.
 public sealed class AddonClient(HttpClient http)
 {
  public static Uri ValidateUrl(string input)
@@ -84,7 +84,9 @@ public sealed class AddonClient(HttpClient http)
   _=Required("id");
   if (!root.TryGetProperty("resources",out var resources) || resources.ValueKind!=JsonValueKind.Array || !root.TryGetProperty("types",out var types) || types.ValueKind!=JsonValueKind.Array)
    throw new InvalidOperationException("Manifest must declare resources and types.");
-  return new() { Url=uri.AbsoluteUri, Name=Required("name"), Version=Required("version"), Description=root.TryGetProperty("description",out var description)&&description.ValueKind==JsonValueKind.String ? description.GetString()! : "" };
+  return new() { Url=uri.AbsoluteUri, Name=Required("name"), Version=Required("version"),
+   CatalogueProvider = root.TryGetProperty("anikathaProvider", out var provider) && provider.ValueKind == JsonValueKind.String && provider.GetString() == JikanCatalogue.Provider ? JikanCatalogue.Provider : null,
+   Description=root.TryGetProperty("description",out var description)&&description.ValueKind==JsonValueKind.String ? description.GetString()! : "" };
  }
  static bool IsPrivate(IPAddress address)
  {

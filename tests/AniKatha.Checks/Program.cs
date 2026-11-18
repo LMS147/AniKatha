@@ -12,8 +12,8 @@ var saved=(await reopened.GetLibraryAsync()).First(x=>x.Id==1);saved.Progress=7;
 Assert((await store.GetLibraryAsync()).First(x=>x.Id==1).Progress==7,"Progress must persist");
 await store.RemoveAsync(1);Assert((await store.GetLibraryAsync()).Count==7,"Removal must persist");
 await store.SetSettingAsync("accent","#ffa3c7");Assert(await reopened.GetSettingAsync("accent")=="#ffa3c7","Theme must persist");
-await store.SaveAddonAsync(new(){Url="https://example.com/manifest.json",Name="Example",Version="1.0.0"});
-Assert((await reopened.GetAddonsAsync()).Count==1,"Add-on must persist");await store.RemoveAddonAsync("https://example.com/manifest.json");Assert((await reopened.GetAddonsAsync()).Count==0,"Add-on removal must persist");
+await store.SaveAddonAsync(new(){Url="https://example.com/manifest.json",Name="Example",Version="1.0.0",CatalogueProvider=JikanCatalogue.Provider});
+Assert((await reopened.GetAddonsAsync()).Single().CatalogueProvider==JikanCatalogue.Provider,"Add-on must persist");await store.RemoveAddonAsync("https://example.com/manifest.json");Assert((await reopened.GetAddonsAsync()).Count==0,"Add-on removal must persist");
 foreach(var invalid in new[]{"javascript:alert(1)","http://example.com/manifest.json","https://user:password@example.com/manifest.json","https://localhost/manifest.json","https://127.0.0.1/manifest.json","https://example.com/manifest.json?token=secret"}) {
  try {AddonClient.ValidateUrl(invalid);throw new Exception("Unsafe URL accepted: "+invalid);}catch(InvalidOperationException){}
 }
@@ -36,10 +36,39 @@ handler.Response="{\"errors\":[{\"message\":\"temporarily unavailable\"}]}";
 try{await api.SearchAsync(new());throw new Exception("GraphQL errors must not look like empty results");}catch(InvalidOperationException){}
 handler.Status=HttpStatusCode.TooManyRequests;
 try{await api.SearchAsync(new());throw new Exception("Rate limit must surface");}catch(InvalidOperationException){}
+var jikanHandler = new JikanStub();
+using var jikanHttp = new HttpClient(jikanHandler);
+var jikan = new JikanCatalogue(jikanHttp);
+var animePage = await jikan.SearchAsync("ANIME", null, 1, default);
+Assert(animePage.HasNextPage && animePage.Items.Single().Poster is not null &&
+ jikanHandler.LastUri!.AbsolutePath == "/v4/anime" && jikanHandler.LastUri.Query.Contains("sfw=true"), "Live add-on must map anime title and cover data");
+var mangaPage = await jikan.SearchAsync("MANGA", "Yotsuba&!", 2, default);
+Assert(mangaPage.Items.Single().Name == "Sample title" &&
+ jikanHandler.LastUri!.AbsolutePath == "/v4/manga" && jikanHandler.LastUri.Query.Contains("page=2") &&
+ jikanHandler.LastUri.Query.Contains("Yotsuba%26"), "Manga search must use its own endpoint and escape search terms");
+jikanHandler.Status = HttpStatusCode.TooManyRequests;
+try { await jikan.SearchAsync("ANIME", null, 1, default); throw new Exception("Missing Jikan rate limit error"); }
+catch (InvalidOperationException ex) { Assert(ex.Message.Contains("too many requests"), "Jikan rate limits must be retryable"); }
 Console.WriteLine("PASS: SQLite persistence, progress, settings, add-ons, URL validation, metadata parsing, GraphQL errors, and rate limiting.");
 static void Assert(bool condition,string message){if(!condition)throw new Exception(message);}
 sealed class StubHandler:HttpMessageHandler {
  public string? Body;public HttpStatusCode Status=HttpStatusCode.OK;
  public string Response="""{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":42,"type":"MANGA","title":{"userPreferred":"Story"},"coverImage":{"large":null},"bannerImage":null,"description":"<b>A &amp; B</b>","startDate":{"year":null},"format":"MANGA","averageScore":null,"episodes":null,"chapters":null,"genres":["Drama"]}]}}}""";
  protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken){Body=await request.Content!.ReadAsStringAsync(cancellationToken);return new(Status){Content=new StringContent(Response,Encoding.UTF8,"application/json")};}
+}
+
+
+sealed class JikanStub : HttpMessageHandler
+{
+ public HttpStatusCode Status = HttpStatusCode.OK;
+ public Uri? LastUri;
+ protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+ {
+  LastUri = request.RequestUri;
+  const string response = """
+   {"pagination":{"has_next_page":true},"data":[{"mal_id":14,"title":"Sample title","title_english":null,"type":"TV",
+    "images":{"jpg":{"image_url":"https://cdn.myanimelist.net/images/anime/example.jpg"}},"synopsis":"Sample synopsis"}]}
+   """;
+  return Task.FromResult(new HttpResponseMessage(Status) { Content = new StringContent(response) });
+ }
 }
