@@ -1,0 +1,25 @@
+@page "/anime/preview"
+@inject LocalStore Store
+
+<PageTitle>Big Buck Bunny · AniKatha</PageTitle>
+<header class="page-header">
+ <a class="text-link" href="/">← Home</a>
+ <h1 class="playback-heading">Big Buck Bunny</h1>
+ <p>Try the AniKatha player with a trailer from the Blender Foundation’s animated short.</p>
+</header>
+
+<section class="settings-card" aria-labelledby="episodes-heading">
+ <h2 id="episodes-heading">Episodes</h2>
+ <a class="primary" href="/anime/preview/episode-1">
+  <Icon Name="play"/> @(position > 0 ? "Resume episode 1" : "Episode 1 · Sample trailer")
+ </a>
+</section>
+
+@code {
+ double position;
+
+ protected override async Task OnInitializedAsync()
+ {
+  position = await Store.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey);
+ }
+}

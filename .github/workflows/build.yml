@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '24'
       - run: python scripts/test_startup_checks.py
-      - run: node --test scripts/check_webview.test.mjs
+      - run: node --test scripts/*.test.mjs
   android:
     name: Android debug APK
     runs-on: windows-latest

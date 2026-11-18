@@ -14,11 +14,13 @@ URL-based add-ons need a protocol client for catalog/meta/stream/subtitles. Mang
 
 Manifest inspection rejects non-HTTPS addresses, credentials, query/fragment tokens, IP literals, and common private DNS results, and disables redirects. It bounds response bodies to 256 KiB. This is a desktop/mobile client baseline, not a complete server-side SSRF boundary: DNS rebinding and further reserved address ranges require additional enforcement before exposing it as a hosted multi-user API.
 
+The Big Buck Bunny sample streams a fixed HTTPS MP4 in the app WebView. Its playback position uses an episode-specific SQLite key, separate from library progress. The player saves periodically and on pause, seek, or exit. Completing the trailer clears its resume position.
+
 ## Next milestones
 
 1. AniList OAuth through system browser/deep link with state validation; use platform secure storage for access tokens. Choose the supported client flow after verifying current AniList documentation; never embed a client secret. Handle expiry, disconnection, rate limits, queued updates and conflict resolution.
 2. A tested provider for one playable episode and one readable chapter using supported, permitted access. Demonstrate correct AniList ID mapping. Add a bounded URL add-on resource client and contract fixtures.
-3. Native player and manga reader. Save exact episode/time and chapter/page locally; separately update completed-unit counts on AniList. Test rotation, lifecycle/resume, subtitle/audio selection, right-to-left and scrolling reading, and offline failures on device.
+3. Extend the sample player to provider episodes and build the manga reader. Save chapter/page locally and separately update completed-unit counts on AniList. Test rotation, lifecycle/resume, subtitle/audio selection, right-to-left and scrolling reading, and offline failures on device.
 4. Downloads and notifications only after provider capabilities and mobile background restrictions are established.
 5. Optional cloud sync and watch parties require separately designed accounts/backend; they are not provided by SQLite or AniList general storage.
 

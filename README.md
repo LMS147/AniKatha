@@ -9,10 +9,11 @@ Implemented:
 - Live, non-adult AniList discovery/search with genre, year, season (anime only), format, sort, pagination, title details, and visible failure/retry states.
 - SQLite saved titles, per-title status and episode/chapter counts, saved add-on manifests, and accent selection. Reopen/reload to apply the saved accent.
 - Public HTTPS manifest validation, installation and removal. **Manifest management is implemented; provider execution is not.**
+- In-app sample trailer with play, pause, seeking, and a resume position saved in SQLite. From Home, open **Big Buck Bunny → Episode 1**.
 - Android project, shared Razor components, desktop-browser development preview, offline integration checks, and GitHub Actions debug APK build.
 
 Not implemented yet:
-- AniList OAuth/account sync, exact playback/page positions, native video player, chapter reader, downloads, background notifications, watch parties, and cloud accounts.
+- AniList OAuth/account sync, provider-backed video playback, manga page positions, chapter reader, downloads, background notifications, watch parties, and cloud accounts.
 - Playback sources for Anikoto, chapter/page sources for Comix or MangaDex, Stremio resource execution, or JavaScript plugin execution. These need independently tested provider integrations; adding a manifest does not enable playback in this foundation.
 - iOS/Windows packaging. The current mobile target is Android 7+; shared code can be extended to other MAUI platforms later.
 
@@ -37,7 +38,7 @@ The same Razor UI can be developed without the Android workload:
 dotnet run --project src/AniKatha.Preview --urls http://localhost:5080
 ```
 
-Open http://localhost:5080. This is a local developer preview, **not a hosted multi-user service**: it uses a shared development SQLite file. Do not expose it publicly. Bind to loopback as above. Native playback/device behaviour must be verified in the MAUI app.
+Open http://localhost:5080. This is a local developer preview, **not a hosted multi-user service**: it uses a shared development SQLite file. Do not expose it publicly. Bind to loopback as above. Playback and other device behaviour must be verified in the MAUI app.
 
 ## Checks and APK
 

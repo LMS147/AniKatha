@@ -74,6 +74,30 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
       if (navigation.result?.value !== true) throw new Error(`${tab} opened the wrong catalogue.`);
     }
     console.log('PASS: Anime → Manga → Anime opens the correct catalogue on each tap.');
+
+    const player = await command('Runtime.evaluate', {
+      awaitPromise: true,
+      returnByValue: true,
+      expression: `(async () => {
+        async function waitFor(selector) {
+          for (let attempt = 0; attempt < 25; attempt++) {
+            const element = document.querySelector(selector);
+            if (element) return element;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          throw new Error('Missing ' + selector);
+        }
+        document.querySelector('.bottom-nav a[href="/"]').click();
+        (await waitFor('a[href="/anime/preview"]')).click();
+        (await waitFor('a[href="/anime/preview/episode-1"]')).click();
+        const video = await waitFor('video[src]');
+        return location.pathname === '/anime/preview/episode-1' && video.controls &&
+          video.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4';
+      })()`,
+    });
+    if (player.result?.value !== true) throw new Error('Sample episode player did not mount in the APK WebView.');
+    console.log('PASS: Home → sample → Episode 1 mounts the in-app video player.');
+
   } finally {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}
