@@ -37,7 +37,9 @@
     installed.RemoveAll(item => item.Url == addon.Url);
     installed.Add(addon);
     url = "";
-    addonMessage = $"Added {addon.Name}.";
+    addonMessage = addon.CatalogueProvider == JikanCatalogue.Provider
+     ? $"Added {addon.Name}. Open Anime or Manga and choose it under Source."
+     : $"Added {addon.Name}.";
    }
    catch { addonError = true; addonMessage = "The manifest was downloaded, but could not be saved on this device."; }
   }

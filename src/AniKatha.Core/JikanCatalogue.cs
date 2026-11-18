@@ -4,13 +4,29 @@ using System.Text.Json;
 namespace AniKatha.Core;
 
 public sealed record AddonTitle(int Id, string Name, string? Poster, string? Format, string? Description);
-public sealed record AddonPage(List<AddonTitle> Items, bool HasNextPage);
+public sealed record AddonPage(List<AddonTitle> Items, bool HasNextPage, bool IsStarterCatalogue = false);
 
 public sealed class JikanCatalogue(HttpClient http)
 {
     public const string Provider = "jikan-v4";
 
     public async Task<AddonPage> SearchAsync(string kind, string? search, int page, CancellationToken token)
+    {
+        try
+        {
+            return await FetchAsync(kind, search, page, token);
+        }
+        catch (HttpRequestException ex) when (page == 1 && (ex.StatusCode is null || (int)ex.StatusCode >= 500))
+        {
+            return StarterCatalogue(kind, search);
+        }
+        catch (OperationCanceledException) when (page == 1 && !token.IsCancellationRequested)
+        {
+            return StarterCatalogue(kind, search);
+        }
+    }
+
+    private async Task<AddonPage> FetchAsync(string kind, string? search, int page, CancellationToken token)
     {
         var endpoint = kind switch
         {
@@ -27,8 +43,6 @@ public sealed class JikanCatalogue(HttpClient http)
         using var response = await http.GetAsync($"https://api.jikan.moe/v4/{endpoint}{query}", token);
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
             throw new InvalidOperationException("Jikan is receiving too many requests. Wait a moment and retry.");
-        if ((int)response.StatusCode >= 500)
-            throw new InvalidOperationException("Jikan is temporarily unavailable. Try again shortly.");
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(token);
@@ -51,6 +65,26 @@ public sealed class JikanCatalogue(HttpClient http)
         }
 
         return new AddonPage(items, root.GetProperty("pagination").GetProperty("has_next_page").GetBoolean());
+    }
+
+    private static AddonPage StarterCatalogue(string kind, string? search)
+    {
+        // These are bundled titles, shown explicitly as starter results when live browsing fails.
+        AddonTitle[] titles = kind == "ANIME"
+            ? [
+                new(1, "Cowboy Bebop", null, "TV", null),
+                new(5114, "Fullmetal Alchemist: Brotherhood", null, "TV", null),
+                new(52991, "Frieren: Beyond Journey’s End", null, "TV", null),
+                new(21, "One Piece", null, "TV", null)
+            ]
+            : [
+                new(104, "Yotsuba&!", null, "Manga", null),
+                new(13, "One Piece", null, "Manga", null),
+                new(25, "Fullmetal Alchemist", null, "Manga", null),
+                new(126287, "Frieren: Beyond Journey’s End", null, "Manga", null)
+            ];
+        return new AddonPage(titles.Where(title => string.IsNullOrWhiteSpace(search) ||
+            title.Name.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)).ToList(), false, true);
     }
 
     private static string? ReadText(JsonElement item, string key) =>
