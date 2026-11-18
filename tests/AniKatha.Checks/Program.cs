@@ -32,6 +32,20 @@ Assert((await reopened.GetAddonsAsync()).Single().CatalogueProvider==JikanCatalo
 foreach(var invalid in new[]{"javascript:alert(1)","http://example.com/manifest.json","https://user:password@example.com/manifest.json","https://localhost/manifest.json","https://127.0.0.1/manifest.json","https://example.com/manifest.json?token=secret"}) {
  try {AddonClient.ValidateUrl(invalid);throw new Exception("Unsafe URL accepted: "+invalid);}catch(InvalidOperationException){}
 }
+const string youtubeUrl = "https://example.com/youtube/manifest.json";
+const string episodeJson = """[{"aniListId":139274,"series":"The Witch from Mercury","episode":1,"title":"The Witch and the Bride","videoId":"2B_njMCRCvU"}]""";
+await store.SaveAddonAsync(new() { Url = youtubeUrl, Name = "Gundam on YouTube", Version = "1.0.0", YouTubeEpisodesJson = episodeJson });
+var episode = (await reopened.GetAddonsAsync()).Single().GetYouTubeEpisodes().Single();
+Assert(episode.AniListId == 139274 && episode.Number == 1 && episode.WatchUrl == "https://www.youtube.com/watch?v=2B_njMCRCvU",
+ "Installed YouTube episode must keep the correct series, episode number and video");
+await store.SavePlaybackPositionAsync(episode.PlaybackKey, 50.5);
+Assert(await reopened.GetPlaybackPositionAsync(episode.PlaybackKey) == 50.5 &&
+ await reopened.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey) == 0, "YouTube resume must be isolated by video");
+var rejected = new InstalledAddon { YouTubeEpisodesJson = episodeJson.Replace("2B_njMCRCvU", "https://example.com/video") };
+try { _ = rejected.GetYouTubeEpisodes(); throw new Exception("A URL was accepted as a YouTube video ID"); }
+catch (InvalidOperationException) { }
+await store.RemoveAddonAsync(youtubeUrl);
+Assert((await reopened.GetAddonsAsync()).Count == 0, "Removing an add-on must remove the episode mapping");
 var rawManifest = "https://raw.githubusercontent.com/LMS147/AniKatha/main/examples/addons/anime/manifest.json";
 Assert(AddonClient.ValidateUrl(rawManifest).AbsoluteUri == rawManifest, "Raw manifest URLs must continue to work");
 Assert(AddonClient.ValidateUrl(" https://github.com/LMS147/AniKatha/blob/main/examples/addons/anime/manifest.json ").AbsoluteUri == rawManifest,

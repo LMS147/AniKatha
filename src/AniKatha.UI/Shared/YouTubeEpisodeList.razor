@@ -1,0 +1,44 @@
+@inject LocalStore Store
+
+@if (episodes.Count > 0)
+{
+ <section class="addon-episode-list" aria-label="Episodes from add-ons">
+  <h2>Episodes from add-ons</h2>
+  @foreach (var episode in episodes)
+  {
+   <a class="sample-card" href="@EpisodePath(episode)">
+    <Icon Name="play"/>
+    <span><strong>@(AniListId is null ? episode.Series : episode.Title)</strong><small>Episode @episode.Number · YouTube</small></span>
+    <span aria-hidden="true">→</span>
+   </a>
+  }
+ </section>
+}
+
+@code {
+ [Parameter] public int? AniListId { get; set; }
+ List<YouTubeEpisode> episodes = [];
+
+ protected override async Task OnParametersSetAsync()
+ {
+  var mediaId = AniListId;
+  episodes = [];
+  try
+  {
+   var sources = await Store.GetAddonsAsync();
+   if (mediaId != AniListId)
+    return;
+   episodes = sources.SelectMany(addon => addon.GetYouTubeEpisodes())
+    .Where(episode => mediaId is null || episode.AniListId == mediaId)
+    .DistinctBy(episode => (episode.AniListId, episode.Number, episode.VideoId))
+    .OrderBy(episode => episode.Series).ThenBy(episode => episode.Number).ToList();
+  }
+  catch
+  {
+   // The catalogue remains available when add-on storage cannot be read.
+  }
+ }
+
+ static string EpisodePath(YouTubeEpisode episode) =>
+  $"/anime/addon/{episode.AniListId}/{episode.Number}/{episode.VideoId}";
+}

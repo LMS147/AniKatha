@@ -51,3 +51,7 @@
  margin-top: 12px;
 }
 .reader-controls :is(.primary, .secondary) { padding-inline: 14px; }
+
+.addon-episode-list { margin: 20px 0 24px; }
+.addon-episode-list h2 { margin-bottom: 10px; font-size: 18px; }
+.addon-episode-list .sample-card { margin-top: 8px; }
