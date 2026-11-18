@@ -50,6 +50,30 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     await writeFile('artifacts/startup/webview.json', JSON.stringify(snapshot, null, 2));
     if (!hasNavigation(snapshot)) throw new Error('App navigation did not render or the Blazor error UI is visible.');
     console.log('PASS: all five navigation tabs rendered in the installed APK WebView.');
+
+    for (const tab of ['Anime', 'Manga', 'Anime']) {
+      const navigation = await command('Runtime.evaluate', {
+        awaitPromise: true,
+        returnByValue: true,
+        expression: `(async () => {
+          const tab = ${JSON.stringify(tab)};
+          const path = '/' + tab.toLowerCase();
+          const link = document.querySelector('.bottom-nav a[href="' + path + '"]');
+          if (!link) return false;
+          link.click();
+          for (let attempt = 0; attempt < 60; attempt++) {
+            const heading = document.querySelector('h1')?.textContent.trim();
+            const search = document.querySelector('input[aria-label="Search titles"]');
+            if (location.pathname === path && heading === tab &&
+                search?.placeholder === 'Search ' + tab.toLowerCase() + ' titles…') return true;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          return false;
+        })()`,
+      });
+      if (navigation.result?.value !== true) throw new Error(`${tab} opened the wrong catalogue.`);
+    }
+    console.log('PASS: Anime → Manga → Anime opens the correct catalogue on each tap.');
   } finally {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}
