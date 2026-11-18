@@ -1,0 +1,9 @@
+{
+  "id": "co.zyma.anikatha.demo.anime",
+  "version": "1.0.0",
+  "name": "AniKatha Anime Demo",
+  "description": "Test installing and removing an anime add-on.",
+  "types": ["series"],
+  "resources": [],
+  "catalogs": []
+}

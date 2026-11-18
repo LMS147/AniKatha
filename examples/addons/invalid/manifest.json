@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0",
+  "name": "AniKatha Invalid Demo",
+  "description": "Intentionally missing the required id field.",
+  "types": ["series"],
+  "resources": [],
+  "catalogs": []
+}

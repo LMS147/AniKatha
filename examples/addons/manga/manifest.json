@@ -1,0 +1,9 @@
+{
+  "id": "co.zyma.anikatha.demo.manga",
+  "version": "1.0.0",
+  "name": "AniKatha Manga Demo",
+  "description": "Test installing and removing a manga add-on.",
+  "types": ["manga"],
+  "resources": [],
+  "catalogs": []
+}
