@@ -46,6 +46,12 @@ var mangaPage = await jikan.SearchAsync("MANGA", "Yotsuba&!", 2, default);
 Assert(mangaPage.Items.Single().Name == "Sample title" &&
  jikanHandler.LastUri!.AbsolutePath == "/v4/manga" && jikanHandler.LastUri.Query.Contains("page=2") &&
  jikanHandler.LastUri.Query.Contains("Yotsuba%26"), "Manga search must use its own endpoint and escape search terms");
+jikanHandler.Status = HttpStatusCode.ServiceUnavailable;
+var starter = await jikan.SearchAsync("ANIME", "bebop", 1, default);
+Assert(starter.IsStarterCatalogue && !starter.HasNextPage && starter.Items.Single().Name == "Cowboy Bebop",
+ "An unavailable live catalogue must return a labeled, searchable starter list");
+var noMatch = await jikan.SearchAsync("MANGA", "Cowboy Bebop", 1, default);
+Assert(noMatch.IsStarterCatalogue && noMatch.Items.Count == 0, "Starter search must respect the active media type");
 jikanHandler.Status = HttpStatusCode.TooManyRequests;
 try { await jikan.SearchAsync("ANIME", null, 1, default); throw new Exception("Missing Jikan rate limit error"); }
 catch (InvalidOperationException ex) { Assert(ex.Message.Contains("too many requests"), "Jikan rate limits must be retryable"); }

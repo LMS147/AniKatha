@@ -22,12 +22,16 @@
  }
  </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit" disabled="@busy">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
 </form>
-@if (UsingAddon) { <p class="source-note">Titles and covers from Jikan. Use Search to find a title.</p> }
+@if (UsingAddon && starterCatalogue)
+{
+ <div class="notice" role="status">Jikan is unreachable. Showing a small starter catalogue included with AniKatha. <button @onclick="Search" disabled="@busy">Retry live catalogue</button></div>
+}
+else if (UsingAddon) { <p class="source-note">Titles and covers from Jikan.</p> }
 else { <p class="source-note">Titles and covers from AniList.</p> }
 @if(error is not null){<div class="notice" role="alert">@error <button @onclick="Search">Retry</button></div>}
 <div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch)?"Discover":"Search results")</h2><span class="muted">@ResultCount titles</span></div>
 @if(busy&&ResultCount==0){<div class="loading" role="status">Finding stories…</div>}
-else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching titles</h3><p>Try a different search or reset your filters.</p></div>}
+else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching titles</h3><p>@(starterCatalogue ? "No matching title in the starter catalogue." : "Try a different search or reset your filters.")</p></div>}
 @if (UsingAddon)
 {
  <div class="poster-grid">
@@ -57,13 +61,20 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  List<InstalledAddon> sources = [];
  List<AddonTitle> addonItems = [];
  string source = "", appliedSearch = "";
+ bool starterCatalogue;
+ const string SourceSetting = "catalogue-source";
  bool UsingAddon => source.Length != 0;
  int ResultCount => UsingAddon ? addonItems.Count : items.Count;
  string[] genres=["Action","Adventure","Comedy","Drama","Ecchi","Fantasy","Horror","Mahou Shoujo","Mecha","Music","Mystery","Psychological","Romance","Sci-Fi","Slice of Life","Sports","Supernatural","Thriller"];
  string[] formats=>kind=="ANIME"?["TV","TV_SHORT","MOVIE","SPECIAL","OVA","ONA","MUSIC"]:["MANGA","NOVEL","ONE_SHOT"];
  protected override async Task OnInitializedAsync()
  {
-  try { sources = (await Store.GetAddonsAsync()).Where(addon => addon.CatalogueProvider == JikanCatalogue.Provider).ToList(); }
+  try
+  {
+   sources = (await Store.GetAddonsAsync()).Where(addon => addon.CatalogueProvider == JikanCatalogue.Provider).ToList();
+   var preferred = await Store.GetSettingAsync(SourceSetting);
+   source = preferred is null ? sources.FirstOrDefault()?.Url ?? "" : FindSource(preferred);
+  }
   catch { /* AniList remains available if local storage cannot be opened. */ }
  }
 
@@ -73,12 +84,17 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   if (next != kind) { kind = next; await Reset(); }
  }
 
- Task ChangeSource(ChangeEventArgs change)
+ string FindSource(string url) => sources.Any(addon => addon.Url == url) ? url : "";
+
+ async Task ChangeSource(ChangeEventArgs change)
  {
-  var url = change.Value as string ?? "";
-  source = sources.Any(addon => addon.Url == url) ? url : "";
+  source = FindSource(change.Value as string ?? "");
   selected = null;
-  return Search();
+  var chosen = source;
+  var searchTask = Search();
+  try { await Store.SetSettingAsync(SourceSetting, chosen); }
+  catch { /* The source remains selected for this visit. */ }
+  await searchTask;
  }
 
  Task Reset()
@@ -96,6 +112,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   items = [];
   addonItems = [];
   hasMore = false;
+  starterCatalogue = false;
   return Load();
  }
 
@@ -115,6 +132,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
    {
     var result = await Jikan.SearchAsync(kind, appliedSearch, page, token);
     if (token.IsCancellationRequested) return;
+    starterCatalogue = result.IsStarterCatalogue;
     addonItems.AddRange(result.Items.Where(item => addonItems.All(existing => existing.Id != item.Id)));
     hasMore = result.HasNextPage;
    }
