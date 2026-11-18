@@ -18,6 +18,7 @@ public sealed class InstalledAddon
  [PrimaryKey] public string Url { get; set; } = "";
  public string Name { get; set; } = "";
  public string Version { get; set; } = "";
+ public string? CatalogueProvider { get; set; }
  public string Description { get; set; } = "";
 }
 public sealed class AppSetting

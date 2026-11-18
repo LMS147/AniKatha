@@ -1,0 +1,9 @@
+{
+  "id": "co.zyma.anikatha.jikan",
+  "version": "1.0.0",
+  "name": "Jikan Anime & Manga",
+  "description": "Browse real anime and manga metadata from Jikan.",
+  "types": ["series", "manga"],
+  "resources": ["catalog"],
+  "anikathaProvider": "jikan-v4"
+}
