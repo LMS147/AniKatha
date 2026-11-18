@@ -1,0 +1,57 @@
+export function attachPlayer(video, callbacks, url, resumePosition) {
+  const listeners = new AbortController();
+  const options = { signal: listeners.signal };
+  let ready = false;
+  let position = resumePosition;
+  let savedPosition = resumePosition;
+  let checkpoint = Promise.resolve();
+
+  function save(force) {
+    if (!ready || video.seeking || !Number.isFinite(video.currentTime)) return checkpoint;
+
+    const next = video.ended ? 0 : video.currentTime;
+    if (!force && Math.abs(next - position) < 2) return checkpoint;
+    if (next === position && next === savedPosition) return checkpoint;
+
+    position = next;
+    checkpoint = checkpoint.then(async () => {
+      if (next === savedPosition) return;
+      if (await callbacks.invokeMethodAsync('SavePosition', next)) savedPosition = next;
+    }).catch(() => {});
+    return checkpoint;
+  }
+
+  video.addEventListener('loadedmetadata', () => {
+    if (position > 0 && position < video.duration) video.currentTime = position;
+    ready = true;
+  }, options);
+  video.addEventListener('timeupdate', () => save(false), options);
+  for (const event of ['pause', 'seeked', 'ended']) {
+    video.addEventListener(event, () => save(true), options);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) save(true);
+  }, options);
+  window.addEventListener('pagehide', () => save(true), options);
+  video.addEventListener('error', () => {
+    callbacks.invokeMethodAsync('SetPlaybackError').catch(() => {});
+  }, options);
+
+  video.src = url;
+
+  return {
+    retry() {
+      save(true);
+      ready = false;
+      video.load();
+    },
+    async dispose() {
+      const saving = save(true);
+      listeners.abort();
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      await saving;
+    }
+  };
+}

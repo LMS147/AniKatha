@@ -12,6 +12,12 @@ var saved=(await reopened.GetLibraryAsync()).First(x=>x.Id==1);saved.Progress=7;
 Assert((await store.GetLibraryAsync()).First(x=>x.Id==1).Progress==7,"Progress must persist");
 await store.RemoveAsync(1);Assert((await store.GetLibraryAsync()).Count==7,"Removal must persist");
 await store.SetSettingAsync("accent","#ffa3c7");Assert(await reopened.GetSettingAsync("accent")=="#ffa3c7","Theme must persist");
+Assert(await store.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey)==0, "New episodes must start from the beginning");
+await store.SavePlaybackPositionAsync(PlaybackSample.EpisodeKey, 12.75);
+Assert(await reopened.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey)==12.75, "Episode position must persist after reopening");
+Assert(await reopened.GetPlaybackPositionAsync("other-episode")==0, "Episode positions must stay separate");
+await reopened.SavePlaybackPositionAsync(PlaybackSample.EpisodeKey, 0);
+Assert(await store.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey)==0, "A completed episode must start over");
 await store.SaveAddonAsync(new(){Url="https://example.com/manifest.json",Name="Example",Version="1.0.0",CatalogueProvider=JikanCatalogue.Provider});
 Assert((await reopened.GetAddonsAsync()).Single().CatalogueProvider==JikanCatalogue.Provider,"Add-on must persist");await store.RemoveAddonAsync("https://example.com/manifest.json");Assert((await reopened.GetAddonsAsync()).Count==0,"Add-on removal must persist");
 foreach(var invalid in new[]{"javascript:alert(1)","http://example.com/manifest.json","https://user:password@example.com/manifest.json","https://localhost/manifest.json","https://127.0.0.1/manifest.json","https://example.com/manifest.json?token=secret"}) {
