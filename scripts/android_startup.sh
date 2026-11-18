@@ -5,6 +5,7 @@ package=co.zyma.anikatha
 capture() {
   adb logcat -d -v threadtime > artifacts/startup/logcat.txt || true
   adb shell dumpsys activity activities > artifacts/startup/activities.txt || true
+  adb logcat -d -b crash > artifacts/startup/crash.txt || true
   adb exec-out screencap -p > artifacts/startup/screenshot.png || true
   adb shell uiautomator dump /sdcard/anikatha-window.xml >/dev/null 2>&1 || true
   adb pull /sdcard/anikatha-window.xml artifacts/startup/window.xml >/dev/null 2>&1 || true
@@ -22,7 +23,7 @@ for check in $(seq 1 9); do
   adb shell pidof "$package" >/dev/null || { echo 'FAIL: app exited after launch'; exit 1; }
 done
 adb shell dumpsys activity activities > artifacts/startup/activities.txt
-grep -E 'mResumedActivity.*co\.zyma\.anikatha' artifacts/startup/activities.txt >/dev/null || { echo 'FAIL: AniKatha is not the foreground activity'; exit 1; }
+python scripts/check_android_foreground.py artifacts/startup/activities.txt "$package"
 adb logcat -d -b crash > artifacts/startup/crash.txt
 if grep -E 'Process: co\.zyma\.anikatha|>>> co\.zyma\.anikatha <<<' artifacts/startup/crash.txt; then
   echo 'FAIL: Android recorded an AniKatha crash'; exit 1
@@ -30,5 +31,9 @@ fi
 # The WebView must render the root UI, not merely keep a native process alive.
 adb shell uiautomator dump /sdcard/anikatha-window.xml
 adb pull /sdcard/anikatha-window.xml artifacts/startup/window.xml
-grep -E 'text="(Home|Anime|Manga|Library|Profile)"|content-desc="(Home|Anime|Manga|Library|Profile)"' artifacts/startup/window.xml >/dev/null || { echo 'FAIL: app navigation did not render'; exit 1; }
+# UIAutomator does not reliably expose Blazor WebView text. Inspect the actual DOM
+# through the Debug APK's existing WebView DevTools endpoint instead.
+app_pid=$(adb shell pidof "$package" | tr -d '\r' | awk '{print $1}')
+adb forward tcp:9222 "localabstract:webview_devtools_remote_$app_pid"
+node scripts/check_webview.mjs
 echo 'PASS: APK installed without fast deployment, rendered navigation, and stayed open for 45 seconds.'
