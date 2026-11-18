@@ -9,3 +9,5 @@
 *.jks
 .env
 artifacts/
+
+__pycache__/
