@@ -1,0 +1,31 @@
+@page "/library/title/{Id:int}"
+@inject LocalStore Store
+<a class="text-link" href="/library">← Library</a>
+@if(title!=null && source!=null)
+{
+ <ManifestCatalog @key="Id" Source="source" Catalog="catalog!" Providers="providers" InitialTitle="title"/>
+}
+else if(loaded)
+{
+ <p class="notice">This saved title’s source is unavailable. Enable or reinstall it in Profile.</p>
+}
+@code {
+ [Parameter] public int Id {get;set;}
+ SavedTitle? title;
+ AddonResources? source;
+ AddonCatalog? catalog;
+ List<AddonResources> providers=[];
+ bool loaded;
+ protected override async Task OnParametersSetAsync()
+ {
+  var id=Id;
+  var item=(await Store.GetLibraryAsync()).FirstOrDefault(x=>x.Id==id);
+  var enabled=(await Store.GetAddonsAsync()).Select(x=>new AddonResources(x)).ToList();
+  if(id!=Id)return;
+  title=item;
+  providers=enabled;
+  source=enabled.FirstOrDefault(x=>x.ProviderKey==item?.ProviderKey);
+  catalog=item?.ResourceType is string type?new(type,"","",false,false):null;
+  loaded=true;
+ }
+}

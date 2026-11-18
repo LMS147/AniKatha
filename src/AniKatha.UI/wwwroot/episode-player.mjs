@@ -39,7 +39,27 @@ export function attachPlayer(video, callbacks, url, resumePosition) {
 
   video.src = url;
 
+  let track;
+  let subtitleUrl;
+  function clearSubtitle() {
+    track?.remove();
+    if (subtitleUrl) URL.revokeObjectURL(subtitleUrl);
+    track = undefined;
+    subtitleUrl = undefined;
+  }
   return {
+    clearSubtitle,
+    setSubtitle(language, cues) {
+      clearSubtitle();
+      track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.label = language || 'Subtitles';
+      track.srclang = language || 'und';
+      subtitleUrl = URL.createObjectURL(new Blob([cues], {type: 'text/vtt'}));
+      track.src = subtitleUrl;
+      video.appendChild(track);
+      track.track.mode = 'showing';
+    },
     retry() {
       save(true);
       ready = false;
@@ -48,6 +68,7 @@ export function attachPlayer(video, callbacks, url, resumePosition) {
     async dispose() {
       const saving = save(true);
       listeners.abort();
+      clearSubtitle();
       video.pause();
       video.removeAttribute('src');
       video.load();

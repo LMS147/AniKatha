@@ -2,9 +2,10 @@
 @using static AniKatha.Core.AddonResources
 @implements IDisposable
 @inject AddonClient Client
+@inject LocalStore Store
 
 <section class="settings-card">
- <h3>@Source.Addon.Name · @Catalog.Name</h3>
+ <h3>@Source.Addon.Name @Catalog.Name</h3>
  @if(Catalog.Search){<form @onsubmit="Search" @onsubmit:preventDefault><label>Search this catalogue<input @bind="query" /></label><button>Search</button></form>}
  @foreach(var item in titles){
   <button class="secondary" @onclick="()=>Open(item)">@Field(item,"name")</button>
@@ -15,18 +16,20 @@
  @if(!busy && error==null && titles.Count==0){<p>No matching titles.</p>}
  @if(selected!=null){
   <h3>@Field(selected.Value,"name")</h3>
+  @if(InitialTitle==null){<button disabled="@saved" @onclick="SaveTitle">@(saved?"Saved to library":"Save to library")</button>}
   @foreach(var unit in units){<button class="secondary" @onclick="()=>Choose(unit)">@Field(unit,"title")</button>}
   @if(!busy && error==null && units.Count==0){<p>No episodes or chapters available.</p>}
  }
  @if(unitId!=null){
   @if(targets.Count==0){<p>No compatible add-on.</p>}
   @foreach(var target in targets){
-   <ManifestSources @key="(target.ProviderKey,unitId,titleId)" Source="target" Origin="Source.ProviderKey" Type="Catalog.Type" TitleId="@titleId" UnitId="@unitId" Label="@label" Title="@Field(selected!.Value,"name")"/>
+   <ManifestSources @key="(target.ProviderKey,unitId,titleId)" Source="target" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@unitId" Label="@label" Title="@Field(selected!.Value,"name")"/>
   }
  }
 </section>
 
 @code {
+ [Parameter] public SavedTitle? InitialTitle {get;set;}
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
  [Parameter,EditorRequired] public AddonCatalog Catalog {get;set;}=null!;
  [Parameter,EditorRequired] public List<AddonResources> Providers {get;set;}=[];
@@ -38,7 +41,14 @@
  bool busy,more,retryMeta,retryReset;
  int offset;
  CancellationTokenSource? active;
- protected override Task OnInitializedAsync()=>Load(true);
+ bool saved;
+ protected override Task OnInitializedAsync()=> InitialTitle==null?Load(true):Open(JsonSerializer.SerializeToElement(new {id=InitialTitle.ExternalId,name=InitialTitle.Title}));
+ async Task SaveTitle()
+ {
+  if(selected==null)return;
+  try { await Store.SaveProviderTitleAsync(Source.ProviderKey,Catalog.Type,titleId,Field(selected.Value,"name"));saved=true; }
+  catch {error="Could not save this title.";}
+ }
  CancellationToken Begin(){
   active?.Cancel();active?.Dispose();active=new();busy=true;error=null;return active.Token;
  }
@@ -53,6 +63,7 @@
    if(offset>0)extras.Add("skip="+offset);
    var uri=Source.Resource("catalog",Catalog.Type,Catalog.Id,extras.Count==0?null:string.Join("&",extras));
    var root=await Client.FetchJsonAsync(uri,token);
+   if (!root.TryGetProperty("metas",out var list) || list.ValueKind!=JsonValueKind.Array) throw new FormatException();
    token.ThrowIfCancellationRequested();
    var page=Items(root,"metas").ToList();
    var ids=titles.Select(x=>Field(x,"id")).ToHashSet();
@@ -64,7 +75,7 @@
   finally{if(!token.IsCancellationRequested)busy=false;}
  }
  async Task Open(JsonElement item){
-  var token=Begin();retryMeta=true;selected=item;titleId=Field(item,"id");unitId=null;units=[];
+  var token=Begin();retryMeta=true;saved=false;selected=item;titleId=Field(item,"id");unitId=null;units=[];
   try{
    var resource=Catalog.Type=="manga"?"chapters":"meta";
    if(!Source.Supports(resource,Catalog.Type,titleId)){error="Source does not supply title details.";return;}

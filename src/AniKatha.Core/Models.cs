@@ -10,6 +10,10 @@ public sealed class SavedTitle
  public string Kind { get; set; } = "ANIME";
  public string Title { get; set; } = "";
  public string? Poster { get; set; }
+ public bool IsFavourite { get; set; }
+ public string? ProviderKey { get; set; }
+ public string? ExternalId { get; set; }
+ public string? ResourceType { get; set; }
  public string Status { get; set; } = "PLANNING";
  public int Progress { get; set; }
  public DateTime UpdatedAt { get; set; }
@@ -49,3 +53,20 @@ public sealed class AppSetting
  [PrimaryKey] public string Key { get; set; } = "";
  public string Value { get; set; } = "";
 }
+
+public sealed class ResumeEntry
+{
+ [PrimaryKey] public string Id { get; set; } = "";
+ public string Origin { get; set; } = "";
+ public string Source { get; set; } = "";
+ public string Type { get; set; } = "";
+ public string TitleId { get; set; } = "";
+ public string UnitId { get; set; } = "";
+ public string Title { get; set; } = "";
+ public string Label { get; set; } = "";
+ public DateTime Opened { get; set; }
+ public static string Key(string origin,string type,string titleId,string unitId,string source) =>
+  string.Join("/",origin,type,Uri.EscapeDataString(titleId),Uri.EscapeDataString(unitId),source);
+}
+
+public sealed record EpisodeSubtitle(string Language,string Url);

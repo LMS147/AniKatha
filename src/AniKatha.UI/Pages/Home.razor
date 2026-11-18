@@ -9,6 +9,7 @@ else if(featured is not null){
  </section>
 }else{<section class="welcome"><span class="eyebrow">WATCH. READ. DISCOVER.</span><h1>A world of stories.<br/>One place to begin.</h1><p class="muted">Your anime and manga companion.</p></section>}
 @if(error is not null){<div class="notice" role="alert">@error <button @onclick="Load">Retry</button></div>}
+<ResumeHistory/>
 <a class="sample-card" href="/anime/preview">
  <Icon Name="play"/>
  <span><strong>Big Buck Bunny</strong><small>Sample episode · Test in-app playback</small></span>

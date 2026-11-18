@@ -1,10 +1,20 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AniKatha.Checks")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AniKatha.UiChecks")]
 namespace AniKatha.Core;
 // Manifest inspection and validation before installation.
-public sealed class AddonClient(HttpClient http)
+public sealed class AddonClient
 {
+ readonly HttpClient http;
+ readonly Func<string,CancellationToken,Task<IPAddress[]>> resolve;
+ public AddonClient(HttpClient http) : this(http, Dns.GetHostAddressesAsync) {}
+ internal AddonClient(HttpClient http, Func<string,CancellationToken,Task<IPAddress[]>> resolve)
+ {
+  this.http=http;
+  this.resolve=resolve;
+ }
  public static Uri ValidateUrl(string input)
  {
   var address = input.Trim();
@@ -35,11 +45,32 @@ public sealed class AddonClient(HttpClient http)
 
  public async Task<JsonElement> FetchJsonAsync(Uri uri, CancellationToken token)
  {
+  var bytes=await FetchBytesAsync(uri,token);
+  try
+  {
+   using var doc=JsonDocument.Parse(bytes);
+   return doc.RootElement.Clone();
+  }
+  catch(JsonException ex){throw new InvalidOperationException("The provider returned invalid JSON.",ex);}
+ }
+
+ public async Task<string> GetSubtitleAsync(string url,CancellationToken token)
+ {
+  if(!AddonResources.MediaUrl(url))throw new InvalidOperationException("Invalid subtitle URL.");
+  var bytes=await FetchBytesAsync(new Uri(url),token);
+  var text=System.Text.Encoding.UTF8.GetString(bytes.Span).TrimStart('\uFEFF');
+  if(text.StartsWith("WEBVTT",StringComparison.Ordinal))return text;
+  if(!text.Contains(" --> ",StringComparison.Ordinal))throw new InvalidOperationException("Unsupported subtitle format.");
+  return "WEBVTT\n\n"+System.Text.RegularExpressions.Regex.Replace(text,@"(\d{2}:\d{2}:\d{2}),(\d{3})","$1.$2");
+ }
+
+ async Task<ReadOnlyMemory<byte>> FetchBytesAsync(Uri uri,CancellationToken token)
+ {
   using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
   deadline.CancelAfter(TimeSpan.FromSeconds(20));
   try
   {
-   var addresses = await Dns.GetHostAddressesAsync(uri.Host, deadline.Token);
+   var addresses = await resolve(uri.Host, deadline.Token);
    if (addresses.Length == 0 || addresses.Any(IsPrivate))
     throw new InvalidOperationException("Add-ons must use a public internet address.");
 
@@ -65,8 +96,7 @@ public sealed class AddonClient(HttpClient http)
    // JSON exported by some editors starts with a UTF-8 byte order mark.
    var payload = buffer.ToArray().AsMemory();
    if (payload.Span.StartsWith(new byte[] { 0xef, 0xbb, 0xbf })) payload = payload[3..];
-   using var doc = JsonDocument.Parse(payload);
-   return doc.RootElement.Clone();
+   return payload;
   }
   catch (OperationCanceledException) when (!token.IsCancellationRequested)
   {
@@ -80,12 +110,7 @@ public sealed class AddonClient(HttpClient http)
   {
    throw new InvalidOperationException("Could not connect to the add-on server over HTTPS. Check your connection and the server certificate.", ex);
   }
-  catch (JsonException ex)
-  {
-   throw new InvalidOperationException("The server did not return valid JSON. Paste a direct link to the manifest file.", ex);
-  }
  }
-
  private static InstalledAddon ReadManifest(Uri uri, JsonElement root)
  {
   if (root.ValueKind != JsonValueKind.Object)
@@ -94,6 +119,20 @@ public sealed class AddonClient(HttpClient http)
   _=Required("id");
   if (!root.TryGetProperty("resources",out var resources) || resources.ValueKind!=JsonValueKind.Array || !root.TryGetProperty("types",out var types) || types.ValueKind!=JsonValueKind.Array)
    throw new InvalidOperationException("Manifest must declare resources and types.");
+  if (types.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(x.GetString())))
+   throw new InvalidOperationException("Manifest types must be nonempty strings.");
+  foreach (var rule in resources.EnumerateArray())
+  {
+   if (rule.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(rule.GetString())) continue;
+   if (rule.ValueKind != JsonValueKind.Object || AddonResources.Field(rule,"name").Length == 0)
+    throw new InvalidOperationException("Each resource must declare a name.");
+   ValidateStringArray(rule,"types");
+   ValidateStringArray(rule,"idPrefixes");
+  }
+  ValidateStringArray(root,"idPrefixes");
+  if (root.TryGetProperty("catalogs",out var catalogs) && (catalogs.ValueKind != JsonValueKind.Array ||
+      catalogs.EnumerateArray().Any(x=>AddonResources.Field(x,"id")=="" || AddonResources.Field(x,"type")=="")))
+   throw new InvalidOperationException("Each catalogue must declare an ID and media type.");
   if (root.TryGetProperty("anikathaProtocolVersion", out var protocol) &&
       (protocol.ValueKind != JsonValueKind.Number || !protocol.TryGetInt32(out var version) || version != 1))
    throw new InvalidOperationException("Unsupported AniKatha protocol version.");
@@ -108,6 +147,12 @@ public sealed class AddonClient(HttpClient http)
   return new() { Url=uri.AbsoluteUri, ManifestJson=root.GetRawText(), YouTubeEpisodesJson=episodes, Name=Required("name"), Version=Required("version"),
    CatalogueProvider = root.TryGetProperty("anikathaProvider", out var provider) && provider.ValueKind == JsonValueKind.String && provider.GetString() == JikanCatalogue.Provider ? JikanCatalogue.Provider : null,
    Description=root.TryGetProperty("description",out var description)&&description.ValueKind==JsonValueKind.String ? description.GetString()! : "" };
+ }
+ static void ValidateStringArray(JsonElement node,string key)
+ {
+  if (node.TryGetProperty(key,out var value) && (value.ValueKind!=JsonValueKind.Array ||
+      value.EnumerateArray().Any(x=>x.ValueKind!=JsonValueKind.String || string.IsNullOrWhiteSpace(x.GetString()))))
+   throw new InvalidOperationException($"Manifest {key} must contain nonempty strings.");
  }
  static bool HasValue(JsonElement array, string expected) =>
   array.EnumerateArray().Any(value => value.ValueKind == JsonValueKind.String && value.GetString() == expected);

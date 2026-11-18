@@ -14,3 +14,5 @@ A catalogue declaration lists type, id, name, and optional extra entries named s
 | pages/manga/{chapterId}.json | pages array of ordered HTTPS image URLs |
 
 Chapter and page resources are AniKatha extensions. Samples are in examples/addons/story-sampler. Jikan supplies catalogue metadata. YouTube video IDs use the existing YouTube adapter. Progress keys for HTTP content include catalogue provider, media type, title, unit and source. Reinstalling the same provider URL restores access to its saved positions.
+
+A stream can include a subtitles array of objects with lang and url. A provider declaring a subtitles resource can also return that array from subtitles/{type}/{episodeId}.json. The player accepts HTTPS WebVTT and SRT tracks. Local SQLite history retains provider, title, unit and source identities when a provider is disabled or removed.

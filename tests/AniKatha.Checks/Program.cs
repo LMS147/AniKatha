@@ -58,6 +58,7 @@ second.Name="Updated"; await store.RefreshAddonAsync(second);
 Assert((await reopened.GetAddonsAsync()).Single().Url==first.Url && (await reopened.GetAddonsAsync(true)).First().Disabled,"Refresh must retain order and disabled state");
 await store.SetAddonDisabledAsync(second.Url,false);
 await store.RemoveAddonAsync(first.Url); await store.RemoveAddonAsync(second.Url);
+await HttpAddonChecks.RunAsync();
 var rawManifest = "https://raw.githubusercontent.com/LMS147/AniKatha/main/examples/addons/anime/manifest.json";
 Assert(AddonClient.ValidateUrl(rawManifest).AbsoluteUri == rawManifest, "Raw manifest URLs must continue to work");
 Assert(AddonClient.ValidateUrl(" https://github.com/LMS147/AniKatha/blob/main/examples/addons/anime/manifest.json ").AbsoluteUri == rawManifest,

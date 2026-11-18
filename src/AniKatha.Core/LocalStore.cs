@@ -13,10 +13,37 @@ public sealed class LocalStore
   initialized = new(InitializeAsync);
  }
  async Task InitializeAsync() {
-  await db.CreateTableAsync<SavedTitle>(); await db.CreateTableAsync<InstalledAddon>(); await db.CreateTableAsync<AppSetting>();
+  await db.CreateTableAsync<ResumeEntry>(); await db.CreateTableAsync<SavedTitle>(); await db.CreateTableAsync<InstalledAddon>(); await db.CreateTableAsync<AppSetting>();
+ }
+ public async Task RememberAsync(ResumeEntry entry)
+ {
+  await initialized.Value;
+  entry.Opened=DateTime.UtcNow;
+  await db.InsertOrReplaceAsync(entry);
+ }
+ public async Task<List<ResumeEntry>> HistoryAsync()
+ {
+  await initialized.Value;
+  return await db.Table<ResumeEntry>().OrderByDescending(x=>x.Opened).ToListAsync();
+ }
+ public async Task ForgetAsync(string id)
+ {
+  await initialized.Value;
+  await db.DeleteAsync<ResumeEntry>(id);
  }
  public async Task<List<SavedTitle>> GetLibraryAsync() { await initialized.Value; return await db.Table<SavedTitle>().OrderByDescending(x=>x.UpdatedAt).ToListAsync(); }
  public async Task SaveAsync(SavedTitle title) { await initialized.Value; title.UpdatedAt=DateTime.UtcNow; await db.InsertOrReplaceAsync(title); }
+ public async Task SaveProviderTitleAsync(string providerKey,string type,string externalId,string title)
+ {
+  await initialized.Value;
+  await db.RunInTransactionAsync(connection =>
+  {
+   if(connection.Table<SavedTitle>().Where(x=>x.ProviderKey==providerKey && x.ResourceType==type && x.ExternalId==externalId).Count()>0) return;
+   var id = connection.ExecuteScalar<int>("SELECT MIN(COALESCE(MIN(Id),0),0)-1 FROM SavedTitle");
+   connection.Insert(new SavedTitle { Id=id, Kind=type=="manga"?"MANGA":"ANIME", Title=title, ProviderKey=providerKey,
+    ExternalId=externalId, ResourceType=type, UpdatedAt=DateTime.UtcNow });
+  });
+ }
  public Task SaveAsync(Media title) => SaveAsync(new SavedTitle { Id=title.Id, Kind=title.Kind, Title=title.Title, Poster=title.Poster });
  public async Task RemoveAsync(int id) { await initialized.Value; await db.DeleteAsync<SavedTitle>(id); }
  public async Task<List<InstalledAddon>> GetAddonsAsync(bool includeDisabled = false)

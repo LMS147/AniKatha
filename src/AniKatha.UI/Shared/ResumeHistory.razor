@@ -1,0 +1,23 @@
+@inject LocalStore Store
+@foreach(var kind in new[]{"Anime","Manga"})
+{
+ var entries=history.Where(x=>(x.Type=="manga"?"Manga":"Anime")==kind).ToList();
+ if(entries.Count==0 || (MediaFilter!="All" && kind!=MediaFilter)) continue;
+ <section aria-label="@(kind=="Anime"?"Continue Watching":"Continue Reading")">
+ <h2>@(kind=="Anime"?"Continue Watching":"Continue Reading")</h2>
+ @foreach(var entry in entries)
+ {
+  <a class="sample-card" href="@($"/resume/{entry.Id}")">
+   <Icon Name="@(kind=="Anime"?"play":"book")"/><span><strong>@entry.Title</strong><small>@entry.Label</small></span>
+  </a>
+  @if(ShowRemove){<button class="text-link" @onclick="()=>Remove(entry)">Remove from history</button>}
+ }
+ </section>
+}
+@code {
+ [Parameter] public bool ShowRemove {get;set;}
+ [Parameter] public string MediaFilter {get;set;}="All";
+ List<ResumeEntry> history=[];
+ protected override async Task OnInitializedAsync()=>history=await Store.HistoryAsync();
+ async Task Remove(ResumeEntry entry){await Store.ForgetAsync(entry.Id);history.Remove(entry);}
+}
