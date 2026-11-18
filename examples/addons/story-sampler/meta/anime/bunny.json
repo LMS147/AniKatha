@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "id": "bunny",
+    "videos": [
+      {
+        "id": "bunny-1",
+        "title": "Sample trailer"
+      }
+    ]
+  }
+}

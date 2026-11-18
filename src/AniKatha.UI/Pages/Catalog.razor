@@ -4,6 +4,11 @@
 @inject LocalStore Store
 <header class="page-header"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
 @Featured
+@foreach(var provider in httpProviders){
+ @foreach(var catalog in provider.Catalogs(Kind)){
+  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id)" Source="provider" Catalog="catalog" Providers="httpProviders"/>
+ }
+}
 <form @onsubmit="Search" @onsubmit:preventDefault>
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
  <div class="filters">
@@ -62,6 +67,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  [Parameter] public RenderFragment? Featured { get; set; }
  string search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];Media? selected;
  CancellationTokenSource? request;
+ List<AddonResources> httpProviders=[];
  List<InstalledAddon> sources = [];
  List<AddonTitle> addonItems = [];
  string source = "", appliedSearch = "";
@@ -75,7 +81,9 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  {
   try
   {
-   sources = (await Store.GetAddonsAsync()).Where(addon => addon.CatalogueProvider == JikanCatalogue.Provider).ToList();
+   var enabled = await Store.GetAddonsAsync();
+   httpProviders=enabled.Select(x=>new AddonResources(x)).ToList();
+   sources = enabled.Where(addon => addon.CatalogueProvider == JikanCatalogue.Provider).ToList();
    var preferred = await Store.GetSettingAsync(SourceSetting);
    source = preferred is null ? sources.FirstOrDefault()?.Url ?? "" : FindSource(preferred);
   }

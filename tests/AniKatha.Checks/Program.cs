@@ -29,7 +29,7 @@ await store.SetSettingAsync($"reading:{chapterKey}", "invalid");
 Assert(await reopened.GetReadingPageAsync(chapterKey)==1, "Invalid saved pages must fall back to page one");
 await store.SaveAddonAsync(new(){Url="https://example.com/manifest.json",Name="Example",Version="1.0.0",CatalogueProvider=JikanCatalogue.Provider});
 Assert((await reopened.GetAddonsAsync()).Single().CatalogueProvider==JikanCatalogue.Provider,"Add-on must persist");await store.RemoveAddonAsync("https://example.com/manifest.json");Assert((await reopened.GetAddonsAsync()).Count==0,"Add-on removal must persist");
-foreach(var invalid in new[]{"javascript:alert(1)","http://example.com/manifest.json","https://user:password@example.com/manifest.json","https://localhost/manifest.json","https://127.0.0.1/manifest.json","https://example.com/manifest.json?token=secret"}) {
+foreach(var invalid in new[]{"javascript:alert(1)","http://example.com/manifest.json","https://user:password@example.com/manifest.json","https://localhost/manifest.json","https://127.0.0.1/manifest.json"}) {
  try {AddonClient.ValidateUrl(invalid);throw new Exception("Unsafe URL accepted: "+invalid);}catch(InvalidOperationException){}
 }
 const string youtubeUrl = "https://example.com/youtube/manifest.json";
@@ -46,13 +46,26 @@ try { _ = rejected.GetYouTubeEpisodes(); throw new Exception("A URL was accepted
 catch (InvalidOperationException) { }
 await store.RemoveAddonAsync(youtubeUrl);
 Assert((await reopened.GetAddonsAsync()).Count == 0, "Removing an add-on must remove the episode mapping");
+Assert(AddonClient.ValidateUrl("provider.example/config/?key=abc").AbsoluteUri=="https://provider.example/config/manifest.json?key=abc","Normalize base URL and retain provider configuration");
+var first=new InstalledAddon { Url="https://a.example/manifest.json",Name="First" };
+var second=new InstalledAddon { Url="https://b.example/manifest.json",Name="Second" };
+await store.SaveAddonAsync(first); await store.SaveAddonAsync(second);
+try { await store.SaveAddonAsync(first); throw new Exception("Duplicate installation accepted"); } catch(InvalidOperationException) {}
+await store.MoveAddonAsync(second.Url,-1);
+Assert((await reopened.GetAddonsAsync()).First().Url==second.Url,"Source order must survive reopening");
+await store.SetAddonDisabledAsync(second.Url,true);
+second.Name="Updated"; await store.RefreshAddonAsync(second);
+Assert((await reopened.GetAddonsAsync()).Single().Url==first.Url && (await reopened.GetAddonsAsync(true)).First().Disabled,"Refresh must retain order and disabled state");
+await store.SetAddonDisabledAsync(second.Url,false);
+await store.RemoveAddonAsync(first.Url); await store.RemoveAddonAsync(second.Url);
+await HttpAddonChecks.RunAsync();
 var rawManifest = "https://raw.githubusercontent.com/LMS147/AniKatha/main/examples/addons/anime/manifest.json";
 Assert(AddonClient.ValidateUrl(rawManifest).AbsoluteUri == rawManifest, "Raw manifest URLs must continue to work");
 Assert(AddonClient.ValidateUrl(" https://github.com/LMS147/AniKatha/blob/main/examples/addons/anime/manifest.json ").AbsoluteUri == rawManifest,
  "GitHub file-page links must resolve to the raw manifest");
 Assert(AddonClient.ValidateUrl("stremio://example.com/manifest.json").AbsoluteUri == "https://example.com/manifest.json",
  "Add-on install links must resolve to HTTPS");
-foreach (var invalid in new[] {"stremio://localhost/manifest.json", "stremio://user@example.com/manifest.json", "stremio://example.com/manifest.json?token=secret"})
+foreach (var invalid in new[] {"stremio://localhost/manifest.json", "stremio://user@example.com/manifest.json"})
 {
  try { AddonClient.ValidateUrl(invalid); throw new Exception("Unsafe install link accepted"); }
  catch (InvalidOperationException) {}

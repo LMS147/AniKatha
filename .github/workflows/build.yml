@@ -20,6 +20,7 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet build src/AniKatha.Preview/AniKatha.Preview.csproj -c Release
       - run: dotnet run --project tests/AniKatha.Checks -c Release
+      - run: dotnet run --project tests/AniKatha.UiChecks -c Release
       - uses: actions/setup-node@v4
         with:
           node-version: '24'

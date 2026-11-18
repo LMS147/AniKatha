@@ -1,25 +1,25 @@
 @page "/manga/preview/chapter-1"
 @inject LocalStore Store
 
-<PageTitle>Read @MangaSample.Title · AniKatha</PageTitle>
+<PageTitle>Read @Title · AniKatha</PageTitle>
 <header class="page-header reader-header">
- <a class="text-link" href="/manga/preview">← Chapters</a>
- <h1 class="sample-heading">@MangaSample.Title</h1>
- <p>Chapter 1</p>
+ @if(Pages==null){<a class="text-link" href="/manga/preview">← Chapters</a>}
+ <h1 class="sample-heading">@Title</h1>
+ <p>@ChapterLabel</p>
 </header>
 
 @if (ready)
 {
- <section class="manga-reader" aria-label="Chapter 1 reader">
+ <section class="manga-reader" aria-label="@ChapterLabel">
   <p class="reader-position" role="status">Page @currentPage of @PageCount</p>
-  <img class="reader-page" src="@PageUrl" alt="@MangaSample.PageDescriptions[currentPage - 1]"/>
+  <img class="reader-page" src="@PageUrl" alt="@(Pages==null ? MangaSample.PageDescriptions[currentPage-1] : $"Page {currentPage}")"/>
   <div class="reader-controls">
    <button type="button" class="secondary" disabled="@(currentPage == 1 || saving)" @onclick="() => MoveTo(currentPage - 1)">← Previous</button>
    @if (currentPage < PageCount)
    {
     <button type="button" class="primary" disabled="@saving" @onclick="() => MoveTo(currentPage + 1)">Next page →</button>
    }
-   else
+   else if(Pages==null)
    {
     <a class="primary" href="/manga/preview">Back to chapters</a>
    }
@@ -40,14 +40,18 @@ else
  bool ready;
  bool saving;
  string? storageError;
- int PageCount => MangaSample.PageDescriptions.Count;
- string PageUrl => $"_content/AniKatha.UI/manga/midnight-lighthouse-{currentPage}.webp";
+ [Parameter] public string ChapterKey {get;set;} = MangaSample.ChapterKey;
+ [Parameter] public string Title {get;set;} = MangaSample.Title;
+ [Parameter] public string ChapterLabel {get;set;} = "Chapter 1";
+ [Parameter] public IReadOnlyList<string>? Pages {get;set;}
+ int PageCount => Pages?.Count ?? MangaSample.PageDescriptions.Count;
+ string PageUrl => Pages?[currentPage-1] ?? $"_content/AniKatha.UI/manga/midnight-lighthouse-{currentPage}.webp";
 
  protected override async Task OnInitializedAsync()
  {
   try
   {
-   currentPage = Math.Clamp(await Store.GetReadingPageAsync(MangaSample.ChapterKey), 1, PageCount);
+   currentPage = Math.Clamp(await Store.GetReadingPageAsync(ChapterKey), 1, PageCount);
   }
   catch
   {
@@ -68,7 +72,7 @@ else
   currentPage = next;
   try
   {
-   await Store.SaveReadingPageAsync(MangaSample.ChapterKey, next);
+   await Store.SaveReadingPageAsync(ChapterKey, next);
    storageError = null;
   }
   catch

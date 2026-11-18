@@ -3,15 +3,24 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject LocalStore Store
+@inject AddonClient Addons
 
-<PageTitle>Watch Big Buck Bunny · AniKatha</PageTitle>
+<PageTitle>Watch @Title · AniKatha</PageTitle>
 <header class="page-header">
- <a class="text-link" href="/anime/preview">← Episodes</a>
- <h1 class="sample-heading">Big Buck Bunny</h1>
- <p>Episode 1 · Sample trailer</p>
+ @if(EpisodeKey==PlaybackSample.EpisodeKey){<a class="text-link" href="/anime/preview">← Episodes</a>}
+ <h1 class="sample-heading">@Title</h1>
+ <p>@EpisodeLabel</p>
 </header>
 
-<video @ref="video" class="episode-video" controls playsinline preload="metadata" aria-label="Big Buck Bunny trailer"></video>
+<video @ref="video" class="episode-video" controls playsinline preload="metadata" aria-label="@Title"></video>
+@if(Subtitles.Count>0)
+{
+ <label>Subtitles<select @onchange="ChangeSubtitle">
+ <option value="">Off</option>
+ @for(var i=0;i<Subtitles.Count;i++){<option value="@i">@Subtitles[i].Language</option>}
+ </select></label>
+}
+@if(subtitleError){<p role="alert">Could not load the selected subtitle track.</p>}
 @if (playbackError)
 {
  <div class="notice" role="alert">
@@ -23,11 +32,37 @@
 {
  <p class="notice" role="status">Your playback position couldn’t be saved.</p>
 }
+@if (VideoUrl == PlaybackSample.VideoUrl)
+{
 <p class="playback-credit muted">
  © 2008 Blender Foundation · <a href="https://peach.blender.org/about/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>
 </p>
 
+}
 @code {
+ [Parameter] public string EpisodeKey {get;set;} = PlaybackSample.EpisodeKey;
+ [Parameter] public string VideoUrl {get;set;} = PlaybackSample.VideoUrl;
+ [Parameter] public string Title {get;set;} = "Big Buck Bunny";
+ [Parameter] public string EpisodeLabel {get;set;} = "Episode 1 · Sample trailer";
+ [Parameter] public IReadOnlyList<EpisodeSubtitle> Subtitles {get;set;}=[];
+ bool subtitleError;
+ CancellationTokenSource? subtitleRequest;
+ async Task ChangeSubtitle(ChangeEventArgs args)
+ {
+  subtitleRequest?.Cancel();subtitleRequest?.Dispose();
+  var token=(subtitleRequest=new()).Token;
+  subtitleError=false;
+  if(player==null)return;
+  try
+  {
+   await player.InvokeVoidAsync("clearSubtitle");
+   if(!int.TryParse(args.Value?.ToString(),out var index) || index<0 || index>=Subtitles.Count)return;
+   var selected=Subtitles[index];
+   var cues=await Addons.GetSubtitleAsync(selected.Url,token);
+   if(!token.IsCancellationRequested)await player.InvokeVoidAsync("setSubtitle",selected.Language,cues);
+  }
+  catch(Exception){if(!token.IsCancellationRequested)subtitleError=true;}
+ }
  ElementReference video;
  DotNetObjectReference<WatchPreview>? callbacks;
  IJSObjectReference? module;
@@ -44,7 +79,7 @@
  {
   try
   {
-   var position = await Store.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey);
+   var position = await Store.GetPlaybackPositionAsync(EpisodeKey);
    if (disposed)
     return;
 
@@ -53,7 +88,7 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, PlaybackSample.VideoUrl, position);
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position);
   }
   catch (JSDisconnectedException) { }
   catch (Exception)
@@ -76,7 +111,7 @@
  {
   try
   {
-   await Store.SavePlaybackPositionAsync(PlaybackSample.EpisodeKey, seconds);
+   await Store.SavePlaybackPositionAsync(EpisodeKey, seconds);
    if (progressError && !disposed)
    {
     progressError = false;
@@ -107,6 +142,7 @@
  public async ValueTask DisposeAsync()
  {
   disposed = true;
+  subtitleRequest?.Cancel();subtitleRequest?.Dispose();
   try
   {
    await initialization;
