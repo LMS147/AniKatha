@@ -1,0 +1,32 @@
+@page "/manga/preview"
+@inject LocalStore Store
+
+<PageTitle>@MangaSample.Title · AniKatha</PageTitle>
+<header class="page-header">
+ <a class="text-link" href="/manga">← Manga</a>
+ <h1 class="sample-heading">@MangaSample.Title</h1>
+ <p>A little lighthouse keeper races to get the beacon working before a fishing boat reaches the rocks.</p>
+</header>
+
+<section class="settings-card" aria-labelledby="chapters-heading">
+ <h2 id="chapters-heading">Chapters</h2>
+ <a class="primary" href="/manga/preview/chapter-1">
+  <Icon Name="book"/> @(savedPage > 1 ? $"Resume at page {savedPage}" : "Read chapter 1")
+ </a>
+</section>
+
+@code {
+ int savedPage = 1;
+
+ protected override async Task OnInitializedAsync()
+ {
+  try
+  {
+   savedPage = Math.Clamp(await Store.GetReadingPageAsync(MangaSample.ChapterKey), 1, MangaSample.PageDescriptions.Count);
+  }
+  catch
+  {
+   // The chapter is still readable if local storage is unavailable.
+  }
+ }
+}

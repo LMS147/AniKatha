@@ -98,6 +98,52 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     if (player.result?.value !== true) throw new Error('Sample episode player did not mount in the APK WebView.');
     console.log('PASS: Home → sample → Episode 1 mounts the in-app video player.');
 
+    const reader = await command('Runtime.evaluate', {
+      awaitPromise: true,
+      returnByValue: true,
+      expression: `(async () => {
+        async function waitFor(find, description) {
+          for (let attempt = 0; attempt < 60; attempt++) {
+            const result = find();
+            if (result) return result;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          throw new Error('Timed out waiting for ' + description);
+        }
+        const find = selector => document.querySelector(selector);
+        const openChapter = async () => {
+          const link = await waitFor(() => find('a[href="/manga/preview/chapter-1"]'), 'chapter link');
+          link.click();
+        };
+        const loadedPage = number => {
+          const image = find('.reader-page');
+          return image?.complete && image.naturalWidth > 0 && image.src.endsWith('-' + number + '.webp');
+        };
+
+        document.querySelector('.bottom-nav a[href="/manga"]').click();
+        const sample = await waitFor(() => find('a[href="/manga/preview"]'), 'manga sample');
+        sample.click();
+        await openChapter();
+        await waitFor(() => loadedPage(1), 'bundled page 1');
+        (await waitFor(() => find('.reader-controls button.primary:not(:disabled)'), 'Next page')).click();
+        await waitFor(() => loadedPage(2) && find('.reader-controls button.primary:not(:disabled)'), 'saved page 2');
+        find('.reader-header a').click();
+        await waitFor(() => find('a[href="/manga/preview/chapter-1"]')?.textContent.includes('Resume at page 2'), 'resume link');
+        await openChapter();
+        await waitFor(() => loadedPage(2), 'resumed page 2');
+        (await waitFor(() => find('.reader-controls button.primary:not(:disabled)'), 'Next page from page 2')).click();
+        await waitFor(() => loadedPage(3) && find('.reader-controls button.secondary:not(:disabled)'), 'last bundled page');
+        find('.reader-controls button.secondary').click();
+        await waitFor(() => loadedPage(2), 'Previous page');
+        return true;
+      })()`,
+    });
+    if (reader.result?.value !== true) {
+      throw new Error(reader.exceptionDetails?.exception?.description ?? 'Sample manga chapter did not load or resume.');
+    }
+    console.log('PASS: installed APK renders all three bundled manga pages, turns pages, and restores the saved page.');
+
+
   } finally {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}

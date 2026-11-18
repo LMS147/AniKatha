@@ -18,6 +18,15 @@ Assert(await reopened.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey)==12.75
 Assert(await reopened.GetPlaybackPositionAsync("other-episode")==0, "Episode positions must stay separate");
 await reopened.SavePlaybackPositionAsync(PlaybackSample.EpisodeKey, 0);
 Assert(await store.GetPlaybackPositionAsync(PlaybackSample.EpisodeKey)==0, "A completed episode must start over");
+const string chapterKey = "sample-manga:chapter-1";
+Assert(await store.GetReadingPageAsync(chapterKey)==1, "New chapters must open at page one");
+await store.SaveReadingPageAsync(chapterKey, 3);
+Assert(await reopened.GetReadingPageAsync(chapterKey)==3, "Reading position must persist after reopening");
+Assert(await reopened.GetReadingPageAsync("sample-manga:chapter-2")==1, "Reading position must be isolated by chapter");
+await reopened.SaveReadingPageAsync(chapterKey, 2);
+Assert(await store.GetReadingPageAsync(chapterKey)==2, "Turning backwards must update the resume page");
+await store.SetSettingAsync($"reading:{chapterKey}", "invalid");
+Assert(await reopened.GetReadingPageAsync(chapterKey)==1, "Invalid saved pages must fall back to page one");
 await store.SaveAddonAsync(new(){Url="https://example.com/manifest.json",Name="Example",Version="1.0.0",CatalogueProvider=JikanCatalogue.Provider});
 Assert((await reopened.GetAddonsAsync()).Single().CatalogueProvider==JikanCatalogue.Provider,"Add-on must persist");await store.RemoveAddonAsync("https://example.com/manifest.json");Assert((await reopened.GetAddonsAsync()).Count==0,"Add-on removal must persist");
 foreach(var invalid in new[]{"javascript:alert(1)","http://example.com/manifest.json","https://user:password@example.com/manifest.json","https://localhost/manifest.json","https://127.0.0.1/manifest.json","https://example.com/manifest.json?token=secret"}) {

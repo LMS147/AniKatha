@@ -1,3 +1,11 @@
 @page "/manga"
 
-<Catalog Kind="MANGA" />
+<Catalog Kind="MANGA">
+ <Featured>
+  <a class="sample-card manga-sample-card" href="/manga/preview">
+   <Icon Name="book"/>
+   <span><strong>@MangaSample.Title</strong><small>Sample chapter · Read offline</small></span>
+   <span aria-hidden="true">→</span>
+  </a>
+ </Featured>
+</Catalog>

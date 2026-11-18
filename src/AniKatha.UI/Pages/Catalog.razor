@@ -3,6 +3,7 @@
 @inject JikanCatalogue Jikan
 @inject LocalStore Store
 <header class="page-header"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
+@Featured
 <form @onsubmit="Search" @onsubmit:preventDefault>
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
  <div class="filters">
@@ -58,6 +59,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
 <MediaDetails Item="selected" Closed="()=>selected=null"/>
 @code {
  [Parameter, EditorRequired] public string Kind { get; set; } = "";
+ [Parameter] public RenderFragment? Featured { get; set; }
  string search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];Media? selected;
  CancellationTokenSource? request;
  List<InstalledAddon> sources = [];
