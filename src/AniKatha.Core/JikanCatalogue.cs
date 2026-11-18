@@ -12,11 +12,15 @@ public sealed class JikanCatalogue(HttpClient http)
 
     public async Task<AddonPage> SearchAsync(string kind, string? search, int page, CancellationToken token)
     {
+        // Let the first page fall back promptly if the provider stalls.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (page == 1)
+            deadline.CancelAfter(TimeSpan.FromSeconds(8));
         try
         {
-            return await FetchAsync(kind, search, page, token);
+            return await FetchAsync(kind, search, page, deadline.Token);
         }
-        catch (HttpRequestException ex) when (page == 1 && (ex.StatusCode is null || (int)ex.StatusCode >= 500))
+        catch (HttpRequestException ex) when (page == 1 && !token.IsCancellationRequested && (ex.StatusCode is null || (int)ex.StatusCode >= 500))
         {
             return StarterCatalogue(kind, search);
         }

@@ -10,7 +10,7 @@ Only Android is packaged now. The browser preview reuses the UI for development;
 
 Keep metadata and content access independent. An AniList media ID is not a source episode/chapter ID. Future providers must implement search, title lookup, explicit ID mapping, and episode/chapter resolution. Ambiguous mappings require user selection rather than silently playing the wrong season.
 
-URL-based add-ons need a protocol client for catalog/meta/stream/subtitles. Manga needs its own versioned chapter/page contract. Manifest installation currently stores metadata only and does not execute resources. JavaScript plugin repositories are a distinct capability, not automatically compatible with URL add-ons. Never evaluate provider JavaScript inside the UI WebView or pass it AniList credentials.
+URL-based add-ons need a protocol client for catalog/meta/stream/subtitles. Manga needs its own versioned chapter/page contract. Installed Jikan manifests enable the built-in Jikan catalogue adapter. Other manifests can be saved, but generic add-on resources are not executed. JavaScript plugin repositories are a distinct capability, not automatically compatible with URL add-ons. Never evaluate provider JavaScript inside the UI WebView or pass it AniList credentials.
 
 Manifest inspection rejects non-HTTPS addresses, credentials, query/fragment tokens, IP literals, and common private DNS results, and disables redirects. It bounds response bodies to 256 KiB. This is a desktop/mobile client baseline, not a complete server-side SSRF boundary: DNS rebinding and further reserved address ranges require additional enforcement before exposing it as a hosted multi-user API.
 
@@ -24,7 +24,7 @@ Manifest inspection rejects non-HTTPS addresses, credentials, query/fragment tok
 
 ## UX
 
-Navigation is Home / Anime / Manga / Library / Profile. Anime and Manga have separate search and discovery filters. AniList is the only working catalogue source in this stage; the source selector does not claim that installed manifests are searchable. Manga uses publication year rather than anime broadcast season.
+Navigation is Home / Anime / Manga / Library / Profile. Anime and Manga have separate search and discovery filters. Anime and Manga are separate routes that pass their media type to a shared catalogue component. The source selector offers AniList and installed Jikan catalogues. If Jikan is unreachable on the first page, the app tries the same search on AniList before showing the bundled starter list. Manga uses publication year rather than anime broadcast season.
 
 UI text is rendered as text, never raw upstream HTML. Artwork is loaded from AniList-provided remote URLs. Non-adult filtering reduces exposure but is not a full content moderation guarantee.
 
