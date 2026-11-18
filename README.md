@@ -8,8 +8,9 @@ Implemented:
 - Original dark interface inspired by the supplied Nuvio screenshots, with floating five-tab navigation, responsive poster grids, featured artwork, and grouped settings.
 - Live, non-adult AniList discovery/search with genre, year, season (anime only), format, sort, pagination, title details, and visible failure/retry states.
 - SQLite saved titles, per-title status and episode/chapter counts, saved add-on manifests, and accent selection. Reopen/reload to apply the saved accent.
-- Public HTTPS manifest validation, installation and removal. **Manifest management is implemented; provider execution is not.**
+- Public HTTPS manifest validation, installation and removal. Installed Jikan catalogues and supported YouTube episode manifests work through their built-in adapters.
 - In-app sample trailer with play, pause, seeking, and a resume position saved in SQLite. From Home, open **Big Buck Bunny → Episode 1**.
+- Installable [YouTube episode add-ons](examples/addons/README.md#youtube-episode-add-ons) with in-app playback and local resume on Android.
 - Offline three-page manga sample with Previous and Next controls and automatic page resume. Open **Manga → The Midnight Lighthouse → Read chapter 1**.
 - Android project, shared Razor components, desktop-browser development preview, offline integration checks, and GitHub Actions debug APK build.
 

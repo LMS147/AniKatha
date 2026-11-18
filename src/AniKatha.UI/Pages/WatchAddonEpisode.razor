@@ -1,0 +1,80 @@
+@page "/anime/addon/{MediaId:int}/{EpisodeNumber:int}/{VideoId}"
+@inject LocalStore Store
+@inject IServiceProvider Services
+
+<PageTitle>Watch episode · AniKatha</PageTitle>
+<header class="page-header">
+ <a class="text-link" href="/anime">← Anime</a>
+ @if (episode is not null)
+ {
+  <h1 class="sample-heading">@episode.Series</h1>
+  <p>Episode @episode.Number · @episode.Title</p>
+ }
+</header>
+
+@if (episode is not null)
+{
+ @if (Player is not null)
+ {
+  <button class="primary" disabled="@opening" @onclick="Watch"><Icon Name="play"/> Watch in AniKatha</button>
+ }
+ <a class="secondary" href="@episode.WatchUrl" target="_blank" rel="noopener">Open in YouTube</a>
+ @if (error is not null)
+ {
+  <p class="notice" role="alert">@error</p>
+ }
+}
+else
+{
+ <p role="status">@(loading ? "Looking for this episode…" : "This episode is unavailable. Check your installed add-ons in Profile.")</p>
+}
+
+@code {
+ [Parameter] public int MediaId { get; set; }
+ [Parameter] public int EpisodeNumber { get; set; }
+ [Parameter] public string VideoId { get; set; } = "";
+ YouTubeEpisode? episode;
+ string? error;
+ bool loading;
+ bool opening;
+ IYouTubePlayer? Player => Services.GetService(typeof(IYouTubePlayer)) as IYouTubePlayer;
+
+ protected override async Task OnParametersSetAsync()
+ {
+  var lookup = (MediaId, EpisodeNumber, VideoId);
+  episode = null;
+  error = null;
+  loading = true;
+  try
+  {
+   if (YouTubeEpisode.IsVideoId(lookup.VideoId))
+   {
+    var addons = await Store.GetAddonsAsync();
+    if (lookup == (MediaId, EpisodeNumber, VideoId))
+     episode = addons.SelectMany(addon => addon.GetYouTubeEpisodes())
+      .FirstOrDefault(entry => (entry.AniListId, entry.Number, entry.VideoId) == lookup);
+   }
+  }
+  catch
+  {
+   // Show the unavailable state if local add-on storage cannot be read.
+  }
+  finally
+  {
+   if (lookup == (MediaId, EpisodeNumber, VideoId))
+    loading = false;
+  }
+ }
+
+ async Task Watch()
+ {
+  if (opening || episode is null || Player is not { } player)
+   return;
+
+  opening = true;
+  error = null;
+  try { await player.OpenAsync(episode); }
+  catch { error = "The player couldn’t open. Try again or open the episode in YouTube."; }
+  finally { opening = false; }
+ }
+}

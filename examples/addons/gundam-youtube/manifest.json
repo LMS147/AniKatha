@@ -1,0 +1,17 @@
+{
+  "id": "co.zyma.anikatha.gundam-youtube",
+  "name": "Gundam on YouTube",
+  "version": "1.0.0",
+  "description": "Episode 1 of The Witch from Mercury from GUNDAM CHANNEL INTL.",
+  "resources": ["stream"],
+  "types": ["anime"],
+  "anikathaYoutubeEpisodes": [
+    {
+      "aniListId": 139274,
+      "series": "Mobile Suit Gundam: The Witch from Mercury",
+      "episode": 1,
+      "title": "The Witch and the Bride",
+      "videoId": "2B_njMCRCvU"
+    }
+  ]
+}

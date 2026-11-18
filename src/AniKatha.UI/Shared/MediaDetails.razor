@@ -8,7 +8,14 @@
  <div class="chips">@foreach(var genre in Item.Genres){<span>@genre</span>}</div>
  <p>@Item.Description</p><button class="primary" @onclick="Save" disabled="@saved">@(saved?"Saved to library":"Save to library")</button>
  @if(error is not null){<p role="alert">@error</p>}
- <div class="notice">@(Item.Kind=="ANIME"?"Episode sources and playback":"Chapter sources and reading") are coming in the next development stage. This is a live AniList catalogue entry.</div>
+ @if(Item.Kind == "ANIME")
+ {
+  <YouTubeEpisodeList AniListId="Item.Id"/>
+ }
+ else
+ {
+  <div class="notice">Chapter sources for catalogue titles are planned.</div>
+ }
  </div></section></div>
 }
 @code {

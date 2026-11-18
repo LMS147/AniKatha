@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 namespace AniKatha.Core;
-// Manifest inspection. Catalogue adapters are implemented in the app.
+// Manifest inspection and validation before installation.
 public sealed class AddonClient(HttpClient http)
 {
  public static Uri ValidateUrl(string input)
@@ -84,10 +84,21 @@ public sealed class AddonClient(HttpClient http)
   _=Required("id");
   if (!root.TryGetProperty("resources",out var resources) || resources.ValueKind!=JsonValueKind.Array || !root.TryGetProperty("types",out var types) || types.ValueKind!=JsonValueKind.Array)
    throw new InvalidOperationException("Manifest must declare resources and types.");
-  return new() { Url=uri.AbsoluteUri, Name=Required("name"), Version=Required("version"),
+  string? episodes = null;
+  if (root.TryGetProperty("anikathaYoutubeEpisodes", out var entries))
+  {
+   if (!HasValue(resources, "stream") || !HasValue(types, "anime"))
+    throw new InvalidOperationException("YouTube episode add-ons must declare stream and anime.");
+   _ = YouTubeEpisode.Read(entries);
+   episodes = entries.GetRawText();
+  }
+  return new() { Url=uri.AbsoluteUri, YouTubeEpisodesJson=episodes, Name=Required("name"), Version=Required("version"),
    CatalogueProvider = root.TryGetProperty("anikathaProvider", out var provider) && provider.ValueKind == JsonValueKind.String && provider.GetString() == JikanCatalogue.Provider ? JikanCatalogue.Provider : null,
    Description=root.TryGetProperty("description",out var description)&&description.ValueKind==JsonValueKind.String ? description.GetString()! : "" };
  }
+ static bool HasValue(JsonElement array, string expected) =>
+  array.EnumerateArray().Any(value => value.ValueKind == JsonValueKind.String && value.GetString() == expected);
+
  static bool IsPrivate(IPAddress address)
  {
   if(address.IsIPv4MappedToIPv6) address=address.MapToIPv4();

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SQLite;
 namespace AniKatha.Core;
 public sealed record Media(int Id, string Kind, string Title, string? Poster, string? Banner, string? Description, int? Year, string? Format, int? Score, int? Episodes, int? Chapters, string[] Genres);
@@ -19,6 +20,14 @@ public sealed class InstalledAddon
  public string Name { get; set; } = "";
  public string Version { get; set; } = "";
  public string? CatalogueProvider { get; set; }
+ public string? YouTubeEpisodesJson { get; set; }
+ public IReadOnlyList<YouTubeEpisode> GetYouTubeEpisodes()
+ {
+  if (YouTubeEpisodesJson is null)
+   return [];
+  using var document = JsonDocument.Parse(YouTubeEpisodesJson);
+  return YouTubeEpisode.Read(document.RootElement);
+ }
  public string Description { get; set; } = "";
 }
 public sealed class AppSetting

@@ -6,12 +6,12 @@
 @if(message is not null){<div class="notice" role="status">@message</div>}
 <h2>Tracking</h2><section class="settings-card anilist-card"><span class="eyebrow">ANILIST</span><h3>Bring your lists together</h3><p>Browse AniList now. Account login and two-way progress sync are planned for the next stage.</p><span class="pill">Not connected</span></section>
 <h2>Appearance</h2><section class="settings-card"><h3>Accent colour</h3><p class="muted">Choose a colour, then reload or reopen the app to apply it.</p><div class="swatches">@foreach(var colour in colours){<button style="background:@colour.Value" aria-label="@colour.Key" aria-pressed="@(accent==colour.Value)" @onclick="()=>SetAccent(colour.Value)">@(accent==colour.Value?"✓":"")</button>}</div></section>
-<h2>Content & discovery</h2><section class="settings-card"><h3>Manage add-ons</h3><p class="muted">Install a public manifest to add a source. Supported catalogues appear in the Anime and Manga source menus.</p>
+<h2>Content & discovery</h2><section class="settings-card"><h3>Manage add-ons</h3><p class="muted">Install a public manifest to add a source. Catalogues appear under Source. YouTube episodes appear under Episodes from add-ons in Anime.</p>
 <form @onsubmit="Install" @onsubmit:preventDefault><label>Manifest URL<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" @bind="url" @bind:event="oninput" placeholder="https://provider.example/manifest.json" required /></label><button class="primary" type="submit" disabled="@installing">@(installing?"Checking manifest…":"Add source")</button></form>
 @if(addonMessage is not null){<div class="notice" role="@(addonError ? "alert" : "status")">@addonMessage</div>}
-@foreach(var addon in installed){<div class="addon-row"><div><strong>@addon.Name</strong><small>v@addon.Version · @(addon.CatalogueProvider == JikanCatalogue.Provider ? "Catalogue available" : "Manifest saved")</small><p>@addon.Description</p></div><button class="secondary" @onclick="()=>Remove(addon)">Remove</button></div>}
+@foreach(var addon in installed){<div class="addon-row"><div><strong>@addon.Name</strong><small>v@addon.Version · @(addon.CatalogueProvider == JikanCatalogue.Provider ? "Catalogue available" : addon.YouTubeEpisodesJson is not null ? "YouTube episodes available" : "Manifest saved")</small><p>@addon.Description</p></div><button class="secondary" @onclick="()=>Remove(addon)">Remove</button></div>}
 @if(installed.Count==0){<p class="source-note">No add-ons installed.</p>}</section>
-<section class="settings-card"><h3>Playback & reader</h3><p class="muted">Native video playback, chapter reading, and their controls are planned. No media files are bundled.</p></section>
+<section class="settings-card"><h3>Playback & reader</h3><p class="muted">Watch the sample from Home or read the offline chapter from Manga. Your place is saved on this device.</p></section>
 <section class="settings-card"><h3>About AniKatha</h3><p>Anime and manga, one story at a time.</p><small class="muted">Foundation 0.1.0 · .NET MAUI Blazor Hybrid</small></section>
 @code {
  string url="",accent="#b5a0ff";string? message,addonMessage;bool installing,addonError;List<InstalledAddon> installed=[];
@@ -39,7 +39,9 @@
     url = "";
     addonMessage = addon.CatalogueProvider == JikanCatalogue.Provider
      ? $"Added {addon.Name}. Open Anime or Manga and choose it under Source."
-     : $"Added {addon.Name}.";
+     : addon.YouTubeEpisodesJson is not null
+      ? $"Added {addon.Name}. Open Anime and look under Episodes from add-ons."
+      : $"Added {addon.Name}.";
    }
    catch { addonError = true; addonMessage = "The manifest was downloaded, but could not be saved on this device."; }
   }

@@ -15,6 +15,7 @@ public static class MauiProgram
   builder.Services.AddSingleton(new AniListClient(new HttpClient { Timeout=TimeSpan.FromSeconds(25) }));
   builder.Services.AddSingleton(new JikanCatalogue(new HttpClient { Timeout=TimeSpan.FromSeconds(25) }));
   builder.Services.AddSingleton(new AddonClient(new HttpClient(new HttpClientHandler { AllowAutoRedirect=false }) { Timeout=TimeSpan.FromSeconds(20) }));
+  builder.Services.AddSingleton<IYouTubePlayer, YouTubePlayer>();
   builder.Services.AddSingleton<MainPage>();
   return builder.Build();
  }
