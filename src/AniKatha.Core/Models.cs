@@ -19,6 +19,20 @@ public sealed class InstalledAddon
  [PrimaryKey] public string Url { get; set; } = "";
  public string Name { get; set; } = "";
  public string Version { get; set; } = "";
+ public string? ManifestJson { get; set; }
+ public string CapabilitySummary()
+ {
+  if (ManifestJson == null) return "Refresh to load capabilities";
+  using var document = JsonDocument.Parse(ManifestJson);
+  var root = document.RootElement;
+  var types = root.GetProperty("types").EnumerateArray().Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString());
+  var resources = root.GetProperty("resources").EnumerateArray().Select(x=>
+   x.ValueKind==JsonValueKind.String ? x.GetString() :
+   x.ValueKind==JsonValueKind.Object && x.TryGetProperty("name",out var name) && name.ValueKind==JsonValueKind.String ? name.GetString() : null);
+  return string.Join(" · ", types.Concat(resources).Where(x=>!string.IsNullOrWhiteSpace(x)).Distinct());
+ }
+ public bool Disabled { get; set; }
+ public int SortOrder { get; set; }
  public string? CatalogueProvider { get; set; }
  public string? YouTubeEpisodesJson { get; set; }
  public IReadOnlyList<YouTubeEpisode> GetYouTubeEpisodes()

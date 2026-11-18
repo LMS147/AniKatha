@@ -9,14 +9,20 @@
 <h2>Content & discovery</h2><section class="settings-card"><h3>Manage add-ons</h3><p class="muted">Install a public manifest to add a source. Catalogues appear under Source. YouTube episodes appear under Episodes from add-ons in Anime.</p>
 <form @onsubmit="Install" @onsubmit:preventDefault><label>Manifest URL<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" @bind="url" @bind:event="oninput" placeholder="https://provider.example/manifest.json" required /></label><button class="primary" type="submit" disabled="@installing">@(installing?"Checking manifest…":"Add source")</button></form>
 @if(addonMessage is not null){<div class="notice" role="@(addonError ? "alert" : "status")">@addonMessage</div>}
-@foreach(var addon in installed){<div class="addon-row"><div><strong>@addon.Name</strong><small>v@addon.Version · @(addon.CatalogueProvider == JikanCatalogue.Provider ? "Catalogue available" : addon.YouTubeEpisodesJson is not null ? "YouTube episodes available" : "Manifest saved")</small><p>@addon.Description</p></div><button class="secondary" @onclick="()=>Remove(addon)">Remove</button></div>}
+@foreach(var addon in installed){<div class="addon-row"><div><strong>@addon.Name</strong><small>v@addon.Version · @(addon.CatalogueProvider == JikanCatalogue.Provider ? "Catalogue available" : addon.YouTubeEpisodesJson is not null ? "YouTube episodes available" : "Manifest saved")</small><small>@addon.CapabilitySummary()</small><p>@addon.Description</p></div><div class="addon-actions">
+<button disabled="@installing" @onclick="()=>Manage(() => Store.SetAddonDisabledAsync(addon.Url,!addon.Disabled))">@(addon.Disabled?"Enable":"Disable")</button>
+<button disabled="@installing" @onclick="()=>Manage(async () => await Store.RefreshAddonAsync(await Addons.InspectAsync(addon.Url)))">Refresh</button>
+<button disabled="@(installing || addon == installed.First())" @onclick="()=>Manage(() => Store.MoveAddonAsync(addon.Url,-1))">Move up</button>
+<button disabled="@(installing || addon == installed.Last())" @onclick="()=>Manage(() => Store.MoveAddonAsync(addon.Url,1))">Move down</button>
+<button disabled="@installing" @onclick="()=>Manage(() => Store.RemoveAddonAsync(addon.Url))">Remove</button>
+</div></div>}
 @if(installed.Count==0){<p class="source-note">No add-ons installed.</p>}</section>
 <section class="settings-card"><h3>Playback & reader</h3><p class="muted">Watch the sample from Home or read the offline chapter from Manga. Your place is saved on this device.</p></section>
 <section class="settings-card"><h3>About AniKatha</h3><p>Anime and manga, one story at a time.</p><small class="muted">Foundation 0.1.0 · .NET MAUI Blazor Hybrid</small></section>
 @code {
  string url="",accent="#b5a0ff";string? message,addonMessage;bool installing,addonError;List<InstalledAddon> installed=[];
  Dictionary<string,string> colours=new(){["Violet"]="#b5a0ff",["Ocean"]="#83c8ff",["Rose"]="#ffa3c7",["Emerald"]="#8cdeb7",["Amber"]="#ffd28a",["White"]="#f4f4fa"};
- protected override async Task OnInitializedAsync(){try{installed=await Store.GetAddonsAsync();accent=await Store.GetSettingAsync("accent")??accent;}catch{message="Could not load settings.";}}
+ protected override async Task OnInitializedAsync(){try{installed=await Store.GetAddonsAsync(true);accent=await Store.GetSettingAsync("accent")??accent;}catch{message="Could not load settings.";}}
  async Task SetAccent(string value){try{await Store.SetSettingAsync("accent",value);accent=value;message="Colour saved. Reload or reopen the app to apply it.";}catch{message="Could not save appearance.";}}
  async Task Install()
  {
@@ -43,20 +49,21 @@
       ? $"Added {addon.Name}. Open Anime and look under Episodes from add-ons."
       : $"Added {addon.Name}.";
    }
+   catch (InvalidOperationException ex) { addonError=true; addonMessage=ex.Message; }
    catch { addonError = true; addonMessage = "The manifest was downloaded, but could not be saved on this device."; }
   }
   finally { installing = false; }
  }
 
- async Task Remove(InstalledAddon addon)
+ async Task Manage(Func<Task> operation)
  {
-  try
-  {
-   await Store.RemoveAddonAsync(addon.Url);
-   installed.Remove(addon);
-   addonError = false;
-   addonMessage = "Add-on removed.";
-  }
-  catch { addonError = true; addonMessage = "Could not remove the add-on."; }
+  if (installing) return;
+  installing=true;
+  addonError=false;
+  addonMessage=null;
+  try { await operation(); installed=await Store.GetAddonsAsync(true); }
+  catch (InvalidOperationException ex) { addonError=true; addonMessage=ex.Message; }
+  catch { addonError=true; addonMessage="Could not update this source. Please retry."; }
+  finally { installing=false; }
  }
 }

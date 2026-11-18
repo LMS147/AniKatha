@@ -19,8 +19,53 @@ public sealed class LocalStore
  public async Task SaveAsync(SavedTitle title) { await initialized.Value; title.UpdatedAt=DateTime.UtcNow; await db.InsertOrReplaceAsync(title); }
  public Task SaveAsync(Media title) => SaveAsync(new SavedTitle { Id=title.Id, Kind=title.Kind, Title=title.Title, Poster=title.Poster });
  public async Task RemoveAsync(int id) { await initialized.Value; await db.DeleteAsync<SavedTitle>(id); }
- public async Task<List<InstalledAddon>> GetAddonsAsync() { await initialized.Value; return await db.Table<InstalledAddon>().ToListAsync(); }
- public async Task SaveAddonAsync(InstalledAddon addon) { await initialized.Value; await db.InsertOrReplaceAsync(addon); }
+ public async Task<List<InstalledAddon>> GetAddonsAsync(bool includeDisabled = false)
+ {
+  await initialized.Value;
+  var rows = await db.QueryAsync<InstalledAddon>("SELECT * FROM InstalledAddon ORDER BY COALESCE(SortOrder,0), rowid");
+  return includeDisabled ? rows : rows.Where(row => !row.Disabled).ToList();
+ }
+ public async Task SaveAddonAsync(InstalledAddon addon)
+ {
+  await initialized.Value;
+  await db.RunInTransactionAsync(connection =>
+  {
+   if (connection.Find<InstalledAddon>(addon.Url) != null)
+    throw new InvalidOperationException("This source is already installed. Use Refresh to update it.");
+   addon.SortOrder = connection.ExecuteScalar<int>("SELECT COALESCE(MAX(SortOrder),0)+1 FROM InstalledAddon");
+   connection.Insert(addon);
+  });
+ }
+ public async Task RefreshAddonAsync(InstalledAddon addon)
+ {
+  await initialized.Value;
+  await db.RunInTransactionAsync(connection =>
+  {
+   var current = connection.Find<InstalledAddon>(addon.Url) ?? throw new InvalidOperationException("Source was removed.");
+   addon.SortOrder = current.SortOrder;
+   addon.Disabled = current.Disabled;
+   connection.Update(addon);
+  });
+ }
+ public async Task SetAddonDisabledAsync(string url, bool disabled)
+ {
+  await initialized.Value;
+  await db.ExecuteAsync("UPDATE InstalledAddon SET Disabled=? WHERE Url=?",disabled,url);
+ }
+ public async Task MoveAddonAsync(string url, int direction)
+ {
+  await initialized.Value;
+  await db.RunInTransactionAsync(connection =>
+  {
+   var rows = connection.Query<InstalledAddon>("SELECT * FROM InstalledAddon ORDER BY COALESCE(SortOrder,0), rowid");
+   var index = rows.FindIndex(row => row.Url == url);
+   var target = index + Math.Sign(direction);
+   if (index < 0 || target < 0 || target >= rows.Count) return;
+   (rows[index],rows[target]) = (rows[target],rows[index]);
+   for (int i=0; i<rows.Count; i++)
+    connection.Execute("UPDATE InstalledAddon SET SortOrder=? WHERE Url=?",i+1,rows[i].Url);
+  });
+ }
  public async Task RemoveAddonAsync(string url) { await initialized.Value; await db.DeleteAsync<InstalledAddon>(url); }
  public async Task<string?> GetSettingAsync(string key) { await initialized.Value; return (await db.FindAsync<AppSetting>(key))?.Value; }
  public async Task SetSettingAsync(string key,string value) { await initialized.Value; await db.InsertOrReplaceAsync(new AppSetting { Key=key, Value=value }); }

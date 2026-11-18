@@ -1,0 +1,84 @@
+@using System.Text.Json
+@using static AniKatha.Core.AddonResources
+@implements IDisposable
+@inject AddonClient Client
+
+<section class="settings-card">
+ <h3>@Source.Addon.Name · @Catalog.Name</h3>
+ @if(Catalog.Search){<form @onsubmit="Search" @onsubmit:preventDefault><label>Search this catalogue<input @bind="query" /></label><button>Search</button></form>}
+ @foreach(var item in titles){
+  <button class="secondary" @onclick="()=>Open(item)">@Field(item,"name")</button>
+ }
+ @if(more){<button disabled="@busy" @onclick="()=>Load(false)">Load more</button>}
+ @if(busy){<p role="status">Loading…</p>}
+ @if(error!=null){<p role="alert">@error <button @onclick="Retry">Retry</button></p>}
+ @if(!busy && error==null && titles.Count==0){<p>No matching titles.</p>}
+ @if(selected!=null){
+  <h3>@Field(selected.Value,"name")</h3>
+  @foreach(var unit in units){<button class="secondary" @onclick="()=>Choose(unit)">@Field(unit,"title")</button>}
+  @if(!busy && error==null && units.Count==0){<p>No episodes or chapters available.</p>}
+ }
+ @if(unitId!=null){
+  @if(targets.Count==0){<p>No compatible add-on.</p>}
+  @foreach(var target in targets){
+   <ManifestSources @key="(target.ProviderKey,unitId,titleId)" Source="target" Origin="Source.ProviderKey" Type="Catalog.Type" TitleId="@titleId" UnitId="@unitId" Label="@label" Title="@Field(selected!.Value,"name")"/>
+  }
+ }
+</section>
+
+@code {
+ [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
+ [Parameter,EditorRequired] public AddonCatalog Catalog {get;set;}=null!;
+ [Parameter,EditorRequired] public List<AddonResources> Providers {get;set;}=[];
+ List<JsonElement> titles=[],units=[];
+ List<AddonResources> targets=[];
+ JsonElement? selected;
+ string query="",applied="",titleId="",label="";
+ string? unitId,error;
+ bool busy,more,retryMeta,retryReset;
+ int offset;
+ CancellationTokenSource? active;
+ protected override Task OnInitializedAsync()=>Load(true);
+ CancellationToken Begin(){
+  active?.Cancel();active?.Dispose();active=new();busy=true;error=null;return active.Token;
+ }
+ Task Search()=>Load(true);
+ Task Retry()=>retryMeta && selected.HasValue ? Open(selected.Value) : Load(retryReset);
+ async Task Load(bool reset){
+  var token=Begin();retryMeta=false;retryReset=reset;
+  if(reset){titles.Clear();offset=0;more=false;applied=query.Trim();selected=null;unitId=null;}
+  try{
+   var extras=new List<string>();
+   if(applied.Length>0)extras.Add("search="+Uri.EscapeDataString(applied));
+   if(offset>0)extras.Add("skip="+offset);
+   var uri=Source.Resource("catalog",Catalog.Type,Catalog.Id,extras.Count==0?null:string.Join("&",extras));
+   var root=await Client.FetchJsonAsync(uri,token);
+   token.ThrowIfCancellationRequested();
+   var page=Items(root,"metas").ToList();
+   var ids=titles.Select(x=>Field(x,"id")).ToHashSet();
+   var before=titles.Count;
+   titles.AddRange(page.Where(x=>Field(x,"id")!="" && (Field(x,"type")=="" || Field(x,"type")==Catalog.Type) && ids.Add(Field(x,"id"))));
+   offset+=page.Count;more=Catalog.Skip && titles.Count>before;
+  }catch(OperationCanceledException) when(token.IsCancellationRequested){}
+  catch(Exception){if(!token.IsCancellationRequested)error="Catalogue request failed.";}
+  finally{if(!token.IsCancellationRequested)busy=false;}
+ }
+ async Task Open(JsonElement item){
+  var token=Begin();retryMeta=true;selected=item;titleId=Field(item,"id");unitId=null;units=[];
+  try{
+   var resource=Catalog.Type=="manga"?"chapters":"meta";
+   if(!Source.Supports(resource,Catalog.Type,titleId)){error="Source does not supply title details.";return;}
+   var root=await Client.FetchJsonAsync(Source.Resource(resource,Catalog.Type,titleId),token);
+   token.ThrowIfCancellationRequested();
+   units=(resource=="chapters"?Items(root,"chapters"):Items(root.GetProperty("meta"),"videos")).Where(x=>Field(x,"id")!="").ToList();
+  }catch(OperationCanceledException) when(token.IsCancellationRequested){}
+  catch(Exception){if(!token.IsCancellationRequested)error="Title request failed.";}
+  finally{if(!token.IsCancellationRequested)busy=false;}
+ }
+ void Choose(JsonElement unit){
+  unitId=Field(unit,"id");label=Field(unit,"title");
+  targets=Providers.Where(p=>p.Supports(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId) &&
+   (p.ProviderKey==Source.ProviderKey || p.HasPrefix(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId))).ToList();
+ }
+ public void Dispose(){active?.Cancel();active?.Dispose();}
+}

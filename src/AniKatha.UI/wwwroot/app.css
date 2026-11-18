@@ -55,3 +55,7 @@
 .addon-episode-list { margin: 20px 0 24px; }
 .addon-episode-list h2 { margin-bottom: 10px; font-size: 18px; }
 .addon-episode-list .sample-card { margin-top: 8px; }
+
+.addon-row { flex-wrap: wrap; }
+.addon-row .addon-actions { display:flex; flex-wrap:wrap; gap:8px; flex-basis:100%; }
+.addon-actions button { padding:8px 12px; background:#25242f; border:1px solid #383540; border-radius:10px; }

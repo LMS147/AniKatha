@@ -1,0 +1,49 @@
+{
+  "id": "co.zyma.story-sampler",
+  "version": "1.0.0",
+  "anikathaProtocolVersion": 1,
+  "name": "AniKatha Story Sampler",
+  "types": [
+    "anime",
+    "manga"
+  ],
+  "resources": [
+    "catalog",
+    {
+      "name": "meta",
+      "types": [
+        "anime"
+      ]
+    },
+    {
+      "name": "stream",
+      "types": [
+        "anime"
+      ]
+    },
+    {
+      "name": "chapters",
+      "types": [
+        "manga"
+      ]
+    },
+    {
+      "name": "pages",
+      "types": [
+        "manga"
+      ]
+    }
+  ],
+  "catalogs": [
+    {
+      "type": "anime",
+      "id": "stories",
+      "name": "Stories"
+    },
+    {
+      "type": "manga",
+      "id": "stories",
+      "name": "Stories"
+    }
+  ]
+}

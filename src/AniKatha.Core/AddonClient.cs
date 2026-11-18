@@ -11,20 +11,30 @@ public sealed class AddonClient(HttpClient http)
   if (address.StartsWith("stremio://", StringComparison.OrdinalIgnoreCase))
    address = "https://" + address["stremio://".Length..];
 
-  if (!Uri.TryCreate(address,UriKind.Absolute,out var uri) || uri.Scheme != "https" || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || !uri.AbsolutePath.EndsWith("/manifest.json",StringComparison.OrdinalIgnoreCase) || uri.IsLoopback || uri.HostNameType != UriHostNameType.Dns || uri.Host.EndsWith(".local",StringComparison.OrdinalIgnoreCase))
-   throw new InvalidOperationException("Use a public HTTPS URL ending in /manifest.json, without credentials or query parameters.");
+  if (!address.Contains("://", StringComparison.Ordinal)) address = "https://" + address;
+  if (!Uri.TryCreate(address,UriKind.Absolute,out var uri) || uri.Scheme != "https" || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment) || uri.IsLoopback || uri.HostNameType != UriHostNameType.Dns || uri.Host.EndsWith(".local",StringComparison.OrdinalIgnoreCase))
+   throw new InvalidOperationException("Use a public HTTPS URL ending in /manifest.json, without embedded login details or fragments.");
+  var path = uri.AbsolutePath.TrimEnd('/');
+  if (!path.EndsWith("/manifest.json",StringComparison.OrdinalIgnoreCase)) path += "/manifest.json";
+  uri = new Uri(uri.GetLeftPart(UriPartial.Authority) + path + uri.Query);
   if (uri.IsDefaultPort && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
       && uri.Segments.Length >= 6 && uri.Segments[3] == "blob/")
   {
    var segments = uri.Segments;
    return new Uri("https://raw.githubusercontent.com" +
-    string.Concat(segments.Take(3)) + string.Concat(segments.Skip(4)));
+    string.Concat(segments.Take(3)) + string.Concat(segments.Skip(4)) + uri.Query);
   }
   return uri;
  }
  public async Task<InstalledAddon> InspectAsync(string input, CancellationToken token = default)
  {
   var uri = ValidateUrl(input);
+  var root = await FetchJsonAsync(uri, token);
+  return ReadManifest(uri, root);
+ }
+
+ public async Task<JsonElement> FetchJsonAsync(Uri uri, CancellationToken token)
+ {
   using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
   deadline.CancelAfter(TimeSpan.FromSeconds(20));
   try
@@ -35,7 +45,7 @@ public sealed class AddonClient(HttpClient http)
 
    using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
    if (response.StatusCode == HttpStatusCode.NotFound)
-    throw new InvalidOperationException("Manifest not found (HTTP 404). Check the URL and make sure the file is public.");
+    throw new InvalidOperationException("Resource not found (HTTP 404).");
    if ((int)response.StatusCode is >= 300 and < 400)
     throw new InvalidOperationException("This URL redirects. Paste the final HTTPS manifest URL.");
    if (!response.IsSuccessStatusCode)
@@ -48,7 +58,7 @@ public sealed class AddonClient(HttpClient http)
    while ((count = await stream.ReadAsync(bytes, deadline.Token)) > 0)
    {
     if (buffer.Length + count > 262144)
-     throw new InvalidOperationException("Manifest is too large.");
+     throw new InvalidOperationException("Provider response is too large.");
     buffer.Write(bytes, 0, count);
    }
 
@@ -56,7 +66,7 @@ public sealed class AddonClient(HttpClient http)
    var payload = buffer.ToArray().AsMemory();
    if (payload.Span.StartsWith(new byte[] { 0xef, 0xbb, 0xbf })) payload = payload[3..];
    using var doc = JsonDocument.Parse(payload);
-   return ReadManifest(uri, doc.RootElement);
+   return doc.RootElement.Clone();
   }
   catch (OperationCanceledException) when (!token.IsCancellationRequested)
   {
@@ -84,6 +94,9 @@ public sealed class AddonClient(HttpClient http)
   _=Required("id");
   if (!root.TryGetProperty("resources",out var resources) || resources.ValueKind!=JsonValueKind.Array || !root.TryGetProperty("types",out var types) || types.ValueKind!=JsonValueKind.Array)
    throw new InvalidOperationException("Manifest must declare resources and types.");
+  if (root.TryGetProperty("anikathaProtocolVersion", out var protocol) &&
+      (protocol.ValueKind != JsonValueKind.Number || !protocol.TryGetInt32(out var version) || version != 1))
+   throw new InvalidOperationException("Unsupported AniKatha protocol version.");
   string? episodes = null;
   if (root.TryGetProperty("anikathaYoutubeEpisodes", out var entries))
   {
@@ -92,7 +105,7 @@ public sealed class AddonClient(HttpClient http)
    _ = YouTubeEpisode.Read(entries);
    episodes = entries.GetRawText();
   }
-  return new() { Url=uri.AbsoluteUri, YouTubeEpisodesJson=episodes, Name=Required("name"), Version=Required("version"),
+  return new() { Url=uri.AbsoluteUri, ManifestJson=root.GetRawText(), YouTubeEpisodesJson=episodes, Name=Required("name"), Version=Required("version"),
    CatalogueProvider = root.TryGetProperty("anikathaProvider", out var provider) && provider.ValueKind == JsonValueKind.String && provider.GetString() == JikanCatalogue.Provider ? JikanCatalogue.Provider : null,
    Description=root.TryGetProperty("description",out var description)&&description.ValueKind==JsonValueKind.String ? description.GetString()! : "" };
  }

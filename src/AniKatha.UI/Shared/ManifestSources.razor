@@ -1,0 +1,47 @@
+@using System.Text.Json
+@using static AniKatha.Core.AddonResources
+@using AniKatha.UI.Pages
+@implements IDisposable
+@inject AddonClient Client
+<div class="notice"><strong>@Source.Addon.Name</strong>
+@if(loading){<p>Loading sources…</p>}
+else if(error){<p>Source request failed. <button @onclick="Load">Retry</button></p>}
+else if(Type=="manga" && pages.Count>0){<button @onclick="()=>reading=true">Read @Label</button>}
+else if(streams.Count>0){@foreach(var stream in streams){<button @onclick="()=>Play(stream)">@StreamName(stream)</button>}}
+else{<p>No sources available.</p>}
+</div>
+@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="pages" Title="@Title" ChapterLabel="@Label"/>}
+@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Title="@Title" EpisodeLabel="@Label"/>}
+
+@code {
+ [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
+ [Parameter] public string Origin {get;set;}="";
+ [Parameter] public string TitleId {get;set;}="";
+ [Parameter] public string UnitId {get;set;}="";
+ [Parameter] public string Type {get;set;}="";
+ [Parameter] public string Label {get;set;}="";
+ [Parameter] public string Title {get;set;}="";
+ readonly CancellationTokenSource stop=new();
+ bool loading,reading,error;
+ string? video;
+ List<string> pages=[];
+ List<JsonElement> streams=[];
+ string Key=>string.Join("/",Origin,Type,Uri.EscapeDataString(TitleId),Uri.EscapeDataString(UnitId),Source.ProviderKey);
+ static string StreamName(JsonElement stream)=>Field(stream,"name") is { Length:>0 } name?name:"Play";
+ protected override Task OnInitializedAsync()=>Load();
+ async Task Load(){
+  loading=true;error=false;
+  try{
+   var resource=Type=="manga"?"pages":"stream";
+   var root=await Client.FetchJsonAsync(Source.Resource(resource,Type,UnitId),stop.Token);
+   if(Type=="manga"){
+    pages=Items(root,"pages").Select(x=>x.GetString()??"").ToList();
+    if(pages.Any(x=>!MediaUrl(x)))throw new FormatException();
+   }else streams=Items(root,"streams").Where(x=>MediaUrl(Field(x,"url"))).ToList();
+  }catch(OperationCanceledException) when(stop.IsCancellationRequested){}
+  catch(Exception){error=true;}
+  finally{loading=false;}
+ }
+ void Play(JsonElement stream)=>video=Field(stream,"url");
+ public void Dispose(){stop.Cancel();stop.Dispose();}
+}
