@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 namespace AniKatha.Core;
 // Manifest metadata only. Remote JavaScript is never evaluated in the application WebView.
@@ -6,23 +7,79 @@ public sealed class AddonClient(HttpClient http)
 {
  public static Uri ValidateUrl(string input)
  {
-  if (!Uri.TryCreate(input.Trim(),UriKind.Absolute,out var uri) || uri.Scheme != "https" || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || !uri.AbsolutePath.EndsWith("/manifest.json",StringComparison.OrdinalIgnoreCase) || uri.IsLoopback || uri.HostNameType != UriHostNameType.Dns || uri.Host.EndsWith(".local",StringComparison.OrdinalIgnoreCase))
+  var address = input.Trim();
+  if (address.StartsWith("stremio://", StringComparison.OrdinalIgnoreCase))
+   address = "https://" + address["stremio://".Length..];
+
+  if (!Uri.TryCreate(address,UriKind.Absolute,out var uri) || uri.Scheme != "https" || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || !uri.AbsolutePath.EndsWith("/manifest.json",StringComparison.OrdinalIgnoreCase) || uri.IsLoopback || uri.HostNameType != UriHostNameType.Dns || uri.Host.EndsWith(".local",StringComparison.OrdinalIgnoreCase))
    throw new InvalidOperationException("Use a public HTTPS URL ending in /manifest.json, without credentials or query parameters.");
+  if (uri.IsDefaultPort && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+      && uri.Segments.Length >= 6 && uri.Segments[3] == "blob/")
+  {
+   var segments = uri.Segments;
+   return new Uri("https://raw.githubusercontent.com" +
+    string.Concat(segments.Take(3)) + string.Concat(segments.Skip(4)));
+  }
   return uri;
  }
  public async Task<InstalledAddon> InspectAsync(string input, CancellationToken token = default)
  {
-  var uri=ValidateUrl(input);
-  var addresses=await Dns.GetHostAddressesAsync(uri.Host,token);
-  if (addresses.Length==0 || addresses.Any(IsPrivate)) throw new InvalidOperationException("Add-ons must use a public internet address.");
-  using var response=await http.GetAsync(uri,HttpCompletionOption.ResponseHeadersRead,token);
-  response.EnsureSuccessStatusCode();
-  // Limit the actual body, not just the optional Content-Length header.
-  await using var stream=await response.Content.ReadAsStreamAsync(token);
-  using var buffer=new MemoryStream();
-  var bytes=new byte[8192]; int count;
-  while ((count=await stream.ReadAsync(bytes,token))>0) { if(buffer.Length+count>262144) throw new InvalidOperationException("Manifest is too large."); await buffer.WriteAsync(bytes.AsMemory(0,count),token); }
-  using var doc=JsonDocument.Parse(buffer.ToArray()); var root=doc.RootElement;
+  var uri = ValidateUrl(input);
+  using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+  deadline.CancelAfter(TimeSpan.FromSeconds(20));
+  try
+  {
+   var addresses = await Dns.GetHostAddressesAsync(uri.Host, deadline.Token);
+   if (addresses.Length == 0 || addresses.Any(IsPrivate))
+    throw new InvalidOperationException("Add-ons must use a public internet address.");
+
+   using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+   if (response.StatusCode == HttpStatusCode.NotFound)
+    throw new InvalidOperationException("Manifest not found (HTTP 404). Check the URL and make sure the file is public.");
+   if ((int)response.StatusCode is >= 300 and < 400)
+    throw new InvalidOperationException("This URL redirects. Paste the final HTTPS manifest URL.");
+   if (!response.IsSuccessStatusCode)
+    throw new InvalidOperationException($"The server returned HTTP {(int)response.StatusCode}. Check that the manifest is publicly accessible.");
+
+   await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+   using var buffer = new MemoryStream();
+   var bytes = new byte[8192];
+   int count;
+   while ((count = await stream.ReadAsync(bytes, deadline.Token)) > 0)
+   {
+    if (buffer.Length + count > 262144)
+     throw new InvalidOperationException("Manifest is too large.");
+    buffer.Write(bytes, 0, count);
+   }
+
+   // JSON exported by some editors starts with a UTF-8 byte order mark.
+   var payload = buffer.ToArray().AsMemory();
+   if (payload.Span.StartsWith(new byte[] { 0xef, 0xbb, 0xbf })) payload = payload[3..];
+   using var doc = JsonDocument.Parse(payload);
+   return ReadManifest(uri, doc.RootElement);
+  }
+  catch (OperationCanceledException) when (!token.IsCancellationRequested)
+  {
+   throw new InvalidOperationException("The manifest request timed out. Check your connection and try again.");
+  }
+  catch (SocketException ex)
+  {
+   throw new InvalidOperationException("Could not resolve the add-on server. Check the hostname and your connection.", ex);
+  }
+  catch (HttpRequestException ex)
+  {
+   throw new InvalidOperationException("Could not connect to the add-on server over HTTPS. Check your connection and the server certificate.", ex);
+  }
+  catch (JsonException ex)
+  {
+   throw new InvalidOperationException("The server did not return valid JSON. Paste a direct link to the manifest file.", ex);
+  }
+ }
+
+ private static InstalledAddon ReadManifest(Uri uri, JsonElement root)
+ {
+  if (root.ValueKind != JsonValueKind.Object)
+   throw new InvalidOperationException("The manifest must be a JSON object.");
   string Required(string key) => root.TryGetProperty(key,out var p) && p.ValueKind==JsonValueKind.String && !string.IsNullOrWhiteSpace(p.GetString()) ? p.GetString()! : throw new InvalidOperationException($"Manifest is missing {key}.");
   _=Required("id");
   if (!root.TryGetProperty("resources",out var resources) || resources.ValueKind!=JsonValueKind.Array || !root.TryGetProperty("types",out var types) || types.ValueKind!=JsonValueKind.Array)

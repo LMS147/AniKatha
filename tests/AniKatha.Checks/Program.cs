@@ -17,6 +17,17 @@ Assert((await reopened.GetAddonsAsync()).Count==1,"Add-on must persist");await s
 foreach(var invalid in new[]{"javascript:alert(1)","http://example.com/manifest.json","https://user:password@example.com/manifest.json","https://localhost/manifest.json","https://127.0.0.1/manifest.json","https://example.com/manifest.json?token=secret"}) {
  try {AddonClient.ValidateUrl(invalid);throw new Exception("Unsafe URL accepted: "+invalid);}catch(InvalidOperationException){}
 }
+var rawManifest = "https://raw.githubusercontent.com/LMS147/AniKatha/main/examples/addons/anime/manifest.json";
+Assert(AddonClient.ValidateUrl(rawManifest).AbsoluteUri == rawManifest, "Raw manifest URLs must continue to work");
+Assert(AddonClient.ValidateUrl(" https://github.com/LMS147/AniKatha/blob/main/examples/addons/anime/manifest.json ").AbsoluteUri == rawManifest,
+ "GitHub file-page links must resolve to the raw manifest");
+Assert(AddonClient.ValidateUrl("stremio://example.com/manifest.json").AbsoluteUri == "https://example.com/manifest.json",
+ "Add-on install links must resolve to HTTPS");
+foreach (var invalid in new[] {"stremio://localhost/manifest.json", "stremio://user@example.com/manifest.json", "stremio://example.com/manifest.json?token=secret"})
+{
+ try { AddonClient.ValidateUrl(invalid); throw new Exception("Unsafe install link accepted"); }
+ catch (InvalidOperationException) {}
+}
 var handler=new StubHandler();var api=new AniListClient(new HttpClient(handler));
 var result=await api.SearchAsync(new("MANGA","Story",Year:2020));
 Assert(result.Items.Count==1&&result.Items[0].Title=="Story"&&result.Items[0].Description==" A & B "&&result.Items[0].Year is null,"Nullable metadata and descriptions must parse safely");
