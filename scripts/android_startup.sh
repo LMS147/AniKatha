@@ -7,8 +7,6 @@ capture() {
   adb shell dumpsys activity activities > artifacts/startup/activities.txt || true
   adb logcat -d -b crash > artifacts/startup/crash.txt || true
   adb exec-out screencap -p > artifacts/startup/screenshot.png || true
-  adb shell uiautomator dump /sdcard/anikatha-window.xml >/dev/null 2>&1 || true
-  adb pull /sdcard/anikatha-window.xml artifacts/startup/window.xml >/dev/null 2>&1 || true
 }
 trap capture EXIT
 apk=$(find artifacts/apk -name '*-Signed.apk' -print -quit)
@@ -29,10 +27,8 @@ if grep -E 'Process: co\.zyma\.anikatha|>>> co\.zyma\.anikatha <<<' artifacts/st
   echo 'FAIL: Android recorded an AniKatha crash'; exit 1
 fi
 # The WebView must render the root UI, not merely keep a native process alive.
-adb shell uiautomator dump /sdcard/anikatha-window.xml
-adb pull /sdcard/anikatha-window.xml artifacts/startup/window.xml
-# UIAutomator does not reliably expose Blazor WebView text. Inspect the actual DOM
-# through the Debug APK's existing WebView DevTools endpoint instead.
+# Inspect the rendered DOM through the Debug APK's WebView DevTools endpoint.
+# UIAutomator is unnecessary here and can crash during accessibility traversal.
 app_pid=$(adb shell pidof "$package" | tr -d '\r' | awk '{print $1}')
 adb forward tcp:9222 "localabstract:webview_devtools_remote_$app_pid"
 node scripts/check_webview.mjs
