@@ -69,3 +69,25 @@ test('retries from the last position, reports media failure, and resets when fin
   await player.dispose();
   assert.deepEqual(calls, [['SetPlaybackError'], ['SavePosition', 19], ['SavePosition', 0]]);
 });
+
+test('provider completion preserves the timestamp and is recorded once', async () => {
+  globalThis.document = new EventTarget();
+  globalThis.window = new EventTarget();
+  const video = new TestVideo();
+  const calls = [];
+  const player = attachPlayer(video, {
+    async invokeMethodAsync(...args) {
+      calls.push(args);
+      return true;
+    },
+  }, 'https://example.com/sample.mp4', 12, true);
+
+  video.emit('loadedmetadata');
+  video.currentTime = video.duration;
+  video.ended = true;
+  video.emit('ended');
+  video.emit('ended');
+  await player.dispose();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, [['SavePosition', video.duration], ['CompleteEpisode']]);
+});
