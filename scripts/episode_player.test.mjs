@@ -21,6 +21,7 @@ test('seeks to the saved position and stores checkpoints, pauses, and seeks', as
   const writes = [];
   const player = attachPlayer(video, {
     async invokeMethodAsync(method, seconds) {
+      if (method === 'UpdateMediaTracks') return;
       assert.equal(method, 'SavePosition');
       writes.push(seconds);
       return true;
@@ -51,7 +52,7 @@ test('retries from the last position, reports media failure, and resets when fin
   const calls = [];
   const player = attachPlayer(video, {
     async invokeMethodAsync(...args) {
-      calls.push(args);
+      if (args[0] !== 'UpdateMediaTracks') calls.push(args);
       return true;
     },
   }, 'https://example.com/sample.mp4', 0);
@@ -77,7 +78,7 @@ test('provider completion preserves the timestamp and is recorded once', async (
   const calls = [];
   const player = attachPlayer(video, {
     async invokeMethodAsync(...args) {
-      calls.push(args);
+      if (args[0] !== 'UpdateMediaTracks') calls.push(args);
       return true;
     },
   }, 'https://example.com/sample.mp4', 12, true);
@@ -98,7 +99,7 @@ test('seeking directly to the end saves only the position', async () => {
   const video = new TestVideo();
   const calls = [];
   const player = attachPlayer(video, {
-    async invokeMethodAsync(...args) { calls.push(args); return true; },
+    async invokeMethodAsync(...args) { if (args[0] !== 'UpdateMediaTracks') calls.push(args); return true; },
   }, 'https://example.com/sample.mp4', 0, true);
 
   video.emit('loadedmetadata');
@@ -176,4 +177,121 @@ test('Android offline playback loads a local Blob and revokes it when closed', a
     globalThis.fetch = originalFetch;
   }
   await assert.rejects(globalThis.fetch(localUrl));
+});
+
+test('sidecar offset moves known cues both ways and preserves cue settings', () => {
+  const source = 'WEBVTT\n\nNOTE untouched\n00:00:01.000 --> 00:00:02.000\n\n' +
+    'opening\n00:00:00.100 --> 00:00:00.200\nFirst\n\n00:01.000 --> 00:03.000 align:start line:45%\nLater';
+  const later = placeSubtitles(source, 'top', 250);
+  assert.match(later, /00:00:01\.250 --> 00:00:03\.250 align:start line:10%/);
+  assert.match(later, /NOTE untouched\n00:00:01\.000 --> 00:00:02\.000/);
+  const earlier = placeSubtitles(source, 'automatic', -1250);
+  assert.doesNotMatch(earlier, /opening|First/);
+  assert.match(earlier, /00:00:00\.000 --> 00:00:01\.750 align:start line:45%/);
+  assert.equal(placeSubtitles(source, 'automatic', 0), source);
+});
+
+test('embedded track inventory and selection follow the media engine', async () => {
+  globalThis.document = new EventTarget();
+  globalThis.window = new EventTarget();
+  const video = new TestVideo();
+  class TrackList extends EventTarget {
+    items = [];
+    [Symbol.iterator]() { return this.items.values(); }
+    add(track) { this.items.push(track); this.dispatchEvent(new Event('addtrack')); }
+  }
+  video.textTracks = new TrackList();
+  video.audioTracks = new TrackList();
+  const english = { language: 'en', label: 'SDH', kind: 'captions', mode: 'disabled' };
+  const japanese = { language: 'ja', label: 'Original', kind: 'main', enabled: false };
+  const dub = { language: 'en', label: 'Dub', kind: 'main', enabled: true };
+  video.textTracks.add(english);
+  video.audioTracks.add(dub);
+  video.audioTracks.add(japanese);
+  let inventory;
+  const player = attachPlayer(video, {
+    async invokeMethodAsync(method, subtitles, audio) {
+      if (method === 'UpdateMediaTracks') inventory = { subtitles, audio };
+      return true;
+    },
+  }, 'https://example.com/episode.mp4', 0);
+  video.emit('loadedmetadata');
+  assert.equal(inventory.subtitles[0].role, 'captions');
+  player.selectEmbeddedSubtitle(inventory.subtitles[0].id);
+  assert.equal(english.mode, 'showing');
+  player.selectAudio(inventory.audio[1].id);
+  assert.equal(japanese.enabled, true);
+  assert.equal(dub.enabled, false);
+  player.selectEmbeddedSubtitle('');
+  const late = { language: 'ja', label: '', kind: 'forced', mode: 'showing' };
+  video.textTracks.add(late);
+  assert.equal(late.mode, 'disabled');
+  assert.equal(english.mode, 'disabled');
+  assert.equal(inventory.subtitles.length, 2);
+  await player.dispose();
+});
+
+test('media actions follow the active video and clear when playback ends', async () => {
+  globalThis.document = new EventTarget();
+  globalThis.window = new EventTarget();
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const originalMetadata = globalThis.MediaMetadata;
+  const actions = new Map();
+  const session = { setActionHandler(action, handler) { actions.set(action, handler); } };
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { mediaSession: session } });
+  globalThis.MediaMetadata = class { constructor(metadata) { Object.assign(this, metadata); } };
+  const callbacks = { async invokeMethodAsync() { return true; } };
+  try {
+    const oldVideo = new TestVideo();
+    const old = attachPlayer(oldVideo, callbacks, 'https://example.com/1.mp4', 0, false, 1, false, false, 'Series', 'Episode 1');
+    oldVideo.emit('playing');
+    assert.equal(session.playbackState, 'playing');
+    const video = new TestVideo();
+    const player = attachPlayer(video, callbacks, 'https://example.com/2.mp4', 0, false, 1, false, false, 'Series', 'Episode 2');
+    video.play = async () => video.emit('playing');
+    video.emit('playing');
+    await old.dispose();
+    assert.equal(session.metadata.artist, 'Episode 2');
+    actions.get('pause')();
+    assert.equal(session.playbackState, 'paused');
+    await actions.get('play')();
+    assert.equal(session.playbackState, 'playing');
+    video.emit('ended');
+    assert.equal(session.playbackState, 'none');
+    assert.equal(actions.get('pause'), null);
+    await player.dispose();
+  } finally {
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+    globalThis.MediaMetadata = originalMetadata;
+  }
+});
+
+test('picture-in-picture toggles the same video where the runtime supports it', async () => {
+  globalThis.document = new EventTarget();
+  globalThis.window = new EventTarget();
+  document.pictureInPictureEnabled = true;
+  const video = new TestVideo();
+  const button = new EventTarget();
+  button.hidden = true;
+  const callbacks = { async invokeMethodAsync() { return true; } };
+  video.requestPictureInPicture = async () => {
+    document.pictureInPictureElement = video;
+    video.emit('enterpictureinpicture');
+  };
+  document.exitPictureInPicture = async () => {
+    document.pictureInPictureElement = null;
+    video.emit('leavepictureinpicture');
+  };
+  const player = attachPlayer(video, callbacks, 'https://example.com/1.mp4', 8, false, 1, false, false, '', '', button);
+  video.emit('loadedmetadata');
+  assert.equal(button.hidden, false);
+  assert.equal(button.disabled, false);
+  button.dispatchEvent(new Event('click'));
+  assert.equal(document.pictureInPictureElement, video);
+  assert.equal(button.textContent, 'Exit picture-in-picture');
+  button.dispatchEvent(new Event('click'));
+  assert.equal(document.pictureInPictureElement, null);
+  assert.equal(video.currentTime, 8);
+  await player.dispose();
 });

@@ -16,6 +16,7 @@
 
 <video @ref="video" class="@($"episode-video subtitle-{subtitleSize} subtitle-{subtitleBackground}")" controls playsinline preload="metadata" data-offline-source="@(OfflineFile ? VideoUrl : null)" aria-label="@Title"></video>
 <div class="reader-controls">
+ <button @ref="pipButton" class="secondary player-pip" type="button" hidden>Picture-in-picture</button>
  <button class="secondary" @onclick="() => Seek(-seekSeconds)">−@seekSeconds s</button>
  <button class="secondary" @onclick="() => Seek(seekSeconds)">+@seekSeconds s</button>
  <label>Playback speed
@@ -28,22 +29,55 @@
  </label>
  @if (OnNext.HasDelegate) { <button class="secondary" @onclick="NextEpisode">Next episode →</button> }
  <button class="secondary" @onclick="SetDefaultSpeed">Save as default</button>
+ @if (CanOpenExternally) { <button class="secondary" disabled="@handingOff" @onclick="OpenExternally">Open in external player</button> }
+ @if (TrackCompletion && !completed)
+ {
+  <button class="secondary" disabled="@completing" @onclick="MarkWatched">Mark episode watched</button>
+ }
 </div>
+@if (pictureInPictureError is not null) { <p role="status">@pictureInPictureError</p> }
+@if (handoffMessage is not null) { <p role="status">@handoffMessage</p> }
 @if (speedStatus is not null) { <p role="status">@speedStatus</p> }
-@if(Subtitles.Count>0)
+@if (Subtitles.Count > 0 || embeddedSubtitles.Count > 0)
 {
- <label>Subtitles<select value="@(selectedTrack < 0 ? "" : selectedTrack.ToString(CultureInfo.InvariantCulture))" @onchange="ChangeSubtitle">
- <option value="">Off</option>
- @for(var i=0;i<Subtitles.Count;i++){<option value="@i">@Subtitles[i].Language</option>}
- </select></label>
+ <label>Subtitles
+  <select value="@subtitleChoice" @onchange="ChangeSubtitle">
+   <option value="">Off</option>
+   @foreach (var track in SubtitleOptions()) { <option value="@track.Id">@TrackLabel(track)</option> }
+  </select>
+ </label>
 }
-@if(subtitleError){<p role="alert">Could not load the selected subtitle track.</p>}
+@if (audioTracks.Count > 1)
+{
+ <label>Audio track
+  <select value="@audioChoice" @onchange="ChangeAudio">
+   @foreach (var track in audioTracks) { <option value="@track.Id">@TrackLabel(track)</option> }
+  </select>
+ </label>
+}
+@if (activeSidecar is not null)
+{
+ <div class="reader-controls" aria-label="Subtitle timing">
+  <button class="secondary" @onclick="() => OffsetSubtitles(-250)" disabled="@(loadingSubtitle || subtitleOffset <= -30000)">Earlier by 250 ms</button>
+  <span role="status">@(subtitleOffset == 0 ? "Original subtitle timing" : $"{Math.Abs(subtitleOffset)} ms {(subtitleOffset < 0 ? "earlier" : "later")}")</span>
+  <button class="secondary" @onclick="() => OffsetSubtitles(250)" disabled="@(loadingSubtitle || subtitleOffset >= 30000)">Later by 250 ms</button>
+  <button class="secondary" @onclick="ResetSubtitleOffset" disabled="@(loadingSubtitle || subtitleOffset == 0)">Reset offset</button>
+ </div>
+}
+@if (subtitleError)
+{
+ <p role="alert">Could not load the selected subtitle track. The video is still available.
+  <button class="secondary" @onclick="() => ApplySubtitle(subtitleChoice)">Retry subtitle</button>
+ </p>
+}
 @if (playbackError)
 {
  <div class="notice" role="alert">
   @(OfflineFile ? "This device couldn’t play the downloaded video. Try another available source." :
-   "The video couldn’t be loaded. Check your connection and try again.")
+   "The video couldn’t be played. Retry the connection, refresh the link, or choose another source if this format is unsupported.")
   <button type="button" @onclick="Retry">Retry video</button>
+  @if (RefreshSource is not null) { <button type="button" @onclick="RefreshVideo">Refresh video link</button> }
+  @if (recoveryMessage is not null) { <p>@recoveryMessage</p> }
  </div>
 }
 @if (completionMessage is not null) { <p role="status">@completionMessage</p> }
@@ -62,7 +96,46 @@
  [Parameter] public bool OfflineFile { get; set; }
  [Parameter] public bool StartPlaying { get; set; }
  [Parameter] public EventCallback OnNext { get; set; }
- bool autoplay, advancing;
+ bool autoplay, advancing, completing, completed;
+ [Parameter] public Func<Task<bool>>? RefreshSource { get; set; }
+ string? recoveryMessage;
+ IExternalVideoPlayer? ExternalPlayer => Services.GetService(typeof(IExternalVideoPlayer)) as IExternalVideoPlayer;
+ bool CanOpenExternally => !OfflineFile && AddonResources.MediaUrl(VideoUrl) && ExternalPlayer is not null;
+ bool handingOff;
+ string? handoffMessage;
+
+ async Task OpenExternally()
+ {
+  if (handingOff || !CanOpenExternally || ExternalPlayer is not { } external) return;
+  handingOff = true;
+  handoffMessage = null;
+  try
+  {
+   if (!await PauseAndCheckpointAsync())
+    handoffMessage = "Could not save your current position. Try again before opening another player.";
+   else if (!await external.OpenAsync(new Uri(VideoUrl)))
+    handoffMessage = "No installed video app could open this stream.";
+   else
+    handoffMessage = "Position saved. Use Mark episode watched if you finish in the external player.";
+  }
+  catch { handoffMessage = "Could not open this stream in an external player."; }
+  finally { handingOff = false; }
+ }
+
+ async Task RefreshVideo()
+ {
+  recoveryMessage = null;
+  if (RefreshSource is not null && !await RefreshSource())
+   recoveryMessage = "Could not refresh this stream. Choose another available source.";
+ }
+
+ internal async Task<bool> PauseAndCheckpointAsync()
+ {
+  await initialization;
+  if (disposed) return false;
+  if (player is not null) await player.InvokeVoidAsync("pauseAndCheckpoint");
+  return !progressError;
+ }
 
  async Task NextEpisode()
  {
@@ -70,7 +143,7 @@
   advancing = true;
   try
   {
-   if (player is not null) await player.InvokeVoidAsync("checkpoint");
+   if (!await PauseAndCheckpointAsync()) return;
    await OnNext.InvokeAsync();
   }
   finally { advancing = false; }
@@ -107,48 +180,7 @@
   catch { speedStatus = "Could not save playback speed."; }
  }
 
- bool subtitleError, manualSubtitle;
- int selectedTrack = -1;
- string? preferredLanguage, automaticTrack;
- string subtitleSize = "normal", subtitleBackground = "dark", subtitlePlacement = "automatic";
- CancellationTokenSource? subtitleRequest;
-
- Task ChangeSubtitle(ChangeEventArgs args)
- {
-  manualSubtitle = true;
-  return ApplySubtitle(int.TryParse(args.Value?.ToString(), out var index) ? index : -1);
- }
-
- async Task ApplySubtitle(int index)
- {
-  subtitleRequest?.Cancel();
-  subtitleRequest?.Dispose();
-  var token = (subtitleRequest = new()).Token;
-  selectedTrack = index;
-  subtitleError = false;
-  if (player is null) return;
-  try
-  {
-   await player.InvokeVoidAsync("clearSubtitle");
-   if (index < 0 || index >= Subtitles.Count) return;
-   var selected = Subtitles[index];
-   var cues = await Addons.GetSubtitleAsync(selected.Url, token);
-   if (!token.IsCancellationRequested) await player.InvokeVoidAsync("setSubtitle", selected.Language, cues, subtitlePlacement);
-  }
-  catch { if (!token.IsCancellationRequested) subtitleError = true; }
- }
-
- async Task ApplyPreferredSubtitle()
- {
-  if (manualSubtitle || disposed || player is null) return;
-  var index = MediaPreferences.PreferredTrack(Subtitles, preferredLanguage);
-  if (index < 0 || automaticTrack == Subtitles[index].Url) return;
-  automaticTrack = Subtitles[index].Url;
-  await ApplySubtitle(index);
-  if (!disposed) await InvokeAsync(StateHasChanged);
- }
-
- ElementReference video;
+ ElementReference video, pipButton;
  DotNetObjectReference<WatchPreview>? callbacks;
  IJSObjectReference? module;
  IJSObjectReference? player;
@@ -156,6 +188,14 @@
  bool disposed;
  string? completionMessage;
  bool playbackError;
+ string? pictureInPictureError;
+ [JSInvokable]
+ public Task SetPictureInPictureError()
+ {
+  if (disposed) return Task.CompletedTask;
+  pictureInPictureError = "This device could not enter picture-in-picture.";
+  return InvokeAsync(StateHasChanged);
+ }
  bool progressError;
 
  protected override Task OnAfterRenderAsync(bool firstRender)
@@ -169,6 +209,7 @@
    speed = MediaPreferences.ReadSpeed(await Store.GetSettingAsync(MediaPreferences.SpeedKey));
    autoplay = await Store.GetSettingAsync(MediaPreferences.AutoplayKey) == "true";
    seekSeconds = MediaPreferences.ReadSeekInterval(await Store.GetSettingAsync(MediaPreferences.SeekIntervalKey));
+   preferredAudioLanguage = await Store.GetSettingAsync(MediaPreferences.AudioLanguageKey);
    preferredLanguage = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey);
    subtitleSize = (await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey)) switch
    { "large" => "large", "small" => "small", _ => "normal" };
@@ -182,7 +223,7 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed, StartPlaying, OfflineFile);
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed, StartPlaying, OfflineFile, Title, EpisodeLabel, pipButton);
    if (!disposed) await InvokeAsync(StateHasChanged);
    await ApplyPreferredSubtitle();
   }
@@ -236,19 +277,28 @@
   });
  }
 
+ Task MarkWatched() => SaveCompletion(advance: false);
+
  [JSInvokable]
- public async Task<bool> CompleteEpisode()
+ public Task<bool> CompleteEpisode() => SaveCompletion(advance: true);
+
+ async Task<bool> SaveCompletion(bool advance)
  {
-  if (!TrackCompletion) return false;
+  if (!TrackCompletion || disposed || completing) return false;
+  if (completed) return true;
+  completing = true;
   try
   {
+   if (!advance && !await PauseAndCheckpointAsync()) return false;
    var receipt = await AddonCompletion.SaveAsync(Store, Services, EpisodeKey);
+   completed = true;
    completionMessage = receipt.Message;
    if (receipt.Sync is not null) _ = ShowSyncResult(receipt.Sync);
    if (!disposed)
    {
     await InvokeAsync(() => OnCompleted.InvokeAsync());
-    if (autoplay) await InvokeAsync(NextEpisode);
+    if (!disposed) await InvokeAsync(StateHasChanged);
+    if (advance && autoplay) await InvokeAsync(NextEpisode);
    }
    return true;
   }
@@ -261,6 +311,7 @@
    }
    return false;
   }
+  finally { completing = false; }
  }
 
  [JSInvokable]

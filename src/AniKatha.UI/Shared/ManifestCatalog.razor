@@ -53,6 +53,7 @@
   @if(!busy && error==null && units.Count==0){<p>No episodes or chapters available.</p>}
  }
  @if(unitId!=null){
+  @if (nextSourceUnavailable) { <p role="status">The previous provider has no source for this episode. Choose another source below.</p> }
   @if (targets.Count == 0) { <p>No compatible add-on.</p> }
   @if (targets.Count > 0 || preferredSource.Length > 0)
   {
@@ -72,9 +73,9 @@
    @if (preferenceError) { <p role="alert">Could not save the preferred source.</p> }
   }
   @foreach(var target in targets.OrderByDescending(target => target.Provider.ProviderKey == preferredSource)){
-   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" AniListProgress="aniListProgress" HasOriginMetadata="true" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" PreviousChapter="@(CanMove(-1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(-1, target.Provider.ProviderKey)) : default)"
+   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId,unitId)" Source="target.Provider" AniListProgress="aniListProgress" HasOriginMetadata="true" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" PreviousChapter="@(CanMove(-1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(-1, target.Provider.ProviderKey)) : default)"
     NextChapter="@(CanMove(1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)"
-    ProgressChanged="RefreshProgress"/>
+    ProgressChanged="RefreshProgress" ActivateVideo="ActivateVideo"/>
   }
  }
 </section>
@@ -132,6 +133,23 @@
  bool saved, disposed;
  long progressRequest;
  string? autoOpenSource;
+ ManifestSources? activeVideo;
+ bool switchingVideo, nextSourceUnavailable;
+
+ async Task<bool> ActivateVideo(ManifestSources next)
+ {
+  if (disposed || switchingVideo) return false;
+  switchingVideo = true;
+  try
+  {
+   var previous = activeVideo;
+   if (previous is not null && !await previous.ReleaseVideoAsync(next)) return false;
+   if (disposed || next.IsDisposed) return false;
+   activeVideo = next;
+   return true;
+  }
+  finally { switchingVideo = false; }
+ }
  bool CanMove(int direction)
  {
   var index = units.FindIndex(unit => Field(unit, "id") == unitId);
@@ -187,7 +205,7 @@
  Task Retry()=>retryMeta && selected.HasValue ? Open(selected.Value) : Load(retryReset);
  async Task Load(bool reset){
   var token=Begin();retryMeta=false;retryReset=reset;
-  if(reset){pageLoaded=false;titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;details=default;unitId=null;}
+  if(reset){pageLoaded=false;titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;details=default;unitId=null;activeVideo=null;}
   if (MissingRequired)
   {
    busy = false;
@@ -221,7 +239,7 @@
   finally{if(!token.IsCancellationRequested){busy=false;pageLoaded=true;}}
  }
  async Task Open(JsonElement item){
-  var token=Begin();retryMeta=true;saved=false;selected=item;details=default;preferredSource="";preferenceError=false;progress.Clear();continueLink=null;titleId=Field(item,"id");unitId=null;units=[];
+  var token=Begin();retryMeta=true;saved=false;selected=item;details=default;preferredSource="";preferenceError=false;progress.Clear();continueLink=null;titleId=Field(item,"id");unitId=null;activeVideo=null;units=[];
   try{
    var resource=Catalog.Type=="manga"?"chapters":"meta";
    if(!Source.Supports(resource,Catalog.Type,titleId)){error="Source does not supply title details.";return;}
@@ -276,11 +294,15 @@
  }
  void Choose(JsonElement unit, string? autoOpen = null)
  {
+  var nextUnit = Field(unit, "id");
+  if (unitId != nextUnit) activeVideo = null;
   autoOpenSource = autoOpen;
   unitId = Field(unit, "id");
   label = Field(unit, "title");
   aniListProgress = AddonAniListProgress.Read(Catalog.Type, details, unit);
   targets = Source.ResolveUnitProviders(Catalog.Type, unit, Providers).ToList();
+  nextSourceUnavailable = Catalog.Type != "manga" && autoOpen is not null &&
+   !targets.Any(target => target.Provider.ProviderKey == autoOpen);
  }
  public void Dispose()
  {

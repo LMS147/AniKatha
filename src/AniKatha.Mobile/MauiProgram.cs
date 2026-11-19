@@ -19,6 +19,7 @@ public static class MauiProgram
   builder.Services.AddSingleton(services => new OfflineDownloads(services.GetRequiredService<LocalStore>(),
    services.GetRequiredService<AddonClient>(), Path.Combine(FileSystem.AppDataDirectory, "offline")));
   builder.Services.AddSingleton<IYouTubePlayer, YouTubePlayer>();
+  builder.Services.AddSingleton<IExternalVideoPlayer, ExternalVideoPlayer>();
   builder.Services.AddSingleton<MainPage>();
   return builder.Build();
  }

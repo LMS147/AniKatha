@@ -69,4 +69,4 @@ public sealed class ResumeEntry
   string.Join("/",origin,type,Uri.EscapeDataString(titleId),Uri.EscapeDataString(unitId),source);
 }
 
-public sealed record EpisodeSubtitle(string Language,string Url);
+public sealed record EpisodeSubtitle(string Language, string Url, string Label = "", string Role = "");

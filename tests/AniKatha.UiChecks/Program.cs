@@ -123,7 +123,21 @@ reopened.WaitForAssertion(()=>Check(reopened.Find(".reader-page").GetAttribute("
 Check(reopened.FindAll("button").Single(x => x.TextContent.Trim()=="Next chapter →").HasAttribute("disabled"), "Last chapter boundary");
 await ClickAsync(reopened, "← Previous chapter");
 reopened.WaitForAssertion(()=>Check(reopened.Find(".reader-page").GetAttribute("src")=="https://images.example/2.webp","Previous chapter restores page"));
+handler.AlternateOnline = true;
+var alternatePanel = anime.FindComponents<ManifestSources>().Single(m => m.Instance.Source.ProviderKey == preferred);
+await ClickAsync(alternatePanel, "Retry");
 var firstPlayer = anime.FindComponent<WatchPreview>();
+var originalKey = firstPlayer.Instance.EpisodeKey;
+await firstPlayer.InvokeAsync(() => firstPlayer.Instance.SavePosition(23.375));
+await ClickAsync(alternatePanel, "Alternate 9");
+var alternatePlayer = anime.FindComponent<WatchPreview>();
+Check(anime.FindComponents<WatchPreview>().Count == 1 &&
+ alternatePlayer.Instance.VideoUrl == "https://video.example/alternate.mp4", "One active player after source switch");
+Check(await store.GetPlaybackPositionAsync(alternatePlayer.Instance.EpisodeKey) == 23.375, "Verified alternate inherits precise timestamp");
+Check(!await store.IsUnitCompleteAsync(originalKey) && tracking.Anime == 8, "Switching a partial episode does not complete it");
+await ClickAsync(anime, "Stream 9");
+firstPlayer = anime.FindComponent<WatchPreview>();
+Check(await store.GetPlaybackPositionAsync(firstPlayer.Instance.EpisodeKey) == 23.375, "Switch back retains timestamp");
 await firstPlayer.InvokeAsync(() => firstPlayer.Instance.CompleteEpisode());
 anime.WaitForAssertion(()=>Check(anime.FindComponent<WatchPreview>().Instance.VideoUrl=="https://video.example/10.mp4","Autoplay opens the next episode source"));
 Check(!anime.FindComponent<WatchPreview>().Instance.OnNext.HasDelegate, "Last episode boundary");
@@ -147,6 +161,7 @@ Console.WriteLine("PASS: install via Profile, type routing, pagination, repeat-p
 
 await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"anikatha-catalog-{Guid.NewGuid()}.db3")));
 await DownloadChecks.RunAsync();
+await PlayerChecks.RunAsync();
 
 static async Task ClickAsync<T>(IRenderedComponent<T> view, string label) where T : IComponent
 {
@@ -158,6 +173,7 @@ static void Check(bool valid,string name){if(!valid)throw new Exception(name);}
 sealed class FixtureHandler : HttpMessageHandler
 {
  internal const string OtherUrl = "https://fiction.example/slow/manifest.json?config=test";
+ internal bool AlternateOnline { get; set; }
  internal string? SlowRequest { get; private set; }
  internal int SuccessfulSourceRequests { get; private set; }
  internal TaskCompletionSource<HttpResponseMessage> FailSlowSource {get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -166,6 +182,9 @@ sealed class FixtureHandler : HttpMessageHandler
   var uri=request.RequestUri!;
   if(uri.Query!="?config=test")throw new InvalidOperationException("Configuration lost");
   var path=uri.AbsolutePath;
+  if (AlternateOnline && path.EndsWith("/alternate-09.json"))
+   return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+    { Content = new StringContent("""{"streams":[{"name":"Alternate 9","url":"https://video.example/alternate.mp4"}]}""") });
   if(path.StartsWith("/slow/"))
   {
    SlowRequest = path;

@@ -5,6 +5,10 @@
  <label>Preferred subtitle language
   <input placeholder="For example, en or ja" maxlength="35" value="@language" @onchange="SaveLanguage" />
  </label>
+ <label>Preferred audio language
+  <input placeholder="For example, ja or en" maxlength="35" value="@audioLanguage"
+         @onchange='args => SaveChoice(MediaPreferences.AudioLanguageKey, args, value => audioLanguage = value.Trim())' />
+ </label>
  <label>Subtitle size
   <select value="@size" @onchange='args => SaveChoice(MediaPreferences.SubtitleSizeKey, args, value => size = value)'>
    <option value="normal">Normal</option><option value="small">Small</option><option value="large">Large</option>
@@ -20,6 +24,7 @@
    <option value="automatic">From the track</option><option value="top">Top</option><option value="bottom">Bottom</option>
   </select>
  </label>
+ <button class="secondary" @onclick="ResetAppearance">Reset subtitle appearance</button>
  <p class="muted">Appearance applies to subtitle tracks in AniKatha’s video player.</p>
  <label>Skip forward and rewind interval
   <select value="@seekSeconds" @onchange='args => SaveChoice(MediaPreferences.SeekIntervalKey, args, value => seekSeconds = MediaPreferences.ReadSeekInterval(value))'>
@@ -47,7 +52,7 @@
 </section>
 
 @code {
- string language = "", size = "normal", background = "dark", placement = "automatic";
+ string language = "", audioLanguage = "", size = "normal", background = "dark", placement = "automatic";
  ReaderPreferences reader = new();
  bool autoplay;
  int seekSeconds = 10;
@@ -59,6 +64,7 @@
   {
    reader = await ReaderPreferences.LoadAsync(Store, ReaderPreferences.GlobalKey);
    language = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey) ?? "";
+   audioLanguage = await Store.GetSettingAsync(MediaPreferences.AudioLanguageKey) ?? "";
    size = await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey) ?? "normal";
    background = await Store.GetSettingAsync(MediaPreferences.SubtitleBackgroundKey) ?? "dark";
    placement = await Store.GetSettingAsync(MediaPreferences.SubtitlePlacementKey) ?? "automatic";
@@ -66,6 +72,19 @@
    seekSeconds = MediaPreferences.ReadSeekInterval(await Store.GetSettingAsync(MediaPreferences.SeekIntervalKey));
   }
   catch { message = "Could not load playback settings."; }
+ }
+
+ async Task ResetAppearance()
+ {
+  try
+  {
+   await Store.SetSettingAsync(MediaPreferences.SubtitleSizeKey, "normal");
+   await Store.SetSettingAsync(MediaPreferences.SubtitleBackgroundKey, "dark");
+   await Store.SetSettingAsync(MediaPreferences.SubtitlePlacementKey, "automatic");
+   (size, background, placement) = ("normal", "dark", "automatic");
+   message = "Subtitle appearance reset.";
+  }
+  catch { message = "Could not reset subtitle appearance."; }
  }
 
  Task SaveLanguage(ChangeEventArgs args)
