@@ -7,7 +7,7 @@ using System.Text.Json;
 
 namespace AniKatha.Core;
 
-public sealed record AniListCredential(string Token, DateTimeOffset Expires, int ViewerId);
+public sealed record AniListCredential(string Token, DateTimeOffset Expires, int ViewerId, string? Name = null, string? ScoreFormat = null);
 public sealed record AniListViewer(int Id, string Name, string ScoreFormat);
 
 public interface IAniListAuthorization
@@ -25,6 +25,12 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
     private readonly SemaphoreSlim sessionGate = new(1, 1);
     private CancellationTokenSource session = new();
     public bool CanConnect => int.TryParse(authorization.ClientId, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0;
+
+    public async Task<AniListViewer?> StoredViewerAsync()
+    {
+        var credential = await ReadValidCredentialAsync();
+        return credential is { Name: not null, ScoreFormat: not null } ? new(credential.ViewerId, credential.Name, credential.ScoreFormat) : null;
+    }
 
     public async Task<AniListViewer?> CurrentAsync(CancellationToken token = default)
     {
@@ -54,7 +60,7 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
         try
         {
             request.Token.ThrowIfCancellationRequested();
-            await authorization.WriteAsync(credential with { ViewerId = viewer.Id });
+            await authorization.WriteAsync(credential with { ViewerId = viewer.Id, Name = viewer.Name, ScoreFormat = viewer.ScoreFormat });
         }
         finally { sessionGate.Release(); }
         return viewer;

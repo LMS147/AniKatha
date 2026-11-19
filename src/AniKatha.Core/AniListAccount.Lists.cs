@@ -46,6 +46,26 @@ public sealed partial class AniListAccount
             return imported;
         }, token);
 
+    public static (double Maximum, double Step) ScoreScale(string format) => format switch
+    {
+        "POINT_3" => (3, 1), "POINT_5" => (5, 1), "POINT_10" => (10, 1),
+        "POINT_10_DECIMAL" => (10, 0.1), "POINT_100" => (100, 1),
+        _ => throw new InvalidOperationException("Unknown AniList score format.")
+    };
+
+    public Task UpdateFieldAsync(int viewerId, int mediaId, string field, string value, CancellationToken token = default) =>
+        WithCredentialAsync(async (credential, ct) =>
+        {
+            if (credential.ViewerId != viewerId || mediaId <= 0) throw new AniListAuthorizationException();
+            var graphType = field switch { "status" => "MediaListStatus", "score" => "Float", _ => throw new ArgumentOutOfRangeException(nameof(field)) };
+            object typedValue = field == "score"
+                ? double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) : value;
+            var mutation = $"mutation ($id: Int!, $value: {graphType}!) {{ SaveMediaListEntry(mediaId: $id, {field}: $value) {{ mediaId }} }}";
+            var data = await SendAsync(credential, mutation, new { id = mediaId, value = typedValue }, ct);
+            return data.GetProperty("SaveMediaListEntry").GetProperty("mediaId").GetInt32() == mediaId
+                ? true : throw new InvalidOperationException("AniList did not acknowledge this edit.");
+        }, token);
+
     private static AniListListEntry ParseListEntry(JsonElement entry)
     {
         var media = entry.GetProperty("media");

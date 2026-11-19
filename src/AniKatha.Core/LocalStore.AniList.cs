@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 using SQLite;
 
 namespace AniKatha.Core;
@@ -6,6 +7,17 @@ namespace AniKatha.Core;
 public sealed partial class LocalStore
 {
     private static string AniListBaselineKey(int account, int media) => $"anilist:{account}:baseline:{media}";
+
+    private static string AniListScoreKey(int account, int media) => $"anilist:{account}:score:{media}";
+
+    public async Task<double?> GetAniListScoreAsync(int account, int media)
+    {
+        var value = await GetSettingAsync(AniListScoreKey(account, media));
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var score) && score > 0 ? score : null;
+    }
+
+    public Task SaveAniListScoreAsync(int account, int media, double? score) =>
+        SetSettingAsync(AniListScoreKey(account, media), score?.ToString(CultureInfo.InvariantCulture) ?? "");
 
     public async Task ImportAniListPageAsync(int account, IReadOnlyList<AniListListEntry> entries, CancellationToken token = default)
     {
@@ -36,6 +48,10 @@ public sealed partial class LocalStore
                     if (title.Progress == baseline.Progress) title.Progress = entry.Progress;
                     connection.Update(title);
                 }
+                var scoreKey = AniListScoreKey(account, entry.MediaId);
+                var score = connection.Find<AppSetting>(scoreKey);
+                if (score is null || score.Value == (baseline?.Score?.ToString(CultureInfo.InvariantCulture) ?? ""))
+                    connection.InsertOrReplace(new AppSetting { Key = scoreKey, Value = entry.Score?.ToString(CultureInfo.InvariantCulture) ?? "" });
                 connection.InsertOrReplace(new AppSetting { Key = key, Value = JsonSerializer.Serialize(entry) });
             }
         });
