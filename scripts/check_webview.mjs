@@ -298,18 +298,47 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
               const image = document.querySelector('.reader-page');
               return image?.naturalWidth > 0 && image.src.includes('/offline-media/') && /page-0002/.test(image.src);
             }, 'Downloaded chapter did not load its saved page in airplane mode');
-            (await wait(() => document.querySelector('a[href="/library?view=downloads"]'), 'Downloads link')).click();
-            (await wait(() => open('Big Buck Bunny'), 'Downloaded video was not listed')).click();
-            const video = await wait(() => {
-              const media = document.querySelector('video');
-              return media?.dataset.offlineSource?.includes('offline-media/') && media.readyState >= 2 && media;
-            }, 'Video frame did not load in airplane mode');
-            return { duration: video.duration, readyState: video.readyState };
-
+            const button = name => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === name && !b.disabled);
+            (await wait(() => button('Next page →'), 'Next downloaded page')).click();
+            await wait(() => document.querySelector('.reader-page')?.naturalWidth > 0 &&
+              document.querySelector('.reader-position')?.textContent === 'Page 3 of 3', 'Last downloaded page');
+            (await wait(() => button('Mark chapter read'), 'Complete downloaded chapter')).click();
+            const feedback = await wait(() => {
+              const message = document.querySelector('.tracking-feedback');
+              return message?.textContent.includes('no verified AniList match') && message;
+            }, 'Local-only completion feedback');
+            feedback.scrollIntoView({block:'center'});
+            return true;
           })()`,
         }, 115000);
-        if (!offline.result?.value) throw new Error(offline.exceptionDetails?.exception?.description ?? 'Offline media failed.');
-        console.log('PASS: downloaded manga restored its exact page and a downloaded video frame loaded in airplane mode.');
+        if (offline.result?.value !== true) throw new Error(offline.exceptionDetails?.exception?.description ?? 'Offline manga failed.');
+        const readerScreenshot = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
+        await writeFile('artifacts/startup/anilist-reader-feedback-android.png', readerScreenshot);
+        console.log('PASS: downloaded manga restored its exact page and explains local-only completion in airplane mode.');
+
+        const offlineVideo = await command('Runtime.evaluate', {
+          awaitPromise: true, returnByValue: true,
+          expression: `(async () => {
+            async function wait(find, label) {
+              for (let i = 0; i < 200; i++) {
+                const value = find();
+                if (value) return value;
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              throw new Error(label);
+            }
+            (await wait(() => document.querySelector('a[href="/library?view=downloads"]'), 'Downloads link')).click();
+            const open = await wait(() => [...document.querySelectorAll('.library-item')].find(x =>
+              x.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a'), 'Downloaded video');
+            open.click();
+            await wait(() => {
+              const media = document.querySelector('video');
+              return media?.dataset.offlineSource?.includes('offline-media/') && media.readyState >= 2;
+            }, 'Video frame did not load in airplane mode');
+            return true;
+          })()`,
+        }, 65000);
+        if (offlineVideo.result?.value !== true) throw new Error(offlineVideo.exceptionDetails?.exception?.description ?? 'Offline video failed.');
         const seek = await command('Runtime.evaluate', {
           awaitPromise: true, returnByValue: true, userGesture: true,
           expression: `(async () => {
@@ -364,7 +393,6 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
         ['appearance', 'appearance'], ['sources', 'sources'],
         ['anilist', 'anilist-account-android'], ['tracking-editor', 'anilist-editor-android'],
-        ['reader-feedback', 'anilist-reader-feedback-android'],
       ]) {
         const result = await command('Runtime.evaluate', {
           expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
@@ -462,25 +490,7 @@ async function verifyProfileScene(scene) {
     count.dispatchEvent(new Event('input', { bubbles:true }));
     await click('Save tracking');
     await wait(() => document.querySelector('.tracking-editor')?.textContent.includes('Saved on this device.'), 'Local save confirmation');
-  } else if (scene === 'reader-feedback') {
-    document.querySelector('.bottom-nav a[href="/manga"]').click();
-    await click('The Midnight Lighthouse');
-    await click('Chapter 1');
-    await click('Read Chapter 1');
-    const getPage = () => Number(document.querySelector('.reader-position')?.textContent.match(/Page ([0-9]+)/)?.[1]);
-    let page = await wait(getPage, 'Saved chapter page');
-    while (page < 3) {
-      await click('Next page →');
-      const next = page + 1;
-      page = await wait(() => getPage() === next && next, 'Chapter page ' + next);
-    }
-    await wait(() => document.querySelector('.reader-page')?.naturalWidth > 0, 'Last chapter image');
-    await click('Mark chapter read');
-    const feedback = await wait(() => {
-      const message = document.querySelector('.tracking-feedback');
-      return message?.textContent.includes('no verified AniList match') && message;
-    }, 'Local-only completion feedback');
-    feedback.scrollIntoView({ block: 'end' });
+
   }
   return true;
 }
