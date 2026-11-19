@@ -8,8 +8,12 @@
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
  <div class="filters">
  <label>Source<select aria-label="Catalogue source" value="@source" @onchange="ChangeSource">
- <option value="">AniList catalogue</option>
- @foreach (var addon in sources) { <option value="@addon.Url">@addon.Name</option> }
+ <option value="">All Sources</option>
+ <option value="@AniListSource">AniList catalogue</option>
+ @if (jikan is not null) { <option value="@JikanSource">@jikan.Name</option> }
+ @foreach (var provider in httpProviders.Where(p => p.Catalogs(Kind).Any())) {
+  <option value="@provider.ProviderKey">@provider.Addon.Name</option>
+ }
  </select></label>
  @if (!UsingAddon) {
  <label>Genre<select @bind="genre"><option value="">All genres</option>@foreach(var g in genres){<option>@g</option>}</select></label>
@@ -18,9 +22,9 @@
  <label>Format<select @bind="format"><option value="">All formats</option>@foreach(var f in formats){<option value="@f">@f.Replace('_',' ')</option>}</select></label>
  <label>Sort<select @bind="sort"><option value="TRENDING_DESC">Trending</option><option value="POPULARITY_DESC">Popular</option><option value="SCORE_DESC">Top rated</option><option value="START_DATE_DESC">Newest</option></select></label>
  }
- </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit" disabled="@busy">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
+ </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
 </form>
-@foreach(var provider in httpProviders){
+@foreach(var provider in httpProviders.Where(p => source.Length == 0 || p.ProviderKey == source)){
  @foreach(var catalog in provider.Catalogs(Kind)){
   @if (appliedSearch.Length > 0 && !catalog.Search)
   {
@@ -33,6 +37,8 @@
  }
 }
 
+@if (ShowBuiltIn)
+{
 @if (usingAniListFallback)
 {
  <div class="notice" role="status">Jikan is unreachable. Showing live results from AniList. <button @onclick="Search" disabled="@busy">Retry Jikan</button></div>
@@ -70,19 +76,24 @@ else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching
 else { <MediaGrid Items="items" Selected="Select"/> }
 @if(hasMore){<button class="secondary load-more" disabled="@busy" @onclick="More">@(busy?"Loading…":"Load more")</button>}
 <MediaDetails Item="selected" Closed="()=>selected=null"/>
+}
 @code {
  [Parameter, EditorRequired] public string Kind { get; set; } = "";
  [Parameter] public RenderFragment? Featured { get; set; }
  string search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];Media? selected;
  CancellationTokenSource? request;
  List<AddonResources> httpProviders=[];
- List<InstalledAddon> sources = [];
+ InstalledAddon? jikan;
+ bool preferJikan;
  List<AddonTitle> addonItems = [];
  string source = "", appliedSearch = "";
  long submission;
  bool starterCatalogue, usingAniListFallback;
- const string SourceSetting = "catalogue-source";
- bool UsingAddon => source.Length != 0;
+ const string AniListSource = "anilist";
+ const string JikanSource = "jikan";
+ string SourceSetting => $"catalogue-source-{Kind}";
+ bool ShowBuiltIn => source is "" or AniListSource or JikanSource;
+ bool UsingAddon => source == JikanSource || source.Length == 0 && preferJikan && jikan is not null;
  int ResultCount => UsingAddon && !usingAniListFallback ? addonItems.Count : items.Count;
  string[] genres=["Action","Adventure","Comedy","Drama","Ecchi","Fantasy","Horror","Mahou Shoujo","Mecha","Music","Mystery","Psychological","Romance","Sci-Fi","Slice of Life","Sports","Supernatural","Thriller"];
  string[] formats=>Kind=="ANIME"?["TV","TV_SHORT","MOVIE","SPECIAL","OVA","ONA","MUSIC"]:["MANGA","NOVEL","ONE_SHOT"];
@@ -92,15 +103,18 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   {
    var enabled = await Store.GetAddonsAsync();
    httpProviders=enabled.Select(x=>new AddonResources(x)).ToList();
-   sources = enabled.Where(addon => addon.CatalogueProvider == JikanCatalogue.Provider).ToList();
-   var preferred = await Store.GetSettingAsync(SourceSetting);
-   source = preferred is null ? sources.FirstOrDefault()?.Url ?? "" : FindSource(preferred);
+   jikan = enabled.FirstOrDefault(addon => addon.CatalogueProvider == JikanCatalogue.Provider);
+   var legacyPreference = await Store.GetSettingAsync("catalogue-source");
+   preferJikan = legacyPreference is null || legacyPreference == jikan?.Url;
+   source = FindSource(await Store.GetSettingAsync(SourceSetting) ?? "");
   }
   catch { /* AniList remains available if local storage cannot be opened. */ }
   await Reset();
  }
 
- string FindSource(string url) => sources.Any(addon => addon.Url == url) ? url : "";
+ string FindSource(string value) =>
+  value == AniListSource || value == JikanSource && jikan is not null ||
+  httpProviders.Any(p => p.ProviderKey == value && p.Catalogs(Kind).Any()) ? value : "";
 
  async Task ChangeSource(ChangeEventArgs change)
  {
@@ -131,7 +145,11 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   hasMore = false;
   starterCatalogue = false;
   usingAniListFallback = false;
-  return Load();
+  if (ShowBuiltIn)
+   return Load();
+  request?.Cancel();
+  busy = false;
+  return Task.CompletedTask;
  }
 
  async Task More() { page++; await Load(); }
