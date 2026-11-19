@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { attachPlayer } from '../src/AniKatha.UI/wwwroot/episode-player.mjs';
+import { attachPlayer, placeSubtitles } from '../src/AniKatha.UI/wwwroot/episode-player.mjs';
 
 class TestVideo extends EventTarget {
   currentTime = 0;
@@ -90,4 +90,34 @@ test('provider completion preserves the timestamp and is recorded once', async (
   await player.dispose();
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(calls, [['SavePosition', video.duration], ['CompleteEpisode']]);
+});
+
+test('speed survives media load and seek clamps before saving', async () => {
+  globalThis.document = new EventTarget();
+  globalThis.window = new EventTarget();
+  const video = new TestVideo();
+  const saved = [];
+  const player = attachPlayer(video, {
+    async invokeMethodAsync(method, value) { if (method === 'SavePosition') saved.push(value); return true; },
+  }, 'https://example.com/video.mp4', 5, true, 1.25);
+  video.emit('loadedmetadata');
+  assert.equal(video.playbackRate, 1.25);
+  player.setSpeed(1.5);
+  assert.equal(video.playbackRate, 1.5);
+  player.seek(-15);
+  assert.equal(video.currentTime, 0);
+  video.emit('seeked');
+  player.seek(1000);
+  assert.equal(video.currentTime, video.duration);
+  video.emit('seeked');
+  await player.dispose();
+  assert.deepEqual(saved, [0, video.duration]);
+});
+
+test('places subtitle cues and preserves the automatic track layout', () => {
+  const cues = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000 align:start line:42%\nDialogue\n';
+  assert.equal(placeSubtitles(cues, 'automatic'), cues);
+  assert.match(placeSubtitles(cues, 'top'), /align:start line:10%/);
+  assert.match(placeSubtitles(cues, 'bottom'), /line:90%/);
+  assert.ok(!placeSubtitles(cues, 'bottom').includes('line:42%'));
 });
