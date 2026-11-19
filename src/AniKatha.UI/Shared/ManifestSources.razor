@@ -19,7 +19,7 @@ else if (streams.Count > 0)
  @foreach (var stream in streams)
  {
   <div>
-   <button @onclick="() => Play(stream)">@StreamName(stream)</button>
+   <button disabled="@openingVideo" @onclick="() => Play(stream)">@StreamName(stream)</button>
    @if (Downloads is not null && OfflineDownloads.DownloadableStreamId(stream) is string streamId)
    { <button @onclick="() => Download(streamId)">Download @StreamName(stream)</button> }
    @if (StreamDetails(stream) is { Length: > 0 } description) { <small>@description</small> }
@@ -29,10 +29,11 @@ else if (streams.Count > 0)
 else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provider.</p> }
 @if (!loading && !error) { <button type="button" @onclick="Refresh">Refresh sources</button> }
 @if (downloadStatus is not null) { <p role="status">@downloadStatus</p> }
+@if (switchError) { <p role="alert">Could not preserve the current playback position. Try selecting the source again.</p> }
 @if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
 </div>
 @if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" TitleSettingsKey="@ReaderTitleKey" Pages="readingPages" Title="@Title" ChapterLabel="@Label" PreviousChapter="PreviousChapter" NextChapter="NextChapter" OnCompleted="ProgressChanged"/>}
-@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" StartPlaying="AutoOpen" OnNext="NextEpisode" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
+@if(video!=null){<WatchPreview @key="videoVersion" @ref="videoPlayer" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" StartPlaying="playImmediately" RefreshSource="RefreshPlayingStream" OnNext="NextEpisode" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
 
 @code {
  OfflineDownloads? Downloads => (OfflineDownloads?)Services.GetService(typeof(OfflineDownloads));
@@ -66,6 +67,8 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  [Parameter] public EventCallback NextEpisode { get; set; }
  [Parameter] public bool Preferred { get; set; }
  [Parameter] public EventCallback ProgressChanged { get; set; }
+ [Parameter] public Func<ManifestSources, Task<bool>>? ActivateVideo { get; set; }
+ internal bool IsDisposed => disposed;
  readonly CancellationTokenSource stop=new();
  bool loading,reading,error,progressError,disposed;
  string translation = "";
@@ -79,6 +82,31 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
   return string.Join(" · ", new[] { quality, audio, subtitles }.Where(value => value.Length > 0));
  }
  string? video;
+ WatchPreview? videoPlayer;
+ bool openingVideo, switchError, playImmediately;
+ long videoVersion;
+ JsonElement playingStream;
+
+ internal async Task<bool> ReleaseVideoAsync(ManifestSources next)
+ {
+  if (video is null || disposed) return true;
+  try
+  {
+   if (videoPlayer is not null && !await videoPlayer.PauseAndCheckpointAsync()) return false;
+   if (next.IsDisposed || disposed) return false;
+   if (next.Key != Key)
+   {
+    var position = await Store.GetPlaybackPositionAsync(Key);
+    await Store.SavePlaybackPositionAsync(next.Key, position);
+   }
+   video = null;
+   videoPlayer = null;
+   playbackRequest++;
+   await InvokeAsync(StateHasChanged);
+   return true;
+  }
+  catch { return false; }
+ }
  List<EpisodeSubtitle> subtitles=[];
  List<string> pages=[], readingPages=[];
  List<JsonElement> streams=[];
@@ -90,7 +118,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
   await Load();
   if (!AutoOpen || disposed) return;
   if (Type == "manga" && pages.Count > 0) await Read();
-  else if (streams.Count > 0) await Play(streams[0]);
+  else if (streams.Count > 0) await Play(streams[0], startPlaying: true);
  }
  void Invalidate() => Cache?.Invalidate(Key);
 
@@ -144,24 +172,55 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
   await ProgressChanged.InvokeAsync();
  }
 
- async Task Play(JsonElement stream)
+ async Task Play(JsonElement stream, bool startPlaying = false)
  {
-  var request = ++playbackRequest;
-  await Remember();
-  if (disposed || request != playbackRequest) return;
-  video = Field(stream, "url");
-  subtitles = ReadSubtitles(stream);
-  await ProgressChanged.InvokeAsync();
-  if (disposed || request != playbackRequest || !Source.Supports("subtitles", Type, UnitId)) return;
+  if (openingVideo || disposed) return;
+  openingVideo = true;
+  switchError = false;
   try
   {
-   var response = await Client.FetchJsonAsync(Source.Resource("subtitles", Type, UnitId), stop.Token);
-   if (!disposed && request == playbackRequest)
-    subtitles = subtitles.Concat(ReadSubtitles(response)).DistinctBy(x => x.Url).ToList();
+   await Remember();
+   if (disposed) return;
+   if (ActivateVideo is not null ? !await ActivateVideo(this) : !await ReleaseVideoAsync(this))
+   {
+    switchError = !disposed;
+    return;
+   }
+   var request = ++playbackRequest;
+   playingStream = stream;
+   playImmediately = startPlaying;
+   video = Field(stream, "url");
+   videoVersion++;
+   subtitles = ReadSubtitles(stream);
+   await ProgressChanged.InvokeAsync();
+   if (disposed || request != playbackRequest || !Source.Supports("subtitles", Type, UnitId)) return;
+   await InvokeAsync(StateHasChanged);
+   try
+   {
+    var response = await Client.FetchJsonAsync(Source.Resource("subtitles", Type, UnitId), stop.Token);
+    if (!disposed && request == playbackRequest)
+     subtitles = subtitles.Concat(ReadSubtitles(response)).DistinctBy(x => x.Url).ToList();
+   }
+   catch { /* Inline tracks remain available. */ }
   }
-  catch { /* Inline tracks remain available. */ }
+  finally { openingVideo = false; }
+ }
+
+ async Task<bool> RefreshPlayingStream()
+ {
+  if (openingVideo || loading || disposed) return false;
+  var previous = playingStream;
+  var id = Field(previous, "id");
+  var name = Field(previous, "name");
+  var url = Field(previous, "url");
+  await Refresh();
+  var matches = streams.Where(stream => id.Length > 0 ? Field(stream, "id") == id :
+   Field(stream, "url") == url || (name.Length > 0 && Field(stream, "name") == name)).Take(2).ToList();
+  if (matches.Count != 1) return false;
+  await Play(matches[0], startPlaying: true);
+  return !switchError && !disposed;
  }
  static List<EpisodeSubtitle> ReadSubtitles(JsonElement item)=>Items(item,"subtitles")
-  .Where(x=>MediaUrl(Field(x,"url"))).Select(x=>new EpisodeSubtitle(Field(x,"lang"),Field(x,"url"))).ToList();
+  .Where(x=>MediaUrl(Field(x,"url"))).Select(x=>new EpisodeSubtitle(Field(x,"lang"),Field(x,"url"),Field(x,"label"),Field(x,"role"))).ToList();
  public void Dispose(){disposed=true;stop.Cancel();stop.Dispose();}
 }

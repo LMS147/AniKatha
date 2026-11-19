@@ -305,6 +305,11 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           expression: `(async () => {
             const video = document.querySelector('video');
             video.muted = true;
+            const speed = [...document.querySelectorAll('label')].find(x => x.textContent.trim().startsWith('Playback speed'))?.querySelector('select');
+            speed.value = '1.25';
+            speed.dispatchEvent(new Event('change', { bubbles: true }));
+            for (let i = 0; i < 50 && video.playbackRate !== 1.25; i++) await new Promise(resolve => setTimeout(resolve, 100));
+            if (video.playbackRate !== 1.25) throw new Error('Speed control did not change the offline video rate');
             await video.play();
             const checkpoint = Math.min(6, video.duration / 2);
             video.currentTime = checkpoint;
@@ -312,7 +317,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
               if (video.error) throw new Error('Media error ' + video.error.code);
               if (!video.seeking && video.currentTime >= checkpoint - 0.1) {
                 video.pause();
-                return true;
+                return video.currentTime;
               }
               await new Promise(resolve => setTimeout(resolve, 100));
             }
@@ -320,8 +325,26 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
               ', ready state ' + video.readyState + ', seekable ranges ' + video.seekable.length);
           })()`,
         }, 22000);
-        if (seek.result?.value !== true) throw new Error(seek.exceptionDetails?.exception?.description ?? 'Offline video seek failed.');
-        console.log('PASS: downloaded video played and sought in airplane mode.');
+        if (!Number.isFinite(seek.result?.value)) throw new Error(seek.exceptionDetails?.exception?.description ?? 'Offline video seek failed.');
+        const resume = await command('Runtime.evaluate', {
+          awaitPromise: true, returnByValue: true,
+          expression: `(async () => {
+            const pause = () => new Promise(resolve => setTimeout(resolve, 100));
+            document.querySelector('a[href="/library?view=downloads"]').click();
+            const open = () => [...document.querySelectorAll('.library-item')].find(x => x.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a');
+            for (let i = 0; i < 100 && !open(); i++) await pause();
+            open()?.click();
+            const expected = ${seek.result.value};
+            for (let i = 0; i < 150; i++) {
+              const video = document.querySelector('video');
+              if (video?.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - expected) < 0.25) return true;
+              await pause();
+            }
+            return false;
+          })()`,
+        }, 28000);
+        if (resume.result?.value !== true) throw new Error('Downloaded episode did not reopen at the saved timestamp.');
+        console.log('PASS: downloaded video played at the chosen speed, sought, and reopened at its saved timestamp in airplane mode.');
       } finally {
         adb('cmd', 'connectivity', 'airplane-mode', 'disable');
       }
