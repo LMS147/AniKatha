@@ -1,5 +1,8 @@
 @page "/manga/preview/chapter-1"
 @inject LocalStore Store
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
 
 <PageTitle>Read @Title · AniKatha</PageTitle>
 <header class="page-header reader-header">
@@ -12,12 +15,28 @@
 {
  <section class="manga-reader" aria-label="@ChapterLabel">
   <p class="reader-position" role="status">Page @currentPage of @PageCount</p>
-  <img class="reader-page" src="@PageUrl" alt="@(Pages==null ? MangaSample.PageDescriptions[currentPage-1] : $"Page {currentPage}")"/>
-  <div class="reader-controls">
-   <button type="button" class="secondary" disabled="@(currentPage == 1 || saving)" @onclick="() => MoveTo(currentPage - 1)">← Previous</button>
+  <label>Reading mode
+   <select value="@mode" @onchange="ChangeMode">
+    <option value="ltr">Left to right</option>
+    <option value="rtl">Right to left</option>
+    <option value="vertical">Vertical scrolling</option>
+   </select>
+  </label>
+  @if (mode == "vertical")
+  {
+   <div class="reader-stack" @ref="stack">
+    @for (var page = 1; page <= PageCount; page++)
+    {
+     <img class="reader-page" data-reader-page="@page" src="@PageUrl(page)" alt="@PageDescription(page)" loading="lazy" />
+    }
+   </div>
+  }
+  else { <img class="reader-page" src="@PageUrl(currentPage)" alt="@PageDescription(currentPage)" /> }
+  <div class="reader-controls @(mode == "rtl" ? "reader-rtl" : "")">
+   <button type="button" class="secondary" disabled="@(currentPage == 1 || saving)" @onclick="() => MoveTo(currentPage - 1)">@(mode == "rtl" ? "Previous →" : "← Previous")</button>
    @if (currentPage < PageCount)
    {
-    <button type="button" class="primary" disabled="@saving" @onclick="() => MoveTo(currentPage + 1)">Next page →</button>
+    <button type="button" class="primary" disabled="@saving" @onclick="() => MoveTo(currentPage + 1)">@(mode == "rtl" ? "← Next page" : "Next page →")</button>
    }
    else if (Pages is not null)
    {
@@ -50,7 +69,74 @@ else
  [Parameter] public string ChapterLabel {get;set;} = "Chapter 1";
  [Parameter] public IReadOnlyList<string>? Pages {get;set;}
  int PageCount => Pages?.Count ?? MangaSample.PageDescriptions.Count;
- string PageUrl => Pages?[currentPage-1] ?? $"_content/AniKatha.UI/manga/midnight-lighthouse-{currentPage}.webp";
+ string PageUrl(int page) => Pages?[page - 1] ?? $"_content/AniKatha.UI/manga/midnight-lighthouse-{page}.webp";
+ string PageDescription(int page) => Pages is null ? MangaSample.PageDescriptions[page - 1] : $"Page {page}";
+ string mode = "ltr";
+ bool tracking, disposed;
+ ElementReference stack;
+ IJSObjectReference? readerModule, pageObserver;
+ DotNetObjectReference<ReadMangaPreview>? callbacks;
+ Task initialization = Task.CompletedTask;
+ int? queuedPage;
+
+ Task ChangeMode(ChangeEventArgs args)
+ {
+  mode = args.Value?.ToString() switch { "vertical" => "vertical", "rtl" => "rtl", _ => "ltr" };
+  if (mode != "vertical") return StopObserving();
+  return Task.CompletedTask;
+ }
+
+ protected override Task OnAfterRenderAsync(bool firstRender)
+ {
+  if (disposed || !ready || mode != "vertical" || tracking) return Task.CompletedTask;
+  tracking = true;
+  return initialization = StartObserving();
+ }
+
+ async Task StartObserving()
+ {
+  try
+  {
+   readerModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AniKatha.UI/chapter-reader.mjs");
+   if (readerModule is null || mode != "vertical" || disposed) return;
+   callbacks ??= DotNetObjectReference.Create(this);
+   pageObserver = await readerModule.InvokeAsync<IJSObjectReference>("watchPages", stack, callbacks, currentPage);
+   if (mode != "vertical" || disposed) await StopObserving();
+  }
+  catch (JSDisconnectedException) { }
+ }
+
+ async Task StopObserving()
+ {
+  tracking = false;
+  if (pageObserver is null) return;
+  var observer = pageObserver;
+  pageObserver = null;
+  try { await observer.InvokeVoidAsync("dispose"); await observer.DisposeAsync(); }
+  catch (JSDisconnectedException) { }
+ }
+
+ [JSInvokable]
+ public Task ObservePage(int page)
+ {
+  if (disposed || mode != "vertical" || page < 1 || page > PageCount) return Task.CompletedTask;
+  return InvokeAsync(async () =>
+  {
+   if (saving) { queuedPage = page; return; }
+   await MoveTo(page, fromScroll: true);
+   StateHasChanged();
+  });
+ }
+
+ public async ValueTask DisposeAsync()
+ {
+  disposed = true;
+  await initialization;
+  await StopObserving();
+  try { if (readerModule is not null) await readerModule.DisposeAsync(); }
+  catch (JSDisconnectedException) { }
+  callbacks?.Dispose();
+ }
 
  protected override async Task OnInitializedAsync()
  {
@@ -85,9 +171,9 @@ else
   finally { saving = false; }
  }
 
- async Task MoveTo(int next)
+ async Task MoveTo(int next, bool fromScroll = false)
  {
-  if (saving || next < 1 || next > PageCount)
+  if (saving || next == currentPage || next < 1 || next > PageCount)
    return;
 
   saving = true;
@@ -95,6 +181,7 @@ else
   try
   {
    await Store.SaveReadingPageAsync(ChapterKey, next);
+   if (!fromScroll && pageObserver is not null) await pageObserver.InvokeVoidAsync("show", next);
    storageError = null;
   }
   catch
@@ -104,6 +191,11 @@ else
   finally
   {
    saving = false;
+  }
+  if (queuedPage is int queued)
+  {
+   queuedPage = null;
+   if (!disposed && mode == "vertical") await MoveTo(queued, fromScroll: true);
   }
  }
 }
