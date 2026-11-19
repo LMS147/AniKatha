@@ -30,7 +30,10 @@ Manga("Load more");
 manga.WaitForAssertion(()=>Check(manga.Markup.Contains("Second title"),"Append next page"));
 Manga("Load more");
 manga.WaitForAssertion(()=>Check(!manga.Markup.Contains("Load more"),"Repeated page stops"));
-Manga("Manga Story"); Manga("Chapter 7"); Manga("Read Chapter 7");
+Manga("Manga Story");
+manga.WaitForAssertion(()=>Check(manga.Markup.Contains("Under the sea") && manga.Markup.Contains("Release status"),"Optional manga detail metadata"));
+Check(!manga.Markup.Contains("0 chapters"),"Unknown count stays unknown");
+Manga("Chapter 7"); Manga("Read Chapter 7");
 manga.WaitForAssertion(()=>Check(manga.Find(".reader-page").GetAttribute("src")=="https://images.example/1.webp","Resolved chapter pages"));
 Manga("Next page →");
 manga.WaitForAssertion(()=>Check(manga.Find(".reader-page").GetAttribute("src")=="https://images.example/2.webp","Turn page"));
@@ -93,7 +96,7 @@ sealed class FixtureHandler : HttpMessageHandler
    var next=path.Contains("skip=");
    result=new{metas=new[]{new{id=next?"two":"one",type,name=next?"Second title":type=="anime"?"Anime Story":"Manga Story"}}};
   }
-  else if(path.EndsWith("/chapters/manga/one.json"))result=new{chapters=new[]{new{id="chapter-7",title="Chapter 7"}}};
+  else if(path.EndsWith("/chapters/manga/one.json"))result=new{meta=new{description="Under the sea",status="Ongoing"},chapters=new[]{new{id="chapter-7",title="Chapter 7"}}};
   else if(path.EndsWith("/pages/manga/chapter-7.json"))result=new{pages=new[]{"https://images.example/1.webp","https://images.example/2.webp"}};
   else if(path.EndsWith("/meta/anime/one.json"))result=new{meta=new{videos=new[]{new{id="episode-9",title="Episode 9"}}}};
   else if(path.EndsWith("/stream/anime/episode-9.json"))result=new{streams=new[]{new{name="Stream 9",url="https://video.example/9.mp4"}}};
