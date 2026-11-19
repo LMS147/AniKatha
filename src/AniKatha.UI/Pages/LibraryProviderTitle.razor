@@ -1,36 +1,82 @@
 @page "/library/title/{Id:int}"
 @inherits ProfileComponent
+@inject NavigationManager Navigation
 <a class="text-link" href="/library">← Library</a>
-@if(title!=null && source!=null)
+@if (title is { } item)
 {
- <ManifestCatalog @key="Id" Source="source" Catalog="catalog!" Providers="providers" InitialTitle="title"/>
+ <header class="page-header">
+  <span class="eyebrow">@TrackingDisplay.Mode(item)</span><h1>@item.Title</h1>
+  <p>@TrackingDisplay.Status(item.Status, item.Kind == "MANGA") · @TrackingDisplay.Progress(item, total)</p>
+  <a class="secondary" href="@($"/library/title/{item.Id}/tracking")">Edit tracking</a>
+ </header>
+ @if (source is not null)
+ {
+  <ManifestCatalog @key="Id" Source="source" Catalog="catalog!" Providers="providers" InitialTitle="title"/>
+ }
+ else if (TrackingDisplay.CanSync(item))
+ {
+  <TrackedTitleSources @key="Id" Title="title"/>
+ }
+ else
+ {
+  <p class="notice">This saved title’s source is unavailable. Enable or reinstall it in <a class="text-link" href="/profile/sources">Sources</a>.</p>
+ }
+ <section class="settings-card tracking-removal">
+  @if (confirmRemoval)
+  {
+   <p>Remove this title from your local Library? Watch and reading history will remain.</p>
+   <div class="settings-actions">
+    <button class="secondary" @onclick="() => confirmRemoval = false">Keep title</button>
+    <button class="secondary danger-action" disabled="@removing" @onclick="Remove">Remove title</button>
+   </div>
+  }
+  else { <button class="text-link danger-action" @onclick="() => confirmRemoval = true">Remove from library</button> }
+  @if (error is not null) { <p role="alert">@error</p> }
+ </section>
 }
-else if(title is { Id: > 0, ProviderKey: null })
-{
- <header class="page-header"><h1>@title.Title</h1><p>@title.Progress @(title.Kind == "MANGA" ? "chapters" : "episodes") tracked</p></header>
- <TrackedTitleSources @key="Id" Title="title" />
-}
-else if(loaded)
-{
- <p class="notice">This saved title’s source is unavailable. Enable or reinstall it in Profile.</p>
-}
+else if (loaded) { <p role="alert">@error</p> }
+else { <p role="status">Opening title…</p> }
+
 @code {
- [Parameter] public int Id {get;set;}
+ [Parameter] public int Id { get; set; }
  SavedTitle? title;
  AddonResources? source;
  AddonCatalog? catalog;
- List<AddonResources> providers=[];
- bool loaded;
+ List<AddonResources> providers = [];
+ int? total;
+ string? error;
+ bool loaded, confirmRemoval, removing;
+
  protected override async Task OnParametersSetAsync()
  {
-  var id=Id;
-  var item=(await Store.GetLibraryAsync()).FirstOrDefault(x=>x.Id==id);
-  var enabled=(await Store.GetAddonsAsync()).Select(x=>new AddonResources(x)).ToList();
-  if(id!=Id)return;
-  title=item;
-  providers=enabled;
-  source=enabled.FirstOrDefault(x=>x.ProviderKey==item?.ProviderKey);
-  catalog=item?.ResourceType is string type?new(type,"","",false,false):null;
-  loaded=true;
+  var id = Id;
+  loaded = confirmRemoval = false;
+  title = null;
+  error = null;
+  try
+  {
+   var item = await Store.FindSavedTitleAsync(id);
+   var enabled = (await Store.GetAddonsAsync()).Select(addon => new AddonResources(addon)).ToList();
+   var linked = ProfileAniList is { } account ? await account.CachedLinkAsync() : null;
+   var known = await Store.GetTrackingTotalAsync(linked?.Viewer.Id, id);
+   if (id != Id) return;
+   title = item;
+   total = known;
+   providers = enabled;
+   source = enabled.FirstOrDefault(provider => provider.ProviderKey == item?.ProviderKey);
+   catalog = item?.ResourceType is string type ? new(type, "", "", false, false) : null;
+   if (item is null) error = "This title is no longer in Library.";
+  }
+  catch { if (id == Id) error = "Could not open this title."; }
+  finally { if (id == Id) loaded = true; }
+ }
+
+ async Task Remove()
+ {
+  if (title is not { } item || removing) return;
+  removing = true;
+  try { await Store.RemoveAsync(item.Id); Navigation.NavigateTo("/library"); }
+  catch { error = "Could not remove this title. Try again."; }
+  finally { removing = false; }
  }
 }

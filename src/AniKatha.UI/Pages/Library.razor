@@ -1,139 +1,123 @@
 @page "/library"
 @inherits ProfileComponent
-@using System.Globalization
-<header class="page-header"><span class="eyebrow">STORIES YOU KEEP</span><h1>Library</h1><p>Your collection, always close.</p></header>
-<div class="tabs" role="group" aria-label="Library format">@foreach(var tab in new[]{"All","Anime","Manga","Favourites","Downloads"}){<button class="@(filter==tab?"selected":"")" @onclick="()=>filter=tab">@tab</button>}</div>
+@implements IDisposable
+<header class="page-header"><h1>Library</h1><p>Track your anime and manga, or pick up where you left off.</p></header>
+<div class="tabs tracking-tabs" role="group" aria-label="Library format">
+ @foreach(var tab in new[]{"All","Anime","Manga","Favourites","Downloads"})
+ { <button class="@(filter==tab?"selected":"")" aria-pressed="@(filter==tab)" @onclick="()=>filter=tab">@tab</button> }
+</div>
 @if (filter == "Downloads")
 {
  <DownloadShelf/>
 }
 else
 {
-@if(error is not null){<div class="notice" role="alert">@error</div>}
-@if (syncMessage is not null) { <p role="status">@syncMessage</p> }
-@if(loading){<p role="status">Opening your library…</p>}
-else if(!Visible.Any()){<div class="empty"><Icon Name="library"/><h2>A shelf full of possibilities</h2><p>Save titles from Anime or Manga. They’ll stay on this device even when you’re offline.</p><a class="primary" href="/anime">Find a story</a></div>}
-else{<div class="library-list">@foreach(var item in Visible){<article class="library-item" @key="item.Id">@if(item.Poster is not null){<img src="@item.Poster" alt="" loading="lazy"/>}<div><small class="eyebrow">@item.Kind</small><h3>@if(item.ProviderKey!=null){<a href="@($"/library/title/{item.Id}")">@item.Title →</a>}else{<a href="@($"/library/title/{item.Id}")">@item.Title →</a>}</h3>
-@if (IsAniList(item)) { <a class="text-link" href="@($"/library/title/{item.Id}")">Find Sources</a> }
-<button class="text-link" aria-pressed="@item.IsFavourite" @onclick="()=>Favourite(item)">@(item.IsFavourite?"Remove favourite":"Add to favourites")</button><label>Status<select value="@item.Status" @onchange="e=>UpdateStatus(item,e)"><option value="PLANNING">Planned</option><option value="CURRENT">In progress</option><option value="COMPLETED">Completed</option><option value="PAUSED">Paused</option><option value="REPEATING">Rewatching or rereading</option><option value="DROPPED">Dropped</option></select></label><div class="progress-control"><span>@item.Progress @(item.Kind=="ANIME"?"episodes":"chapters")</span><button aria-label="Decrease progress" disabled="@(item.Progress==0)" @onclick="()=>Progress(item,-1)">−</button><button aria-label="Increase progress" @onclick="()=>Progress(item,1)">+</button></div>@if (viewer is not null && IsAniList(item))
-{
- <label>AniList score (out of @scoreMaximum)
-  <input type="number" min="@scoreStep" max="@scoreMaximum" step="@scoreStep"
-   value="@scores.GetValueOrDefault(item.Id)?.ToString(CultureInfo.InvariantCulture)"
-   @onchange="args => UpdateScore(item, args)" />
- </label>
-}
-<button class="text-link" @onclick="()=>Remove(item)">Remove from library</button></div></article>}</div>}
-<ResumeHistory ShowRemove="true" MediaFilter="@filter"/>
-<p class="source-note">@(viewer is null ? "Stored on this device." : "AniList connected · Exact resume positions stay on this device.")</p>
+ @if(error is not null) { <div class="notice" role="alert">@error</div> }
+ @if (pending.Count > 0)
+ {
+  <p class="tracking-pending"><span aria-hidden="true">◷</span> Tracking changes waiting to sync.
+   <a class="text-link" href="/profile/anilist">@(link?.RequiresReconnect == true ? "Reconnect AniList" : "Manage sync")</a>
+  </p>
+ }
+ @if (loading)
+ {
+  <p role="status">Opening your library…</p>
+ }
+ else if (!Visible.Any())
+ {
+  <div class="empty"><Icon Name="library"/><h2>No @(filter == "All" ? "saved titles" : filter.ToLowerInvariant()) here yet</h2>
+   <p>Save titles from Anime or Manga, or import your AniList lists.</p><a class="primary" href="/anime">Find a story</a>
+  </div>
+ }
+ else
+ {
+  <div class="library-list">
+  @foreach (var item in Visible)
+  {
+   var titlePath = $"/library/title/{item.Id}";
+   <article class="library-item tracking-library-card" @key="item.Id">
+    @if (item.Poster is { } cover && AddonResources.MediaUrl(cover)) { <img src="@cover" alt="" loading="lazy"/> }
+    else { <div class="tracking-cover-placeholder" aria-hidden="true"><Icon Name="@(item.Kind == "MANGA" ? "book" : "play")"/></div> }
+    <div>
+     <small class="eyebrow">@TrackingDisplay.Mode(item)</small>
+     <h3><a href="@titlePath">@item.Title</a></h3>
+     <p class="tracking-line"><strong>@TrackingDisplay.Status(item.Status, item.Kind == "MANGA")</strong> · @TrackingDisplay.Progress(item, Total(item.Id))</p>
+     @if (pending.Contains(item.Id))
+     {
+      <p class="tracking-pending"><span aria-hidden="true">◷</span> Saved on this device · Waiting to sync</p>
+     }
+     else if (confirmed.Contains(item.Id))
+     {
+      <p class="tracking-line"><span aria-hidden="true">✓</span> Synced to AniList</p>
+     }
+     <div class="tracking-card-actions">
+      <a class="secondary" href="@($"{titlePath}/tracking")">Edit tracking</a>
+      <a class="text-link" href="@titlePath">Find Sources</a>
+      <button class="text-link" aria-pressed="@item.IsFavourite" @onclick="()=>Favourite(item)">@(item.IsFavourite ? "Remove favourite" : "Add to favourites")</button>
+     </div>
+    </div>
+   </article>
+  }
+  </div>
+ }
+ <ResumeHistory ShowRemove="true" MediaFilter="@filter"/>
 }
 @code {
  [SupplyParameterFromQuery(Name = "view")] public string? View { get; set; }
+ string filter = "All";
+ string? error;
+ bool loading = true, disposed;
+ long revision;
+ AniListLink? link;
+ List<SavedTitle> items = [];
+ IReadOnlySet<int> pending = new HashSet<int>(), confirmed = new HashSet<int>();
+ IReadOnlyDictionary<int, int> totals = new Dictionary<int, int>();
+ IEnumerable<SavedTitle> Visible => items.Where(x => filter == "Favourites" ? x.IsFavourite : filter == "All" || x.Kind == filter.ToUpperInvariant());
+ int? Total(int id) => totals.TryGetValue(id, out var known) ? known : null;
 
  protected override void OnParametersSet()
  {
   if (View == "downloads") filter = "Downloads";
  }
 
- List<SavedTitle> items=[];string filter="All";string? error;bool loading=true;
- IEnumerable<SavedTitle> Visible=>items.Where(x=>filter=="Favourites"?x.IsFavourite:filter=="All"||x.Kind==filter.ToUpperInvariant());
- string? syncMessage;
- AniListAccount? tracking;
- AniListViewer? viewer;
- double scoreMaximum, scoreStep;
- readonly Dictionary<int, double?> scores = new();
- static bool IsAniList(SavedTitle item) => item.Id > 0 && item.ProviderKey is null;
-
  protected override async Task OnInitializedAsync()
  {
+  Store.AniListChanged += Changed;
+  await Load();
+ }
+
+ async Task Load()
+ {
+  var request = ++revision;
   try
   {
-   items = await Store.GetLibraryAsync();
-   tracking = ProfileAniList;
-   viewer = tracking is null ? null : await tracking.StoredViewerAsync();
-   if (viewer is not null)
-   {
-    (scoreMaximum, scoreStep) = AniListAccount.ScoreScale(viewer.ScoreFormat);
-    await UpdateSyncMessage();
-    foreach (var entry in items.Where(IsAniList))
-     scores[entry.Id] = await Store.GetAniListScoreAsync(viewer.Id, entry.Id, viewer.ScoreFormat);
-   }
+   var found = await Store.GetLibraryAsync();
+   if (disposed || revision != request) return;
+   items = found;
+   var active = ProfileAniList is { } account ? await account.CachedLinkAsync() : null;
+   var pendingIds = active is null ? new HashSet<int>() : (await Store.AniListEditsAsync(active.Viewer.Id)).Select(edit => edit.MediaId).ToHashSet();
+   var acknowledged = active is null ? new HashSet<int>() : await Store.ConfirmedTrackingTitlesAsync(active.Viewer.Id);
+   var knownTotals = await Store.TrackingTotalsAsync(active?.Viewer.Id);
+   if (!disposed && revision == request) (link, pending, confirmed, totals) = (active, pendingIds, acknowledged, knownTotals);
   }
-  catch { error = "Some library information could not be loaded."; }
-  finally { loading = false; }
+  catch { if (!disposed && revision == request) error = "Some Library information could not be loaded."; }
+  finally { if (!disposed && revision == request) loading = false; }
  }
-
- async Task UpdateScore(SavedTitle item, ChangeEventArgs args)
+ void Changed() => _ = InvokeAsync(async () =>
  {
-  if (viewer is null || !IsAniList(item)) return;
-  var value = args.Value?.ToString() ?? "";
-  var score = 0d;
-  if (value.Length > 0 && (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out score) ||
-      !double.IsFinite(score) || score < scoreStep || score > scoreMaximum || Math.Abs(score / scoreStep - Math.Round(score / scoreStep)) > 0.001))
-  {
-   error = "Enter a score on your AniList scale or leave it blank.";
-   return;
-  }
+  if (disposed) return;
+  await Load();
+  if (!disposed) StateHasChanged();
+ });
+
+ async Task Favourite(SavedTitle item)
+ {
   try
   {
-   await Store.QueueAniListEditAsync(viewer.Id, item.Id, "score", score.ToString(CultureInfo.InvariantCulture), viewer.ScoreFormat);
-   scores[item.Id] = score > 0 ? score : null;
-   await Sync(item);
+   await Store.SetFavouriteAsync(item.Id, !item.IsFavourite);
+   item.IsFavourite = !item.IsFavourite;
   }
-  catch { error = "Could not save this score."; }
+  catch { error = "Could not save favourite."; }
  }
-
- async Task UpdateSyncMessage()
- {
-  if (viewer is null) return;
-  var pending = await Store.AniListEditsAsync(viewer.Id);
-  syncMessage = pending.Count == 0 ? "AniList changes synced." : pending.Any(x => x.Failed)
-   ? $"{pending.Count} AniList changes saved locally. Retry from Profile." : $"{pending.Count} AniList changes pending.";
- }
-
- async Task Sync(SavedTitle item)
- {
-  if (tracking is null || viewer is null || !IsAniList(item)) return;
-  try
-  {
-   await UpdateSyncMessage();
-   await tracking.SyncPendingAsync(Store);
-   await UpdateSyncMessage();
-  }
-  catch { syncMessage = "AniList changes are saved locally. Retry from Profile."; }
- }
-
- async Task Favourite(SavedTitle item){item.IsFavourite=!item.IsFavourite;try{await Store.SaveAsync(item);}catch{item.IsFavourite=!item.IsFavourite;error="Could not save favourite.";}}
-
- async Task UpdateStatus(SavedTitle item, ChangeEventArgs e)
- {
-  var previous = item.Status;
-  item.Status = e.Value?.ToString() ?? "PLANNING";
-  try
-  {
-   if (viewer is not null && IsAniList(item))
-    await Store.QueueAniListEditAsync(viewer.Id, item.Id, "status", item.Status);
-   else await Store.SaveAsync(item);
-   error = null;
-   await Sync(item);
-  }
-  catch { item.Status = previous; error = "Could not save the change."; }
- }
-
- async Task Progress(SavedTitle item, int delta)
- {
-  var previous = item.Progress;
-  item.Progress = Math.Max(0, item.Progress + delta);
-  var value = item.Progress.ToString(CultureInfo.InvariantCulture);
-  try
-  {
-   if (viewer is not null && IsAniList(item))
-    await Store.QueueAniListEditAsync(viewer.Id, item.Id, "progress", value);
-   else await Store.SaveAsync(item);
-   error = null;
-   await Sync(item);
-  }
-  catch { item.Progress = previous; error = "Could not save progress."; }
- }
- async Task Remove(SavedTitle item){try{await Store.RemoveAsync(item.Id);items.Remove(item);error=null;}catch{error="Could not remove this title.";}}
+ public void Dispose() { disposed = true; Store.AniListChanged -= Changed; }
 }

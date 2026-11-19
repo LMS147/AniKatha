@@ -56,8 +56,27 @@ public sealed partial class LocalStore
     ExternalId=externalId, Poster=poster, ResourceType=type, UpdatedAt=DateTime.UtcNow });
   });
  }
- public Task SaveAsync(Media title) => SaveAsync(new SavedTitle { Id=title.Id, Kind=title.Kind, Title=title.Title, Poster=title.Poster });
- public async Task RemoveAsync(int id) { await ReadyAsync(); await db.DeleteAsync<SavedTitle>(id); }
+ public async Task SaveAsync(Media title)
+ {
+  await SaveAsync(new SavedTitle { Id=title.Id, Kind=title.Kind, Title=title.Title, Poster=title.Poster });
+  if ((title.Kind == "MANGA" ? title.Chapters : title.Episodes) is int total && total > 0)
+   await SetSettingAsync(AniListKnownTotalKey(title.Id), total.ToString(CultureInfo.InvariantCulture));
+ }
+ public async Task<SavedTitle?> FindSavedTitleAsync(int id) { await ReadyAsync(); return await db.FindAsync<SavedTitle>(id); }
+ public async Task SetFavouriteAsync(int id, bool value)
+ {
+  await ReadyAsync();
+  await db.ExecuteAsync("UPDATE SavedTitle SET IsFavourite=?, UpdatedAt=? WHERE Id=?", value, DateTime.UtcNow.Ticks, id);
+ }
+ public async Task RemoveAsync(int id)
+ {
+  await ReadyAsync();
+  await db.RunInTransactionAsync(connection =>
+  {
+   connection.Delete<SavedTitle>(id);
+   connection.Execute("DELETE FROM AppSetting WHERE Key LIKE ?", $"anilist:%:confirmed:{id}");
+  });
+ }
  public async Task<List<InstalledAddon>> GetAddonsAsync(bool includeDisabled = false)
  {
   await ReadyAsync();

@@ -298,18 +298,47 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
               const image = document.querySelector('.reader-page');
               return image?.naturalWidth > 0 && image.src.includes('/offline-media/') && /page-0002/.test(image.src);
             }, 'Downloaded chapter did not load its saved page in airplane mode');
-            (await wait(() => document.querySelector('a[href="/library?view=downloads"]'), 'Downloads link')).click();
-            (await wait(() => open('Big Buck Bunny'), 'Downloaded video was not listed')).click();
-            const video = await wait(() => {
-              const media = document.querySelector('video');
-              return media?.dataset.offlineSource?.includes('offline-media/') && media.readyState >= 2 && media;
-            }, 'Video frame did not load in airplane mode');
-            return { duration: video.duration, readyState: video.readyState };
-
+            const button = name => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === name && !b.disabled);
+            (await wait(() => button('Next page →'), 'Next downloaded page')).click();
+            await wait(() => document.querySelector('.reader-page')?.naturalWidth > 0 &&
+              document.querySelector('.reader-position')?.textContent === 'Page 3 of 3', 'Last downloaded page');
+            (await wait(() => button('Mark chapter read'), 'Complete downloaded chapter')).click();
+            const feedback = await wait(() => {
+              const message = document.querySelector('.tracking-feedback');
+              return message?.textContent.includes('no verified AniList match') && message;
+            }, 'Local-only completion feedback');
+            feedback.scrollIntoView({block:'center'});
+            return true;
           })()`,
         }, 115000);
-        if (!offline.result?.value) throw new Error(offline.exceptionDetails?.exception?.description ?? 'Offline media failed.');
-        console.log('PASS: downloaded manga restored its exact page and a downloaded video frame loaded in airplane mode.');
+        if (offline.result?.value !== true) throw new Error(offline.exceptionDetails?.exception?.description ?? 'Offline manga failed.');
+        const readerScreenshot = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
+        await writeFile('artifacts/startup/anilist-reader-feedback-android.png', readerScreenshot);
+        console.log('PASS: downloaded manga restored its exact page and explains local-only completion in airplane mode.');
+
+        const offlineVideo = await command('Runtime.evaluate', {
+          awaitPromise: true, returnByValue: true,
+          expression: `(async () => {
+            async function wait(find, label) {
+              for (let i = 0; i < 200; i++) {
+                const value = find();
+                if (value) return value;
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              throw new Error(label);
+            }
+            (await wait(() => document.querySelector('a[href="/library?view=downloads"]'), 'Downloads link')).click();
+            const open = await wait(() => [...document.querySelectorAll('.library-item')].find(x =>
+              x.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a'), 'Downloaded video');
+            open.click();
+            await wait(() => {
+              const media = document.querySelector('video');
+              return media?.dataset.offlineSource?.includes('offline-media/') && media.readyState >= 2;
+            }, 'Video frame did not load in airplane mode');
+            return true;
+          })()`,
+        }, 65000);
+        if (offlineVideo.result?.value !== true) throw new Error(offlineVideo.exceptionDetails?.exception?.description ?? 'Offline video failed.');
         const seek = await command('Runtime.evaluate', {
           awaitPromise: true, returnByValue: true, userGesture: true,
           expression: `(async () => {
@@ -363,6 +392,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
       for (const [scene, label] of [
         ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
         ['appearance', 'appearance'], ['sources', 'sources'],
+        ['anilist', 'anilist-account-android'], ['tracking-editor', 'anilist-editor-android'],
       ]) {
         const result = await command('Runtime.evaluate', {
           expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
@@ -373,7 +403,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
         await writeFile('artifacts/startup/' + label + '.png', image);
       }
-      console.log('PASS: created and switched profiles, verified source and appearance isolation, and captured the four screens.');
+      console.log('PASS: created and switched profiles, verified source and appearance isolation, and captured the profile and tracking screens.');
     }
   } finally {
     socket.close();
@@ -435,6 +465,32 @@ async function verifyProfileScene(scene) {
       return card?.querySelector('strong')?.textContent === 'AniKatha Story Sampler' && card;
     }, 'Restored original sources');
     row.scrollIntoView({ block: 'center' });
+  } else if (scene === 'anilist') {
+    document.querySelector('.bottom-nav a[href="/profile"]').click();
+    await open('/profile/anilist');
+    await heading('AniList');
+    await wait(() => document.querySelector('.tracking-account h2')?.textContent === 'AniList account', 'Disconnected AniList account');
+  } else if (scene === 'tracking-editor') {
+    document.querySelector('.bottom-nav a[href="/anime"]').click();
+    await click('Big Buck Bunny');
+    await click('Save to library');
+    await wait(() => [...document.querySelectorAll('button')].some(button =>
+      button.disabled && button.textContent.trim() === 'Saved to library'), 'Saved title confirmation');
+    document.querySelector('.bottom-nav a[href="/library"]').click();
+    const editor = await wait(() => [...document.querySelectorAll('.tracking-library-card')].find(card =>
+      card.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a[href$="/tracking"]'), 'Library tracking editor link');
+    editor.click();
+    await heading('Edit tracking');
+    await wait(() => document.querySelector('.tracking-editor input[inputmode="numeric"]'), 'Completed count editor');
+    const status = document.querySelector('.tracking-editor select');
+    status.value = 'CURRENT';
+    status.dispatchEvent(new Event('change', { bubbles:true }));
+    const count = document.querySelector('.tracking-editor input[inputmode="numeric"]');
+    count.value = '1';
+    count.dispatchEvent(new Event('input', { bubbles:true }));
+    await click('Save tracking');
+    await wait(() => document.querySelector('.tracking-editor')?.textContent.includes('Saved on this device.'), 'Local save confirmation');
+
   }
   return true;
 }

@@ -7,6 +7,7 @@
  <p class="muted">@Item.Year · @(Item.Score is null ? "Unrated" : $"{Item.Score / 10.0}/10") · @(Item.Kind=="ANIME" ? $"{Item.Episodes?.ToString()??"?"} episodes" : $"{Item.Chapters?.ToString()??"?"} chapters")</p>
  <div class="chips">@foreach(var genre in Item.Genres){<span>@genre</span>}</div>
  <p>@Item.Description</p><button class="primary" @onclick="Save" disabled="@saved">@(saved?"Saved to library":"Save to library")</button>
+ @if (saved) { <a class="secondary" href="@($"/library/title/{Item.Id}/tracking")">Edit tracking</a> }
  @if(error is not null){<p role="alert">@error</p>}
  @if(Item.Kind == "ANIME")
  {
@@ -22,8 +23,21 @@
  [Parameter] public Media? Item {get;set;}
  [Parameter] public EventCallback Closed {get;set;}
  int lastId; bool saved; string? error;
- protected override void OnParametersSet(){if(Item?.Id!=lastId){saved=false;error=null;lastId=Item?.Id??0;}}
+ protected override async Task OnParametersSetAsync()
+ {
+  if (Item?.Id == lastId) return;
+  saved = false;
+  error = null;
+  var id = lastId = Item?.Id ?? 0;
+  if (id == 0) return;
+  try
+  {
+   var found = await Store.FindSavedTitleAsync(id);
+   if (lastId == id) saved = found is not null;
+  }
+  catch { }
+ }
  Task Close()=>Closed.InvokeAsync();
  async Task HandleKey(KeyboardEventArgs e){if(e.Key=="Escape")await Close();}
- async Task Save(){try{if(Item is not null){var existing=(await Store.GetLibraryAsync()).FirstOrDefault(x=>x.Id==Item.Id);if(existing is null)await Store.SaveAsync(Item);saved=true;}}catch{error="Could not save this title. Try again.";}}
+ async Task Save(){try{if(Item is not null){var existing=await Store.FindSavedTitleAsync(Item.Id);if(existing is null)await Store.SaveAsync(Item);saved=true;}}catch{error="Could not save this title. Try again.";}}
 }

@@ -80,7 +80,7 @@
   @if (recoveryMessage is not null) { <p>@recoveryMessage</p> }
  </div>
 }
-@if (completionMessage is not null) { <p role="status">@completionMessage</p> }
+@if (completionMessage is not null) { <p class="tracking-feedback" role="status">@completionMessage</p> }
 @if (progressError)
 {
  <p class="notice" role="status">Your playback position couldn’t be saved.</p>

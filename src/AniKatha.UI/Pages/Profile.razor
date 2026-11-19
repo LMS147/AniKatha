@@ -30,8 +30,8 @@
  {
   try
   {
-   if (ProfileAniList is { } account && await account.StoredViewerAsync() is { } viewer)
-    accountStatus = $"Connected as {viewer.Name}";
+   if (ProfileAniList is { } account && await account.CachedLinkAsync() is { } link)
+    accountStatus = link.RequiresReconnect ? $"Reconnect {link.Viewer.Name}" : $"Connected as {link.Viewer.Name}";
   }
   catch { accountStatus = "Could not check account"; }
  }

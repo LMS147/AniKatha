@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace AniKatha.Core;
 
-public sealed record AniListListEntry(int MediaId, string Kind, string Title, string? Poster, string Status, int Progress, double? Score, string ScoreFormat = "POINT_100");
+public sealed record AniListListEntry(int MediaId, string Kind, string Title, string? Poster, string Status, int Progress, double? Score, string ScoreFormat = "POINT_100", int? Total = null);
 
 public sealed partial class AniListAccount
 {
@@ -25,7 +25,7 @@ public sealed partial class AniListAccount
                             pageInfo { hasNextPage }
                             mediaList(userId: $viewerId, type: $kind, sort: [MEDIA_ID]) {
                               mediaId status progress score(format: $scoreFormat)
-                              media { id type title { userPreferred } coverImage { large } }
+                              media { id type episodes chapters title { userPreferred } coverImage { large } }
                             }
                           }
                         }
@@ -44,6 +44,7 @@ public sealed partial class AniListAccount
                     if (!list.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean()) break;
                 }
             }
+            await store.RecordAniListImportAsync(viewerId, imported);
             return imported;
         }, token);
 
@@ -98,9 +99,12 @@ public sealed partial class AniListAccount
     {
         var media = entry.GetProperty("media");
         var score = entry.GetProperty("score");
-        return new(entry.GetProperty("mediaId").GetInt32(), media.GetProperty("type").GetString()!,
+        var kind = media.GetProperty("type").GetString()!;
+        var total = media.TryGetProperty(kind == "MANGA" ? "chapters" : "episodes", out var value) &&
+            value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var count) && count > 0 ? (int?)count : null;
+        return new(entry.GetProperty("mediaId").GetInt32(), kind,
             media.GetProperty("title").GetProperty("userPreferred").GetString()!,
             AddonResources.Field(media.GetProperty("coverImage"), "large"), entry.GetProperty("status").GetString()!,
-            entry.GetProperty("progress").GetInt32(), score.ValueKind == JsonValueKind.Number && score.GetDouble() > 0 ? score.GetDouble() : null, scoreFormat);
+            entry.GetProperty("progress").GetInt32(), score.ValueKind == JsonValueKind.Number && score.GetDouble() > 0 ? score.GetDouble() : null, scoreFormat, total);
     }
 }

@@ -70,6 +70,7 @@ public sealed partial class LocalStore
             connection.InsertOrReplace(new AppSetting { Key = key, Value = JsonSerializer.Serialize(edit) });
             queued = true;
         });
+        if (queued) NotifyAniListChanged();
         return queued;
     }
 }

@@ -1,0 +1,211 @@
+@page "/library/title/{Id:int}/tracking"
+@inherits ProfileComponent
+@implements IDisposable
+@using System.Globalization
+<a class="text-link" href="@($"/library/title/{Id}")">← Title details</a>
+<section class="settings-screen tracking-editor">
+ <header class="page-header"><h1>Edit tracking</h1></header>
+ @if (loading) { <p role="status">Opening tracking details…</p> }
+ else if (title is null)
+ {
+  <p role="alert">@message</p><a class="secondary" href="/library">Back to Library</a>
+ }
+ else
+ {
+  <section class="settings-card">
+   <div class="tracking-editor-title"><span class="eyebrow">@TrackingDisplay.Mode(title)</span><h2>@title.Title</h2>
+    <p>@TrackingDisplay.Progress(title, total)</p></div>
+   @if (pending > 0)
+   {
+    <p class="tracking-pending" role="status"><span aria-hidden="true">◷</span> Saved on this device · Waiting to sync
+     <a class="text-link" href="/profile/anilist">@(link?.RequiresReconnect == true ? "Reconnect AniList" : "Manage sync")</a>
+    </p>
+   }
+   else if (acknowledged)
+   {
+    <p class="tracking-badge" role="status"><span aria-hidden="true">✓</span> Synced to AniList</p>
+   }
+   @if (LinkEligible && link is null)
+   {
+    <p class="muted">Changes stay on this device. <a class="text-link" href="/profile/anilist">Connect AniList</a> to sync future edits and set a score.</p>
+   }
+   else if (!LinkEligible)
+   {
+    <p class="muted">This source title’s tracking stays on this device.</p>
+   }
+   <form novalidate @onsubmit="Save" @onsubmit:preventDefault>
+    <fieldset class="choice-field" disabled="@saving">
+     <label>Status
+      <select @bind="status">
+       @foreach (var option in Statuses) { <option value="@option">@TrackingDisplay.Status(option, title.Kind == "MANGA")</option> }
+      </select>
+     </label>
+     <label>
+      @(title.Kind == "MANGA" ? "Chapters read" : "Episodes watched")
+      <input type="number" inputmode="numeric" min="0" max="@MaxProgress" step="1" @bind="progress" @bind:event="oninput"
+             aria-invalid="@(progressError is not null)" aria-describedby="tracking-progress-help" />
+     </label>
+     <p id="tracking-progress-help" class="@(progressError is null ? "muted" : "field-error")" role="@(progressError is null ? null : "alert")">
+      @(progressError ?? (total is int known ? $"Total available on AniList: {known} {TrackingDisplay.Units(title)}." : "The total is unknown."))
+     </p>
+     <button type="button" class="text-link" @onclick='() => progress = "0"'>Reset completed count to zero</button>
+     @if (scoreScale is { } scale)
+     {
+      <label>AniList score (out of @scale.Maximum)
+       <input type="number" inputmode="decimal" step="@scale.Step.ToString(CultureInfo.InvariantCulture)"
+              min="@scale.Step.ToString(CultureInfo.InvariantCulture)" max="@scale.Maximum" @bind="score" @bind:event="oninput"
+              aria-invalid="@(scoreError is not null)" aria-describedby="tracking-score-help" />
+      </label>
+      <p id="tracking-score-help" class="@(scoreError is null ? "muted" : "field-error")" role="@(scoreError is null ? null : "alert")">
+       @(scoreError ?? "Leave the score blank to keep it unset.")
+      </p>
+     }
+    </fieldset>
+    @if (confirmDecrease)
+    {
+     <p class="notice">Save the lower completed count? Your exact watch time or reading page stays on this device.</p>
+    }
+    @if (message is not null) { <p role="@(failed ? "alert" : "status")">@message</p> }
+    <div class="settings-actions">
+     @if (confirmDecrease)
+     {
+      <button type="button" class="primary" disabled="@saving" @onclick="ConfirmDecrease">Confirm lower count</button>
+      <button type="button" class="secondary" @onclick="() => confirmDecrease = false">Keep editing</button>
+     }
+     else { <button class="primary" type="submit" disabled="@saving">@(saving ? "Saving…" : "Save tracking")</button> }
+     <a class="secondary" href="@($"/library/title/{Id}")">Cancel</a>
+    </div>
+   </form>
+  </section>
+ }
+</section>
+@code {
+ [Parameter] public int Id { get; set; }
+ static readonly string[] Statuses = ["PLANNING", "CURRENT", "COMPLETED", "PAUSED", "REPEATING", "DROPPED"];
+ SavedTitle? title;
+ AniListLink? link;
+ (double Maximum, double Step)? scoreScale;
+ double? originalScore;
+ int? total;
+ string status = "PLANNING", progress = "", score = "";
+ string? message, progressError, scoreError;
+ bool loading = true, saving, failed, confirmDecrease, acknowledged, disposed;
+ int pending;
+ long revision;
+ bool LinkEligible => title is { } item && TrackingDisplay.CanSync(item);
+ int? MaxProgress => total is int known ? Math.Max(known, title?.Progress ?? 0) : null;
+
+ protected override void OnInitialized() => Store.AniListChanged += Changed;
+
+ protected override async Task OnParametersSetAsync()
+ {
+  var request = Id;
+  title = null;
+  loading = true;
+  message = null;
+  try
+  {
+   var item = await Store.FindSavedTitleAsync(request);
+   if (request != Id || disposed) return;
+   title = item;
+   if (item is null) { message = "This title is no longer in Library."; return; }
+   await ReadSyncState();
+   if (request != Id || disposed) return;
+   total = await Store.GetTrackingTotalAsync(link?.Viewer.Id, item.Id);
+   scoreScale = null;
+   originalScore = null;
+   if (LinkEligible && link is { } active)
+   {
+    try { scoreScale = AniListAccount.ScoreScale(active.Viewer.ScoreFormat); }
+    catch (InvalidOperationException) { message = "This account’s score scale is unavailable. You can still edit status and progress."; }
+    originalScore = await Store.GetAniListScoreAsync(active.Viewer.Id, item.Id, active.Viewer.ScoreFormat);
+   }
+   status = item.Status;
+   progress = item.Progress.ToString(CultureInfo.InvariantCulture);
+   score = originalScore?.ToString(CultureInfo.InvariantCulture) ?? "";
+  }
+  catch { if (!disposed && request == Id) message = "Could not open tracking details."; }
+  finally { if (!disposed && request == Id) loading = false; }
+ }
+
+ async Task ReadSyncState()
+ {
+  var request = ++revision;
+  var itemId = Id;
+  var current = LinkEligible && ProfileAniList is { } account ? await account.CachedLinkAsync() : null;
+  var count = current is null ? 0 : (await Store.AniListEditsAsync(current.Viewer.Id)).Count(edit => edit.MediaId == itemId);
+  var synced = current is not null && count == 0 && await Store.HasAcknowledgedTrackingAsync(current.Viewer.Id, itemId);
+  if (!disposed && request == revision && itemId == Id) (link, pending, acknowledged) = (current, count, synced);
+ }
+
+ Task ConfirmDecrease() => SaveChanges(true);
+ Task Save() => SaveChanges(false);
+ async Task SaveChanges(bool allowDecrease)
+ {
+  if (saving || title is not { } item) return;
+  failed = false;
+  message = progressError = scoreError = null;
+  if (!int.TryParse(progress, NumberStyles.None, CultureInfo.InvariantCulture, out var count) ||
+      count < 0 || MaxProgress is int max && count > max)
+   progressError = MaxProgress is int ceiling ? $"Enter a whole number from 0 to {ceiling}." : "Enter a whole number of 0 or more.";
+  double? nextScore = null;
+  if (scoreScale is { } scale && !string.IsNullOrWhiteSpace(score))
+  {
+   if (!double.TryParse(score, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ||
+       !double.IsFinite(number) || number < scale.Step || number > scale.Maximum ||
+       Math.Abs(number / scale.Step - Math.Round(number / scale.Step)) > .001)
+    scoreError = $"Enter a score between {scale.Step} and {scale.Maximum} in steps of {scale.Step}, or leave it blank.";
+   else nextScore = number;
+  }
+  if (progressError is not null || scoreError is not null) return;
+  if (count < item.Progress && !allowDecrease) { confirmDecrease = true; return; }
+  confirmDecrease = false;
+  var selectedStatus = status;
+  var edits = new Dictionary<string, string>();
+  if (selectedStatus != item.Status) edits["status"] = selectedStatus;
+  if (count != item.Progress) edits["progress"] = count.ToString(CultureInfo.InvariantCulture);
+  if (scoreScale is not null && nextScore != originalScore) edits["score"] = (nextScore ?? 0).ToString(CultureInfo.InvariantCulture);
+  if (edits.Count == 0) { message = "No changes to save."; return; }
+  saving = true;
+  var stored = false;
+  try
+  {
+   if (LinkEligible && link is { } active)
+    await Store.QueueAniListEditsAsync(active.Viewer.Id, item.Id, edits, active.Viewer.ScoreFormat);
+   else
+    await Store.SaveLocalTrackingAsync(item.Id, edits.GetValueOrDefault("status"), edits.ContainsKey("progress") ? count : null);
+   stored = true;
+   if (disposed || item.Id != Id) return;
+   item.Status = selectedStatus;
+   item.Progress = count;
+   originalScore = nextScore;
+   message = link is null ? "Saved on this device." : null;
+   await ReadSyncState();
+   if (link is { RequiresReconnect: false } && ProfileAniList is { } account)
+   {
+    await InvokeAsync(StateHasChanged);
+    await account.SyncPendingAsync(Store);
+    await ReadSyncState();
+   }
+  }
+  catch
+  {
+   failed = !stored;
+   message = stored ? "Saved on this device. Open AniList settings to check sync." : "Could not save these changes. Your draft is ready to retry.";
+   if (stored && !disposed)
+   {
+    try { await ReadSyncState(); }
+    catch { }
+   }
+  }
+  finally { saving = false; }
+ }
+ void Changed() => _ = InvokeAsync(async () =>
+ {
+  if (disposed) return;
+  try { await ReadSyncState(); }
+  catch { return; }
+  if (!disposed) StateHasChanged();
+ });
+ public void Dispose() { disposed = true; Store.AniListChanged -= Changed; }
+}

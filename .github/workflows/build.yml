@@ -21,6 +21,25 @@ jobs:
       - run: dotnet build src/AniKatha.Preview/AniKatha.Preview.csproj -c Release
       - run: dotnet run --project tests/AniKatha.Checks -c Release
       - run: dotnet run --project tests/AniKatha.UiChecks -c Release
+        env:
+          ANIKATHA_TRACKING_CAPTURE_DIRECTORY: ${{ runner.temp }}/tracking-ui
+      - name: Capture the connected and pending tracking fixtures
+        shell: bash
+        run: |
+          mkdir -p artifacts/tracking-ui
+          cp src/AniKatha.UI/wwwroot/app.css "$RUNNER_TEMP/tracking-ui/"
+          for name in anilist-disconnected anilist-connected anilist-editor anilist-pending; do
+            google-chrome --headless --no-sandbox --disable-gpu --hide-scrollbars \
+              --window-size=420,930 --user-data-dir="$RUNNER_TEMP/chrome-$name" \
+              --screenshot="$PWD/artifacts/tracking-ui/$name.png" \
+              "file://$RUNNER_TEMP/tracking-ui/$name.html"
+            test -s "artifacts/tracking-ui/$name.png"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AniKatha-tracking-fixture-screenshots
+          path: artifacts/tracking-ui
+          if-no-files-found: error
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
