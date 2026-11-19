@@ -1,3 +1,6 @@
+import { attachControls } from './player-presentation.mjs';
+export { focusPlayerPanel, focusPlayerMenu, focusSourcePicker, revealPlayer } from './player-presentation.mjs';
+
 const cueTiming = /^(\s*)((?:\d{2,}:)?\d{2}:\d{2}\.\d{3})(\s+-->\s+)((?:\d{2,}:)?\d{2}:\d{2}\.\d{3})(.*)$/;
 
 function cueMilliseconds(stamp) {
@@ -35,7 +38,7 @@ export function placeSubtitles(cues, placement, offset = 0) {
 let sessionOwner;
 
 export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1,
-  startPlaying = false, offlineFile = false, title = '', episode = '', pipButton = null) {
+  startPlaying = false, offlineFile = false, title = '', episode = '', pipButton = null, stage = null) {
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
   let ready = false;
@@ -217,6 +220,14 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
     sidecar = undefined;
     subtitleUrl = undefined;
   }
+  function seekTo(seconds) {
+    if (!ready || !Number.isFinite(seconds) || !Number.isFinite(video.duration)) return;
+    const next = Math.max(0, Math.min(video.duration, seconds));
+    soughtToEnd = next >= video.duration;
+    video.currentTime = next;
+  }
+
+  attachControls(stage, video, seekTo, listeners.signal);
   if (useLocalBlob) void loadMediaBlob();
   else video.src = url;
 
@@ -227,8 +238,7 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
       return save(true);
     },
     seek(seconds) {
-      if (!ready || !Number.isFinite(seconds) || !Number.isFinite(video.duration)) return;
-      video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+      seekTo(video.currentTime + seconds);
     },
     setSpeed(value) {
       if (!Number.isFinite(value) || value < 0.5 || value > 2) return;
@@ -243,8 +253,9 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
     selectAudio(id) {
       const tracks = availableAudio();
       const selected = tracks.find(track => trackId(track) === id);
-      if (!selected) return;
+      if (!selected) return false;
       for (const track of tracks) track.enabled = track === selected;
+      return selected.enabled;
     },
     setSubtitle(language, cues, placement, offset = 0, version = 0) {
       selectedSubtitle = '';

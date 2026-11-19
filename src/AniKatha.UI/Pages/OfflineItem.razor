@@ -1,7 +1,7 @@
 @page "/library/download/{Id}"
 @inherits ProfileComponent
 
-<a class="text-link" href="/library?view=downloads">← Downloads</a>
+@if (job?.Selection.Type != "anime") { <a class="text-link" href="/library?view=downloads">← Downloads</a> }
 @if (job?.Assets is { Count: > 0 } assets)
 {
  var selection = job.Selection;
@@ -15,7 +15,7 @@
  else
  {
   <WatchPreview @key="job.Id" EpisodeKey="@selection.ProgressKey" VideoUrl="@AssetUrl(job.Id, assets[0].Name)"
-   Title="@selection.Title" EpisodeLabel="@selection.Label" TrackCompletion="true" OfflineFile="true"/>
+   Title="@selection.Title" EpisodeLabel="@selection.Label" TrackCompletion="true" OfflineFile="true" SourceLabel="Downloaded video"/>
  }
 }
 else if (loading) { <p role="status">Opening download…</p> }
