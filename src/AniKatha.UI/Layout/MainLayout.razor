@@ -2,7 +2,9 @@
 @inject LocalStore Store
 <div class="app-shell" style="--accent:@accent">
  <CascadingValue Value="catalogSession" IsFixed="true">
-  <main id="main-content">@Body</main>
+  <CascadingValue Value="sourceResultCache" IsFixed="true">
+   <main id="main-content">@Body</main>
+  </CascadingValue>
  </CascadingValue>
  <nav class="bottom-nav" aria-label="Main navigation">
   <NavLink href="/" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
@@ -13,6 +15,7 @@
  </nav>
 </div>
 @code {
+ readonly SourceResultCache sourceResultCache = new();
  readonly CatalogSession catalogSession = new();
  string accent="#b5a0ff";
  protected override async Task OnInitializedAsync() { accent=await Store.GetSettingAsync("accent")??accent; }

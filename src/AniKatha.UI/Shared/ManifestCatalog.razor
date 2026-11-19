@@ -33,15 +33,46 @@
  @if(error!=null){<p role="alert">@error <button @onclick="Retry">Retry</button></p>}
  @if(!busy && error==null && titles.Count==0 && !MissingRequired){<p>No matching titles.</p>}
  @if(selected!=null){
-  <h3>@Field(selected.Value,"name")</h3>
+  <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type"/>
   @if(InitialTitle==null){<button disabled="@saved" @onclick="SaveTitle">@(saved?"Saved to library":"Save to library")</button>}
-  @foreach(var unit in units){<button class="secondary" @onclick="()=>Choose(unit)">@Field(unit,"title")</button>}
+  @foreach (var unit in units)
+  {
+   var id = Field(unit, "id");
+   <div>
+    <button class="secondary" @onclick="() => Choose(unit)" aria-pressed="@(unitId == id)">@Field(unit,"title")</button>
+    @if (progress.TryGetValue(id, out var unitProgress))
+    {
+     <small>@(unitProgress.Completed ? "Completed" : "In progress")</small>
+     @if (!unitProgress.Completed && continueLink == unitProgress.HistoryId)
+     {
+      <a class="text-link" href="@($"/resume/{continueLink}")">Continue @Field(unit,"title")</a>
+     }
+    }
+   </div>
+  }
   @if(!busy && error==null && units.Count==0){<p>No episodes or chapters available.</p>}
  }
  @if(unitId!=null){
-  @if(targets.Count==0){<p>No compatible add-on.</p>}
-  @foreach(var target in targets){
-   <ManifestSources @key="(target.ProviderKey,unitId,titleId)" Source="target" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@unitId" Label="@label" Title="@Field(selected!.Value,"name")"/>
+  @if (targets.Count == 0) { <p>No compatible add-on.</p> }
+  @if (targets.Count > 0 || preferredSource.Length > 0)
+  {
+   <label>Preferred source for this title
+    <select value="@preferredSource" @onchange="SetPreferredSource">
+     <option value="">No preference</option>
+     @if (preferredSource.Length > 0 && !targets.Any(target => target.Provider.ProviderKey == preferredSource))
+     {
+      <option value="@preferredSource">Preferred source unavailable for this unit</option>
+     }
+     @foreach (var target in targets)
+     {
+      <option value="@target.Provider.ProviderKey">@target.Provider.Addon.Name</option>
+     }
+    </select>
+   </label>
+   @if (preferenceError) { <p role="alert">Could not save the preferred source.</p> }
+  }
+  @foreach(var target in targets.OrderByDescending(target => target.Provider.ProviderKey == preferredSource)){
+   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" ProgressChanged="RefreshProgress"/>
   }
  }
 </section>
@@ -55,8 +86,11 @@
  [Parameter,EditorRequired] public AddonCatalog Catalog {get;set;}=null!;
  [Parameter,EditorRequired] public List<AddonResources> Providers {get;set;}=[];
  List<JsonElement> titles=[],units=[];
- List<AddonResources> targets=[];
+ List<(AddonResources Provider, string UnitId)> targets=[];
  JsonElement? selected;
+ JsonElement details;
+ Dictionary<string, (bool Completed, string? HistoryId)> progress = new();
+ string? continueLink;
  string applied="",titleId="",label="";
  string? unitId,error;
  bool busy,more,retryMeta,retryReset;
@@ -90,13 +124,29 @@
          (string.IsNullOrEmpty(filters.Format) || string.Equals(Field(item,"format"), filters.Format, StringComparison.OrdinalIgnoreCase));
  }
  CancellationTokenSource? active;
- bool saved;
+ bool saved, disposed;
+ long progressRequest;
+ string preferredSource = "";
+ bool preferenceError;
+ string PreferenceKey => $"preferred-source:{Source.ProviderKey}/{Catalog.Type}/{Uri.EscapeDataString(titleId)}";
+
+ async Task SetPreferredSource(ChangeEventArgs args)
+ {
+  var value = args.Value as string ?? "";
+  if (value.Length > 0 && !targets.Any(target => target.Provider.ProviderKey == value)) return;
+  var token = active?.Token ?? CancellationToken.None;
+  var key = PreferenceKey;
+  preferredSource = value;
+  preferenceError = false;
+  try { await Store.SetSettingAsync(key, value); }
+  catch { if (!token.IsCancellationRequested) preferenceError = true; }
+ }
  (string, string, string) PageKey => (Source.ProviderKey, Catalog.Type, Catalog.Id);
  bool pageLoaded;
  protected override Task OnInitializedAsync()
  {
   if (InitialTitle is not null)
-   return Open(JsonSerializer.SerializeToElement(new { id = InitialTitle.ExternalId, name = InitialTitle.Title }));
+   return Open(JsonSerializer.SerializeToElement(new { id = InitialTitle.ExternalId, name = InitialTitle.Title, poster = InitialTitle.Poster }));
   if (Session?.GetValueOrDefault(PageKey) is not { } saved) return Load(true);
   applied = SubmittedQuery ?? "";
   (extraValues, titles, seenTitles, offset, more, error) =
@@ -107,7 +157,9 @@
  async Task SaveTitle()
  {
   if(selected==null)return;
-  try { await Store.SaveProviderTitleAsync(Source.ProviderKey,Catalog.Type,titleId,Field(selected.Value,"name"));saved=true; }
+  try { await Store.SaveProviderTitleAsync(Source.ProviderKey,Catalog.Type,titleId,Field(selected.Value,"name"),
+    Field(details,"poster") is { Length: > 0 } poster && MediaUrl(poster) ? poster :
+    MediaUrl(Field(selected.Value,"poster")) ? Field(selected.Value,"poster") : null);saved=true; }
   catch {error="Could not save this title.";}
  }
  CancellationToken Begin(){
@@ -116,7 +168,7 @@
  Task Retry()=>retryMeta && selected.HasValue ? Open(selected.Value) : Load(retryReset);
  async Task Load(bool reset){
   var token=Begin();retryMeta=false;retryReset=reset;
-  if(reset){pageLoaded=false;titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;unitId=null;}
+  if(reset){pageLoaded=false;titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;details=default;unitId=null;}
   if (MissingRequired)
   {
    busy = false;
@@ -150,24 +202,63 @@
   finally{if(!token.IsCancellationRequested){busy=false;pageLoaded=true;}}
  }
  async Task Open(JsonElement item){
-  var token=Begin();retryMeta=true;saved=false;selected=item;titleId=Field(item,"id");unitId=null;units=[];
+  var token=Begin();retryMeta=true;saved=false;selected=item;details=default;preferredSource="";preferenceError=false;progress.Clear();continueLink=null;titleId=Field(item,"id");unitId=null;units=[];
   try{
    var resource=Catalog.Type=="manga"?"chapters":"meta";
    if(!Source.Supports(resource,Catalog.Type,titleId)){error="Source does not supply title details.";return;}
    var root=await Client.FetchJsonAsync(Source.Resource(resource,Catalog.Type,titleId),token);
    token.ThrowIfCancellationRequested();
-   units=(resource=="chapters"?Items(root,"chapters"):Items(root.GetProperty("meta"),"videos")).Where(x=>Field(x,"id")!="").ToList();
+   if (root.TryGetProperty("meta", out var metadata) && metadata.ValueKind == JsonValueKind.Object)
+    details = metadata;
+   units = (resource == "chapters" ? Items(root, "chapters") : Items(details, "videos"))
+    .Where(unit => Field(unit, "id").Length > 0).ToList();
+   var preference = await Store.GetSettingAsync(PreferenceKey);
+   if (token.IsCancellationRequested) return;
+   preferredSource = preference ?? "";
+   await RefreshProgress();
   }catch(OperationCanceledException) when(token.IsCancellationRequested){}
   catch(Exception){if(!token.IsCancellationRequested)error="Title request failed.";}
   finally{if(!token.IsCancellationRequested)busy=false;}
  }
- void Choose(JsonElement unit){
-  unitId=Field(unit,"id");label=Field(unit,"title");
-  targets=Providers.Where(p=>p.Supports(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId) &&
-   (p.ProviderKey==Source.ProviderKey || p.HasPrefix(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId))).ToList();
+ async Task RefreshProgress()
+ {
+  if (disposed) return;
+  var request = ++progressRequest;
+  var token = active?.Token ?? CancellationToken.None;
+  var currentTitle = titleId;
+  var entries = (await Store.HistoryAsync()).Where(entry => entry.Origin == Source.ProviderKey &&
+   entry.Type == Catalog.Type && entry.TitleId == currentTitle).ToList();
+  var current = new Dictionary<string, (bool Completed, string? HistoryId)>(StringComparer.Ordinal);
+  var unfinished = new HashSet<string>(StringComparer.Ordinal);
+  foreach (var unit in units)
+  {
+   var id = Field(unit, "id");
+   foreach (var target in Source.ResolveUnitProviders(Catalog.Type, unit, Providers))
+   {
+    var entry = entries.FirstOrDefault(x => x.Source == target.Provider.ProviderKey && x.UnitId == target.UnitId);
+    if (entry is null) continue;
+    var key = ResumeEntry.Key(entry.Origin, entry.Type, entry.TitleId, entry.UnitId, entry.Source);
+    var complete = await Store.IsUnitCompleteAsync(key);
+    if (token.IsCancellationRequested) return;
+    if (!current.TryGetValue(id, out var prior) || complete)
+     current[id] = (complete, entry.Id);
+   }
+   if (current.TryGetValue(id, out var status) && !status.Completed && status.HistoryId is not null)
+    unfinished.Add(status.HistoryId);
+  }
+  if (token.IsCancellationRequested || request != progressRequest) return;
+  progress = current;
+  continueLink = entries.FirstOrDefault(entry => unfinished.Contains(entry.Id))?.Id;
+ }
+ void Choose(JsonElement unit)
+ {
+  unitId = Field(unit, "id");
+  label = Field(unit, "title");
+  targets = Source.ResolveUnitProviders(Catalog.Type, unit, Providers).ToList();
  }
  public void Dispose()
  {
+  disposed = true;
   active?.Cancel();
   active?.Dispose();
   if (Session is not null && pageLoaded)

@@ -76,7 +76,7 @@ public sealed class AddonClient
 
    using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
    if (response.StatusCode == HttpStatusCode.NotFound)
-    throw new InvalidOperationException("Resource not found (HTTP 404).");
+    throw new AddonResourceNotFoundException();
    if ((int)response.StatusCode is >= 300 and < 400)
     throw new InvalidOperationException("This URL redirects. Paste the final HTTPS manifest URL.");
    if (!response.IsSuccessStatusCode)
@@ -165,3 +165,5 @@ public sealed class AddonClient
   return b.Length==4 ? b[0] is 0 or 10 or 127 || b[0]>=224 || (b[0]==169&&b[1]==254) || (b[0]==172&&b[1]>=16&&b[1]<=31) || (b[0]==192&&b[1]==168) || (b[0]==100&&b[1]>=64&&b[1]<=127) : (b[0]&0xfe)==0xfc || address.Equals(IPAddress.IPv6Any);
  }
 }
+
+public sealed class AddonResourceNotFoundException() : InvalidOperationException("Resource not found (HTTP 404).");

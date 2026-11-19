@@ -40,6 +40,9 @@
 
 }
 @code {
+ [Parameter] public EventCallback OnSourceFailed { get; set; }
+ [Parameter] public bool TrackCompletion { get; set; }
+ [Parameter] public EventCallback OnCompleted { get; set; }
  [Parameter] public string EpisodeKey {get;set;} = PlaybackSample.EpisodeKey;
  [Parameter] public string VideoUrl {get;set;} = PlaybackSample.VideoUrl;
  [Parameter] public string Title {get;set;} = "Big Buck Bunny";
@@ -88,7 +91,7 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position);
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion);
   }
   catch (JSDisconnectedException) { }
   catch (Exception)
@@ -131,12 +134,34 @@
  }
 
  [JSInvokable]
- public Task SetPlaybackError()
+ public async Task<bool> CompleteEpisode()
+ {
+  if (!TrackCompletion) return false;
+  try
+  {
+   await Store.CompleteUnitAsync(EpisodeKey);
+   if (!disposed) await InvokeAsync(() => OnCompleted.InvokeAsync());
+   return true;
+  }
+  catch
+  {
+   if (!disposed)
+   {
+    progressError = true;
+    await InvokeAsync(StateHasChanged);
+   }
+   return false;
+  }
+ }
+
+ [JSInvokable]
+ public async Task SetPlaybackError()
  {
   if (disposed)
-   return Task.CompletedTask;
+   return;
   playbackError = true;
-  return InvokeAsync(StateHasChanged);
+  await InvokeAsync(() => OnSourceFailed.InvokeAsync());
+  await InvokeAsync(StateHasChanged);
  }
 
  public async ValueTask DisposeAsync()
