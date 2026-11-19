@@ -74,6 +74,6 @@ else{<div class="library-list">@foreach(var item in Visible){<article class="lib
  }
  async Task Favourite(SavedTitle item){item.IsFavourite=!item.IsFavourite;try{await Store.SaveAsync(item);}catch{item.IsFavourite=!item.IsFavourite;error="Could not save favourite.";}}
  async Task UpdateStatus(SavedTitle item,ChangeEventArgs e){var previous=item.Status;item.Status=e.Value?.ToString()??"PLANNING";try{await Store.SaveAsync(item);error=null;await Sync(item,"status",item.Status);}catch{item.Status=previous;error="Could not save the change.";}}
- async Task Progress(SavedTitle item,int delta){var previous=item.Progress;item.Progress=Math.Max(0,item.Progress+delta);try{await Store.SaveAsync(item);error=null;}catch{item.Progress=previous;error="Could not save progress.";}}
+ async Task Progress(SavedTitle item,int delta){var previous=item.Progress;item.Progress=Math.Max(0,item.Progress+delta);try{await Store.SaveAsync(item);error=null;await Sync(item,"progress",item.Progress.ToString(CultureInfo.InvariantCulture));}catch{item.Progress=previous;error="Could not save progress.";}}
  async Task Remove(SavedTitle item){try{await Store.RemoveAsync(item.Id);items.Remove(item);error=null;}catch{error="Could not remove this title.";}}
 }

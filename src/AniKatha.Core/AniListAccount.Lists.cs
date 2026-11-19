@@ -57,9 +57,17 @@ public sealed partial class AniListAccount
         WithCredentialAsync(async (credential, ct) =>
         {
             if (credential.ViewerId != viewerId || mediaId <= 0) throw new AniListAuthorizationException();
-            var graphType = field switch { "status" => "MediaListStatus", "score" => "Float", _ => throw new ArgumentOutOfRangeException(nameof(field)) };
-            object typedValue = field == "score"
-                ? double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) : value;
+            var graphType = field switch
+            {
+                "status" => "MediaListStatus", "score" => "Float", "progress" => "Int",
+                _ => throw new ArgumentOutOfRangeException(nameof(field))
+            };
+            object typedValue = field switch
+            {
+                "score" => double.Parse(value, System.Globalization.CultureInfo.InvariantCulture),
+                "progress" => int.Parse(value, System.Globalization.CultureInfo.InvariantCulture),
+                _ => value
+            };
             var mutation = $"mutation ($id: Int!, $value: {graphType}!) {{ SaveMediaListEntry(mediaId: $id, {field}: $value) {{ mediaId }} }}";
             var data = await SendAsync(credential, mutation, new { id = mediaId, value = typedValue }, ct);
             return data.GetProperty("SaveMediaListEntry").GetProperty("mediaId").GetInt32() == mediaId
