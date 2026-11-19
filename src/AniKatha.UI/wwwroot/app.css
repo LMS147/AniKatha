@@ -70,3 +70,8 @@
 
 .reader-controls.reader-rtl { flex-direction: row-reverse; }
 .reader-stack .reader-page { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; margin: 0 auto 8px; scroll-margin-top: 16px; }
+
+.reader-display { margin-block: 8px; }
+.reader-viewport { max-width: 100%; overflow-x: auto; }
+.reader-viewport.fit-page .reader-page { max-height: 75dvh; width: auto; object-fit: contain; }
+.reader-viewport.zoomed .reader-page { width: var(--reader-zoom); max-width: none; }

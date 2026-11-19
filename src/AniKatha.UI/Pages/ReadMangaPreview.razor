@@ -2,6 +2,7 @@
 @inject LocalStore Store
 @inject IJSRuntime JS
 @using Microsoft.JSInterop
+@using System.Globalization
 @implements IAsyncDisposable
 
 <PageTitle>Read @Title · AniKatha</PageTitle>
@@ -22,6 +23,18 @@
     <option value="vertical">Vertical scrolling</option>
    </select>
   </label>
+  <div class="filters reader-display">
+   <label>Page fit
+    <select value="@fit" @onchange="ChangeFit"><option value="width">Fit to width</option><option value="page">Fit to page</option></select>
+   </label>
+   <label>Zoom
+    <select value="@zoom" @onchange="ChangeZoom">
+     @foreach (var level in zoomLevels) { <option value="@level">@level%</option> }
+    </select>
+   </label>
+  </div>
+  <div class="reader-viewport @((zoom == 100 && fit == "page") ? "fit-page" : "") @(zoom > 100 ? "zoomed" : "")"
+    style="@($"--reader-zoom:{zoom}%")">
   @if (mode == "vertical")
   {
    <div class="reader-stack" @ref="stack">
@@ -32,6 +45,7 @@
    </div>
   }
   else { <img class="reader-page" src="@PageUrl(currentPage)" alt="@PageDescription(currentPage)" /> }
+  </div>
   <div class="reader-controls @(mode == "rtl" ? "reader-rtl" : "")">
    <button type="button" class="secondary" disabled="@(currentPage == 1 || saving)" @onclick="() => MoveTo(currentPage - 1)">@(mode == "rtl" ? "Previous →" : "← Previous")</button>
    @if (currentPage < PageCount)
@@ -71,7 +85,19 @@ else
  int PageCount => Pages?.Count ?? MangaSample.PageDescriptions.Count;
  string PageUrl(int page) => Pages?[page - 1] ?? $"_content/AniKatha.UI/manga/midnight-lighthouse-{page}.webp";
  string PageDescription(int page) => Pages is null ? MangaSample.PageDescriptions[page - 1] : $"Page {page}";
- string mode = "ltr";
+ string mode = "ltr", fit = "width";
+ int zoom = 100;
+ static readonly int[] zoomLevels = [100, 125, 150, 200];
+
+ void ChangeFit(ChangeEventArgs args)
+ {
+  fit = args.Value?.ToString() == "page" ? "page" : "width";
+  zoom = 100;
+ }
+
+ void ChangeZoom(ChangeEventArgs args) =>
+  zoom = int.TryParse(args.Value?.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var level) &&
+   zoomLevels.Contains(level) ? level : 100;
  bool tracking, disposed;
  ElementReference stack;
  IJSObjectReference? readerModule, pageObserver;
