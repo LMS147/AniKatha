@@ -59,3 +59,5 @@
 .addon-row { flex-wrap: wrap; }
 .addon-row .addon-actions { display:flex; flex-wrap:wrap; gap:8px; flex-basis:100%; }
 .addon-actions button { padding:8px 12px; background:#25242f; border:1px solid #383540; border-radius:10px; }
+
+.catalog-search-fields { padding: 0; margin: 0; border: 0; min-inline-size: 0; }
