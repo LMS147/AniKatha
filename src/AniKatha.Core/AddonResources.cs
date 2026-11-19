@@ -43,10 +43,12 @@ public sealed class AddonResources(InstalledAddon addon)
  }
  public IEnumerable<AddonCatalog> Catalogs(string kind)
  {
+  var seen = new HashSet<(string Type, string Id)>();
   foreach(var c in Items(manifest,"catalogs"))
   {
    var type=Field(c,"type"); var id=Field(c,"id");
    if ((kind=="MANGA" ? type!="manga" : type is not ("anime" or "series")) || id=="" || !MatchingRules("catalog",type).Any()) continue;
+   if (!seen.Add((type, id))) continue;
    var extras = Items(c, "extra")
     .Select(x => new CatalogExtra(Field(x, "name"),
      x.ValueKind == JsonValueKind.Object && x.TryGetProperty("isRequired", out var required) && required.ValueKind == JsonValueKind.True,

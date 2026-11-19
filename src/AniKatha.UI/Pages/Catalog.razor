@@ -5,7 +5,7 @@
 @inject JikanCatalogue Jikan
 @inject LocalStore Store
 <header class="page-header" @ref="heading"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
-@Featured
+@if (appliedSearch.Length == 0 && source.Length == 0) { @Featured }
 <form @onsubmit="Search" @onsubmit:preventDefault>
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
  <div class="filters">
@@ -52,7 +52,7 @@ else if (UsingAddon && starterCatalogue)
 else if (UsingAddon) { <p class="source-note">Titles and covers from Jikan.</p> }
 @if (UsingAddon && !usingAniListFallback && HasFilters) { <p>Jikan and the starter catalogue cannot apply these filters.</p> }
 @if (!UsingAddon) { <p class="source-note">Titles and covers from AniList.</p> }
-@if(error is not null){<div class="notice" role="alert">@error <button @onclick="Search">Retry</button></div>}
+@if(error is not null){<div class="notice" role="alert">@error <button @onclick="RetryBuiltIn">Retry</button></div>}
 <div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch)?"Discover":"Search results")</h2><span class="muted">@ResultCount titles</span></div>
 @if(busy&&ResultCount==0){<div class="loading" role="status">Finding stories…</div>}
 else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching titles</h3><p>@(starterCatalogue ? "No matching title in the starter catalogue." : "Try a different search or reset your filters.")</p></div>}
@@ -77,7 +77,7 @@ else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching
  </div>
 }
 else { <MediaGrid Items="items" Selected="Select"/> }
-@if(hasMore){<button class="secondary load-more" disabled="@busy" @onclick="More">@(busy?"Loading…":"Load more")</button>}
+@if(hasMore && error is null){<button class="secondary load-more" disabled="@busy" @onclick="More">@(busy?"Loading…":"Load more")</button>}
 <MediaDetails Item="selected" Closed="()=>selected=null"/>
 }
 @code {
@@ -99,6 +99,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  bool HasFilters => appliedFilters.Genre is { Length: > 0 } || appliedFilters.Year.HasValue ||
   appliedFilters.Season is { Length: > 0 } || appliedFilters.Format is { Length: > 0 };
  long submission;
+ bool failedNextPage;
  bool starterCatalogue, usingAniListFallback;
  const string AniListSource = "anilist";
  const string JikanSource = "jikan";
@@ -148,8 +149,8 @@ else { <MediaGrid Items="items" Selected="Select"/> }
    await LoadIfSelected();
    return;
   }
-  (page, hasMore, starterCatalogue, usingAniListFallback, error, items, addonItems) =
-   (saved.Page, saved.HasMore, saved.StarterCatalogue, saved.AniListFallback, saved.Error, saved.Items, saved.JikanItems);
+  (page, hasMore, failedNextPage, starterCatalogue, usingAniListFallback, error, items, addonItems) =
+   (saved.Page, saved.HasMore, saved.FailedNextPage, saved.StarterCatalogue, saved.AniListFallback, saved.Error, saved.Items, saved.JikanItems);
   if (ShowBuiltIn && ResultCount == 0 && error is null && page == 0)
   {
    page = 1;
@@ -206,6 +207,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   items = [];
   addonItems = [];
   hasMore = false;
+  failedNextPage = false;
   starterCatalogue = false;
   usingAniListFallback = false;
   if (ShowBuiltIn)
@@ -215,7 +217,9 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   return Task.CompletedTask;
  }
 
- async Task More() { page++; await Load(); }
+ async Task More() { if (busy) return; page++; await Load(); }
+
+ Task RetryBuiltIn() => failedNextPage ? More() : Load();
 
  async Task Load()
  {
@@ -224,6 +228,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   var current = request = new();
   var token = current.Token;
   busy = true;
+  failedNextPage = false;
   error = null;
   try
   {
@@ -240,28 +245,33 @@ else { <MediaGrid Items="items" Selected="Select"/> }
      if (live is not null)
      {
       usingAniListFallback = true;
-      items = live.Items;
+      items = live.Items.Where(item => item.Kind == Kind).DistinctBy(item => item.Id).ToList();
       hasMore = live.HasNextPage;
       return;
      }
     }
     starterCatalogue = result.IsStarterCatalogue;
-    addonItems.AddRange(result.Items.Where(item => addonItems.All(existing => existing.Id != item.Id)));
-    hasMore = result.HasNextPage;
+    var ids = addonItems.Select(item => item.Id).ToHashSet();
+    var added = result.Items.Where(item => ids.Add(item.Id)).ToList();
+    addonItems.AddRange(added);
+    hasMore = result.HasNextPage && added.Count > 0;
    }
    else
    {
     var options = appliedFilters with { Page = page };
     var result = await Api.SearchAsync(options, token);
     if (token.IsCancellationRequested) return;
-    items.AddRange(result.Items.Where(item => items.All(existing => existing.Id != item.Id)));
-    hasMore = result.HasNextPage;
+    var ids = items.Select(item => item.Id).ToHashSet();
+    var added = result.Items.Where(item => item.Kind == Kind && ids.Add(item.Id)).ToList();
+    items.AddRange(added);
+    hasMore = result.HasNextPage && added.Count > 0;
    }
   }
   catch (Exception ex) when (!token.IsCancellationRequested)
   {
    error = ex is InvalidOperationException ? ex.Message : "Could not load titles. Check your connection and try again.";
-   if (page > 1) page--;
+   failedNextPage = page > 1;
+   if (failedNextPage) page--;
   }
   catch (Exception) when (token.IsCancellationRequested) {}
   finally { if (ReferenceEquals(request, current)) busy = false; }
@@ -276,7 +286,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   {
    var draft = new SearchOptions(Kind, search, genre, year, season, format, sort);
    Session.Tabs[Kind] = new(draft, appliedFilters, source, UsingAddon ? jikan?.Url : null,
-    busy && page == 1 ? 0 : busy ? page - 1 : page, hasMore, starterCatalogue, usingAniListFallback,
+    busy && page == 1 ? 0 : busy ? page - 1 : page, hasMore, failedNextPage, starterCatalogue, usingAniListFallback,
     error, items, addonItems, pages);
   }
   if (scrollModule is not null)

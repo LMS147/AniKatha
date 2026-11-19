@@ -73,6 +73,8 @@ resume.WaitForAssertion(()=>Check(resume.Find(".reader-page").GetAttribute("src"
 
 Console.WriteLine("PASS: install via Profile, type routing, pagination, repeat-page stop, chapter reading, page resume, enable/disable, episode source → player.");
 
+await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"anikatha-catalog-{Guid.NewGuid()}.db3")));
+
 static void Check(bool valid,string name){if(!valid)throw new Exception(name);}
 sealed class FixtureHandler : HttpMessageHandler
 {

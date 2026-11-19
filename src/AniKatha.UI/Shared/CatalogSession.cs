@@ -10,7 +10,7 @@ public sealed class CatalogSession
 
 internal sealed record CatalogTab(
     SearchOptions Draft, SearchOptions Applied, string Source, string? JikanKey, int Page,
-    bool HasMore, bool StarterCatalogue, bool AniListFallback, string? Error,
+    bool HasMore, bool FailedNextPage, bool StarterCatalogue, bool AniListFallback, string? Error,
     List<Media> Items, List<AddonTitle> JikanItems,
     Dictionary<(string Provider, string Type, string Id), CatalogPage> Pages);
 
