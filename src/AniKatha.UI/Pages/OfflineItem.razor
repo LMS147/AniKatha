@@ -1,0 +1,50 @@
+@page "/library/download/{Id}"
+@inject IServiceProvider Services
+@inject LocalStore Store
+
+<a class="text-link" href="/library?view=downloads">← Downloads</a>
+@if (job?.Assets is { Count: > 0 } assets)
+{
+ var selection = job.Selection;
+ @if (selection.Type == "manga")
+ {
+  <ReadMangaPreview @key="job.Id" ChapterKey="@selection.ProgressKey"
+   TitleSettingsKey="@($"reader:title:{selection.Origin}/{selection.Type}/{Uri.EscapeDataString(selection.TitleId)}")"
+   Pages="@assets.Select(asset => OfflineDownloads.AssetUrl(job.Id, asset.Name)).ToList()"
+   Title="@selection.Title" ChapterLabel="@selection.Label"/>
+ }
+ else
+ {
+  <WatchPreview @key="job.Id" EpisodeKey="@selection.ProgressKey" VideoUrl="@OfflineDownloads.AssetUrl(job.Id, assets[0].Name)"
+   Title="@selection.Title" EpisodeLabel="@selection.Label" TrackCompletion="true"/>
+ }
+}
+else if (loading) { <p role="status">Opening download…</p> }
+else { <p class="notice">This download is incomplete or unavailable. Retry it from Library.</p> }
+
+@code {
+ [Parameter] public string Id { get; set; } = "";
+ DownloadJob? job;
+ bool loading;
+ long revision;
+
+ protected override async Task OnParametersSetAsync()
+ {
+  job = null;
+  loading = true;
+  var current = ++revision;
+  try
+  {
+   var service = (OfflineDownloads?)Services.GetService(typeof(OfflineDownloads));
+   var loaded = service is null ? null : await service.OpenAsync(Id);
+   if (current != revision || loaded is null) return;
+   job = loaded;
+   var selection = loaded.Selection;
+   var historyId = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(selection.ProgressKey)));
+   await Store.RememberAsync(new ResumeEntry { Id = historyId, Origin = selection.Origin, Source = selection.Source,
+    Type = selection.Type, TitleId = selection.TitleId, UnitId = selection.UnitId, Title = selection.Title, Label = selection.Label });
+  }
+  catch { /* Keep an already opened local item usable if the history save fails. */ }
+  finally { if (current == revision) loading = false; }
+ }
+}

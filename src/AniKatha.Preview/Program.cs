@@ -11,6 +11,17 @@ builder.Services.AddSingleton(services => new OfflineDownloads(services.GetRequi
  services.GetRequiredService<AddonClient>(), Path.Combine(builder.Environment.ContentRootPath, "App_Data", "offline")));
 var app=builder.Build();
 app.UseStaticFiles();app.UseAntiforgery();
+app.MapGet("/offline-media/{id}/{asset}", (string id, string asset, OfflineDownloads downloads) =>
+{
+ var path = downloads.FindAsset(id, asset);
+ if (path is null) return Results.NotFound();
+ var type = Path.GetExtension(asset) switch
+ {
+  ".mp4" => "video/mp4", ".jpg" => "image/jpeg", ".png" => "image/png",
+  ".gif" => "image/gif", ".webp" => "image/webp", ".avif" => "image/avif", _ => "application/octet-stream"
+ };
+ return Results.File(path, type, enableRangeProcessing: true);
+});
 app.MapGet("/health",()=>Results.Ok(new {status="ok"}));
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode().AddAdditionalAssemblies(typeof(AniKatha.UI.Routes).Assembly);
 app.Run();
