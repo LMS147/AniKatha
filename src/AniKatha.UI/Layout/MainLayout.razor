@@ -1,7 +1,9 @@
 @inherits LayoutComponentBase
 @inject LocalStore Store
 <div class="app-shell" style="--accent:@accent">
- <main id="main-content">@Body</main>
+ <CascadingValue Value="catalogSession" IsFixed="true">
+  <main id="main-content">@Body</main>
+ </CascadingValue>
  <nav class="bottom-nav" aria-label="Main navigation">
   <NavLink href="/" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
   <NavLink href="/anime"><Icon Name="play" /><span>Anime</span></NavLink>
@@ -11,6 +13,7 @@
  </nav>
 </div>
 @code {
+ readonly CatalogSession catalogSession = new();
  string accent="#b5a0ff";
  protected override async Task OnInitializedAsync() { accent=await Store.GetSettingAsync("accent")??accent; }
 }

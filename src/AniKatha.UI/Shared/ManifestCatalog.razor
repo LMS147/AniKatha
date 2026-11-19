@@ -47,6 +47,7 @@
 </section>
 
 @code {
+ [Parameter] public Dictionary<(string Provider, string Type, string Id), CatalogPage>? Session { get; set; }
  [Parameter] public SearchOptions? Filters { get; set; }
  [Parameter] public string? SubmittedQuery { get; set; }
  [Parameter] public SavedTitle? InitialTitle {get;set;}
@@ -72,7 +73,7 @@
   return Load(true);
  }
 
- readonly HashSet<string> seenTitles = new(StringComparer.Ordinal);
+ HashSet<string> seenTitles = new(StringComparer.Ordinal);
  bool HasFilters => Filters is { } f && (f.Genre is { Length: > 0 } || f.Year.HasValue ||
   f.Season is { Length: > 0 } || f.Format is { Length: > 0 });
 
@@ -90,7 +91,19 @@
  }
  CancellationTokenSource? active;
  bool saved;
- protected override Task OnInitializedAsync()=> InitialTitle==null?Load(true):Open(JsonSerializer.SerializeToElement(new {id=InitialTitle.ExternalId,name=InitialTitle.Title}));
+ (string, string, string) PageKey => (Source.ProviderKey, Catalog.Type, Catalog.Id);
+ bool pageLoaded;
+ protected override Task OnInitializedAsync()
+ {
+  if (InitialTitle is not null)
+   return Open(JsonSerializer.SerializeToElement(new { id = InitialTitle.ExternalId, name = InitialTitle.Title }));
+  if (Session?.GetValueOrDefault(PageKey) is not { } saved) return Load(true);
+  applied = SubmittedQuery ?? "";
+  (extraValues, titles, seenTitles, offset, more, error) =
+   (saved.Extras, saved.Titles, saved.Seen, saved.Offset, saved.More, saved.Error);
+  pageLoaded = true;
+  return Task.CompletedTask;
+ }
  async Task SaveTitle()
  {
   if(selected==null)return;
@@ -103,10 +116,11 @@
  Task Retry()=>retryMeta && selected.HasValue ? Open(selected.Value) : Load(retryReset);
  async Task Load(bool reset){
   var token=Begin();retryMeta=false;retryReset=reset;
-  if(reset){titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;unitId=null;}
+  if(reset){pageLoaded=false;titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;unitId=null;}
   if (MissingRequired)
   {
    busy = false;
+   pageLoaded = true;
    return;
   }
   try{
@@ -133,7 +147,7 @@
    more = Catalog.Skip && seenTitles.Count > before;
   }catch(OperationCanceledException) when(token.IsCancellationRequested){}
   catch(Exception){if(!token.IsCancellationRequested)error="Catalogue request failed.";}
-  finally{if(!token.IsCancellationRequested)busy=false;}
+  finally{if(!token.IsCancellationRequested){busy=false;pageLoaded=true;}}
  }
  async Task Open(JsonElement item){
   var token=Begin();retryMeta=true;saved=false;selected=item;titleId=Field(item,"id");unitId=null;units=[];
@@ -152,5 +166,11 @@
   targets=Providers.Where(p=>p.Supports(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId) &&
    (p.ProviderKey==Source.ProviderKey || p.HasPrefix(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId))).ToList();
  }
- public void Dispose(){active?.Cancel();active?.Dispose();}
+ public void Dispose()
+ {
+  active?.Cancel();
+  active?.Dispose();
+  if (Session is not null && pageLoaded)
+   Session[PageKey] = new(extraValues, titles, seenTitles, offset, more, retryMeta ? null : error);
+ }
 }

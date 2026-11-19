@@ -1,8 +1,10 @@
-@implements IDisposable
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 @inject AniListClient Api
 @inject JikanCatalogue Jikan
 @inject LocalStore Store
-<header class="page-header"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
+<header class="page-header" @ref="heading"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
 @Featured
 <form @onsubmit="Search" @onsubmit:preventDefault>
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
@@ -32,7 +34,7 @@
   }
   else
   {
-  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch" Filters="appliedFilters"/>
+  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch" Filters="appliedFilters" Session="pages"/>
   }
  }
 }
@@ -79,6 +81,11 @@ else { <MediaGrid Items="items" Selected="Select"/> }
 <MediaDetails Item="selected" Closed="()=>selected=null"/>
 }
 @code {
+ [CascadingParameter] public CatalogSession? Session { get; set; }
+ Dictionary<(string Provider, string Type, string Id), CatalogPage> pages = new();
+ ElementReference heading;
+ IJSObjectReference? scrollModule;
+ bool initialized, disposed, restoreScroll;
  [Parameter, EditorRequired] public string Kind { get; set; } = "";
  [Parameter] public RenderFragment? Featured { get; set; }
  string search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];Media? selected;
@@ -103,18 +110,68 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  string[] formats=>Kind=="ANIME"?["TV","TV_SHORT","MOVIE","SPECIAL","OVA","ONA","MUSIC"]:["MANGA","NOVEL","ONE_SHOT"];
  protected override async Task OnInitializedAsync()
  {
+  var saved = Session?.Tabs.GetValueOrDefault(Kind);
   try
   {
    var enabled = await Store.GetAddonsAsync();
-   httpProviders=enabled.Select(x=>new AddonResources(x)).ToList();
+   if (disposed) return;
+   httpProviders = enabled.Select(x => new AddonResources(x)).ToList();
    jikan = enabled.FirstOrDefault(addon => addon.CatalogueProvider == JikanCatalogue.Provider);
    var legacyPreference = await Store.GetSettingAsync("catalogue-source");
    preferJikan = legacyPreference is null || legacyPreference == jikan?.Url;
-   source = FindSource(await Store.GetSettingAsync(SourceSetting) ?? "");
+   source = FindSource(saved?.Source ?? await Store.GetSettingAsync(SourceSetting) ?? "");
   }
   catch { /* AniList remains available if local storage cannot be opened. */ }
-  await Reset();
+  if (disposed) return;
+  initialized = true;
+  if (saved is null)
+  {
+   await Reset();
+   return;
+  }
+  search = saved.Draft.Search ?? "";
+  genre = saved.Draft.Genre ?? "";
+  year = saved.Draft.Year;
+  season = saved.Draft.Season ?? "";
+  format = saved.Draft.Format ?? "";
+  sort = saved.Draft.Sort;
+  appliedFilters = saved.Applied;
+  appliedSearch = saved.Applied.Search ?? "";
+  restoreScroll = true;
+  pages = saved.Pages;
+  var enabledKeys = httpProviders.Select(x => x.ProviderKey).ToHashSet();
+  foreach (var key in pages.Keys.Where(x => !enabledKeys.Contains(x.Provider)).ToArray())
+   pages.Remove(key);
+  if (source != saved.Source || UsingAddon && jikan?.Url != saved.JikanKey ||
+      !UsingAddon && saved.JikanKey is not null)
+  {
+   await LoadIfSelected();
+   return;
+  }
+  (page, hasMore, starterCatalogue, usingAniListFallback, error, items, addonItems) =
+   (saved.Page, saved.HasMore, saved.StarterCatalogue, saved.AniListFallback, saved.Error, saved.Items, saved.JikanItems);
+  if (ShowBuiltIn && ResultCount == 0 && error is null && page == 0)
+  {
+   page = 1;
+   await Load();
+  }
  }
+
+ protected override async Task OnAfterRenderAsync(bool firstRender)
+ {
+  if (!initialized || scrollModule is not null || disposed) return;
+  try
+  {
+   var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AniKatha.UI/catalog-scroll.mjs");
+   if (module is null) return;
+   if (disposed) { await module.DisposeAsync(); return; }
+   scrollModule = module;
+   await module.InvokeVoidAsync("activate", heading, Kind, restoreScroll);
+  }
+  catch (JSDisconnectedException) { }
+ }
+
+ Task LoadIfSelected() => ShowBuiltIn ? Load() : Task.CompletedTask;
 
  string FindSource(string value) =>
   value == AniListSource || value == JikanSource && jikan is not null ||
@@ -144,6 +201,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   appliedSearch = search.Trim();
   appliedFilters = new SearchOptions(Kind, appliedSearch, genre, year, Kind == "ANIME" ? season : null, format, sort);
   submission++;
+  pages = new();
   page = 1;
   items = [];
   addonItems = [];
@@ -151,7 +209,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   starterCatalogue = false;
   usingAniListFallback = false;
   if (ShowBuiltIn)
-   return Load();
+   return LoadIfSelected();
   request?.Cancel();
   busy = false;
   return Task.CompletedTask;
@@ -209,5 +267,22 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   finally { if (ReferenceEquals(request, current)) busy = false; }
  }
  void Select(Media item)=>selected=item;
- public void Dispose(){request?.Cancel();request?.Dispose();}
+ public async ValueTask DisposeAsync()
+ {
+  disposed = true;
+  request?.Cancel();
+  request?.Dispose();
+  if (initialized && Session is not null)
+  {
+   var draft = new SearchOptions(Kind, search, genre, year, season, format, sort);
+   Session.Tabs[Kind] = new(draft, appliedFilters, source, UsingAddon ? jikan?.Url : null,
+    busy && page == 1 ? 0 : busy ? page - 1 : page, hasMore, starterCatalogue, usingAniListFallback,
+    error, items, addonItems, pages);
+  }
+  if (scrollModule is not null)
+  {
+   try { await scrollModule.DisposeAsync(); }
+   catch (JSDisconnectedException) { }
+  }
+ }
 }
