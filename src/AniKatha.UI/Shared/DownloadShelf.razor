@@ -1,6 +1,7 @@
 @implements IDisposable
 @inject IServiceProvider Services
 
+@if (storage is not null) { <p class="source-note">@storage</p> }
 @if (downloads is null)
 {
  <p>Downloads are unavailable on this device.</p>
@@ -19,6 +20,8 @@ else
      <h3>@job.Selection.Title</h3><p>@job.Selection.Label</p>
      <p>@job.State @Progress(job)</p>
      @if (job.Message is not null) { <p role="status">@job.Message</p> }
+     @if (job.State is DownloadState.Complete or DownloadState.Cancelled or DownloadState.Failed)
+     { <button class="secondary" @onclick="() => Remove(job)">Remove download</button> }
      @if (job.State == DownloadState.Complete) { <a class="primary" href="@($"/library/download/{job.Id}")">Open offline</a> }
      @if (job.State is DownloadState.Failed or DownloadState.Cancelled) { <button class="secondary" @onclick="() => Retry(job)">Retry download</button> }
      @if (job.State is DownloadState.Queued or DownloadState.Downloading) { <button class="secondary" @onclick="() => Cancel(job)">Cancel download</button> }
@@ -32,7 +35,7 @@ else
 @code {
  OfflineDownloads? downloads;
  IReadOnlyList<DownloadJob> jobs = [];
- string? error;
+ string? error, storage;
  bool disposed;
  long revision;
 
@@ -46,7 +49,7 @@ else
 
  void Changed()
  {
-  if (!disposed) _ = InvokeAsync(async () => { await Load(); if (!disposed) StateHasChanged(); });
+  if (!disposed) _ = InvokeAsync(async () => { await Run(() => Task.CompletedTask); if (!disposed) StateHasChanged(); });
  }
 
  async Task Load()
@@ -54,11 +57,20 @@ else
   if (downloads is null || disposed) return;
   var current = ++revision;
   var updated = await downloads.ListAsync();
-  if (!disposed && current == revision) jobs = updated;
+  if (disposed || current != revision) return;
+  jobs = updated;
+  try { storage = $"{Size(downloads.UsedBytes)} used · {Size(downloads.AvailableBytes)} available"; }
+  catch (IOException) { }
+  catch (UnauthorizedAccessException) { }
  }
 
  static string Progress(DownloadJob job) => job.TotalPages is int total ? $"· {job.Pages} of {total} pages" :
-  job.Bytes > 0 ? $"· {job.Bytes / (1024d * 1024d):0.0} MB" : "";
+  job.Bytes > 0 ? $"· {Size(job.Bytes)}" : "";
+
+ static string Size(long bytes) => bytes >= 1073741824 ? $"{bytes / 1073741824d:0.00} GiB" :
+  bytes >= 1048576 ? $"{bytes / 1048576d:0.00} MiB" : bytes >= 1024 ? $"{bytes / 1024d:0.0} KiB" : $"{bytes} B";
+
+ Task Remove(DownloadJob job) => Run(() => downloads!.RemoveAsync(job.Id));
 
  Task Retry(DownloadJob job) => Run(() => downloads!.QueueAsync(job.Selection));
  Task Cancel(DownloadJob job) => Run(() => downloads!.CancelAsync(job.Id));

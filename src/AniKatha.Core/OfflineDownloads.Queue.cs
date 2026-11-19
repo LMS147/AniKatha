@@ -70,6 +70,7 @@ public sealed partial class OfflineDownloads
                 await SaveAsync(new(job.Selection, DownloadState.Queued));
             else jobs[job.Id] = job;
         }
+        RecoverStaging();
         loaded = true;
     }
 
