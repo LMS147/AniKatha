@@ -51,8 +51,11 @@ internal static class CatalogChecks
         }
         async Task Search(string query)
         {
-            root.Find("[aria-label='Search titles']").Change(query);
-            await root.Find("form").SubmitAsync();
+            await root.InvokeAsync(async () =>
+            {
+                await root.Find("[aria-label='Search titles']").ChangeAsync(new ChangeEventArgs { Value = query });
+                await root.Find("form").SubmitAsync();
+            });
         }
         void Expect(bool valid, string message)
         {
@@ -76,18 +79,18 @@ internal static class CatalogChecks
         handler.Slow.SetResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         Contains("Catalogue request failed.");
         Contains("fast current");
-        root.FindAll("button").Single(x => x.TextContent.Trim() == "Retry").Click();
+        await root.InvokeAsync(() => root.FindAll("button").Single(x => x.TextContent.Trim() == "Retry").ClickAsync(new()));
         Contains("slow recovered");
         Expect(!root.Markup.Contains("wrong media"), "Cross-media item was displayed");
 
-        root.FindAll("select").Single(x => x.TextContent.Contains("Choose genre")).Change("Action & Adventure");
+        await root.InvokeAsync(() => root.FindAll("select").Single(x => x.TextContent.Contains("Choose genre")).ChangeAsync(new ChangeEventArgs { Value = "Action & Adventure" }));
         Contains("required current");
         Expect(Called("required.example", "genre=Action%20%26%20Adventure"), "Required extra was not escaped and sent");
         Expect(!Called("fast.example", "genre="), "Extra leaked to another provider");
 
-        root.FindAll("button").Single(x => x.TextContent.Trim() == "Load more").Click();
+        await root.InvokeAsync(() => root.FindAll("button").Single(x => x.TextContent.Trim() == "Load more").ClickAsync(new()));
         Contains("fast page two");
-        root.Find("[aria-label='Search titles']").Change("anime draft");
+        await root.InvokeAsync(() => root.Find("[aria-label='Search titles']").ChangeAsync(new ChangeEventArgs { Value = "anime draft" }));
         Show("MANGA");
         await Search("books");
         Contains("manga books");
@@ -100,7 +103,7 @@ internal static class CatalogChecks
 
         var provider = (await store.GetAddonsAsync()).Single(x => x.Name == "fast");
         var sourceKey = new AddonResources(provider).ProviderKey;
-        root.Find("[aria-label='Catalogue source']").Change(sourceKey);
+        await root.InvokeAsync(() => root.Find("[aria-label='Catalogue source']").ChangeAsync(new ChangeEventArgs { Value = sourceKey }));
         Contains("fast anime draft");
         Expect(!Called("slow.example", "search=anime%20draft"), "Selected source did not limit requests");
         Show("MANGA");
