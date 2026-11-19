@@ -4,7 +4,7 @@
 @implements IDisposable
 @inject AddonClient Client
 @inject LocalStore Store
-<div class="notice"><strong>@Source.Addon.Name</strong>
+<div class="notice"><strong>@Source.Addon.Name</strong> @if (Preferred) { <small>Preferred</small> }
 @if(loading){<p>Loading sources…</p>}
 else if(error){<p>Source request failed. <button @onclick="Load">Retry</button></p>}
 else if (Type == "manga" && pages.Count > 0)
@@ -36,6 +36,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  [Parameter] public string Type {get;set;}="";
  [Parameter] public string Label {get;set;}="";
  [Parameter] public string Title {get;set;}="";
+ [Parameter] public bool Preferred { get; set; }
  [Parameter] public EventCallback ProgressChanged { get; set; }
  readonly CancellationTokenSource stop=new();
  bool loading,reading,error,progressError,disposed;

@@ -53,9 +53,26 @@
   @if(!busy && error==null && units.Count==0){<p>No episodes or chapters available.</p>}
  }
  @if(unitId!=null){
-  @if(targets.Count==0){<p>No compatible add-on.</p>}
-  @foreach(var target in targets){
-   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" ProgressChanged="RefreshProgress"/>
+  @if (targets.Count == 0) { <p>No compatible add-on.</p> }
+  @if (targets.Count > 0 || preferredSource.Length > 0)
+  {
+   <label>Preferred source for this title
+    <select value="@preferredSource" @onchange="SetPreferredSource">
+     <option value="">No preference</option>
+     @if (preferredSource.Length > 0 && !targets.Any(target => target.Provider.ProviderKey == preferredSource))
+     {
+      <option value="@preferredSource">Preferred source unavailable for this unit</option>
+     }
+     @foreach (var target in targets)
+     {
+      <option value="@target.Provider.ProviderKey">@target.Provider.Addon.Name</option>
+     }
+    </select>
+   </label>
+   @if (preferenceError) { <p role="alert">Could not save the preferred source.</p> }
+  }
+  @foreach(var target in targets.OrderByDescending(target => target.Provider.ProviderKey == preferredSource)){
+   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" ProgressChanged="RefreshProgress"/>
   }
  }
 </section>
@@ -109,6 +126,21 @@
  CancellationTokenSource? active;
  bool saved, disposed;
  long progressRequest;
+ string preferredSource = "";
+ bool preferenceError;
+ string PreferenceKey => $"preferred-source:{Source.ProviderKey}/{Catalog.Type}/{Uri.EscapeDataString(titleId)}";
+
+ async Task SetPreferredSource(ChangeEventArgs args)
+ {
+  var value = args.Value as string ?? "";
+  if (value.Length > 0 && !targets.Any(target => target.Provider.ProviderKey == value)) return;
+  var token = active?.Token ?? CancellationToken.None;
+  var key = PreferenceKey;
+  preferredSource = value;
+  preferenceError = false;
+  try { await Store.SetSettingAsync(key, value); }
+  catch { if (!token.IsCancellationRequested) preferenceError = true; }
+ }
  (string, string, string) PageKey => (Source.ProviderKey, Catalog.Type, Catalog.Id);
  bool pageLoaded;
  protected override Task OnInitializedAsync()
@@ -170,7 +202,7 @@
   finally{if(!token.IsCancellationRequested){busy=false;pageLoaded=true;}}
  }
  async Task Open(JsonElement item){
-  var token=Begin();retryMeta=true;saved=false;selected=item;details=default;progress.Clear();continueLink=null;titleId=Field(item,"id");unitId=null;units=[];
+  var token=Begin();retryMeta=true;saved=false;selected=item;details=default;preferredSource="";preferenceError=false;progress.Clear();continueLink=null;titleId=Field(item,"id");unitId=null;units=[];
   try{
    var resource=Catalog.Type=="manga"?"chapters":"meta";
    if(!Source.Supports(resource,Catalog.Type,titleId)){error="Source does not supply title details.";return;}
@@ -180,6 +212,9 @@
     details = metadata;
    units = (resource == "chapters" ? Items(root, "chapters") : Items(details, "videos"))
     .Where(unit => Field(unit, "id").Length > 0).ToList();
+   var preference = await Store.GetSettingAsync(PreferenceKey);
+   if (token.IsCancellationRequested) return;
+   preferredSource = preference ?? "";
    await RefreshProgress();
   }catch(OperationCanceledException) when(token.IsCancellationRequested){}
   catch(Exception){if(!token.IsCancellationRequested)error="Title request failed.";}
