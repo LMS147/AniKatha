@@ -28,9 +28,12 @@ internal static class HomeChecks
         context.Services.AddSingleton(new AniListClient(http));
         context.Services.AddSingleton(new AddonClient(http, (_, _) => Task.FromResult(new[] { IPAddress.Parse("192.0.2.5") })));
 
+        var captureDirectory = Environment.GetEnvironmentVariable("ANIKATHA_HOME_CAPTURE_DIRECTORY");
+        fixture.PopulateCaptures = !string.IsNullOrWhiteSpace(captureDirectory);
         var fresh = context.Render<Home>();
         fresh.WaitForAssertion(() => Check(fresh.Find("#home-anime").TextContent.Contains("Episodes you start will appear here"),
             "Fresh launch shows compact empty history without an AniList login."));
+        if (fixture.PopulateCaptures) Capture(captureDirectory!, "empty", fresh);
         fresh.Dispose();
 
         var chapter = ResumeEntry.Key(origin, "manga", "lantern", "first", origin);
@@ -39,10 +42,26 @@ internal static class HomeChecks
             TitleId = "lantern", UnitId = "first", Label = "Chapter 1", Title = "The Lantern" });
         await store.SaveReadingPageAsync(chapter, 4);
         await store.SaveHomeUnitLengthAsync(chapter, 8);
-        await store.RememberAsync(new ResumeEntry { Id = "watch", Origin = "video-provider", Source = "video-provider", Type = "anime",
-            TitleId = "series", UnitId = "episode", Label = "Episode 2", Title = "Anime with no art" });
         await store.SavePlaybackPositionAsync(episode, 84.275);
         await store.SaveHomeUnitLengthAsync(episode, 120);
+
+        if (fixture.PopulateCaptures)
+        {
+            for (var index = 1; index <= 4; index++)
+            {
+                var id = $"demo-{index}";
+                await store.RememberAsync(new ResumeEntry { Id = id, Origin = "demo", Source = "demo", Type = "anime",
+                    TitleId = id, UnitId = "first", Label = $"Episode {index + 2}",
+                    Title = index == 4 ? "The Lantern at the Edge of the Sea and the Long Road Back Home" : $"Preview anime {index}",
+                    Poster = Cover(index) });
+                var key = ResumeEntry.Key("demo", "anime", id, "first", "demo");
+                await store.SavePlaybackPositionAsync(key, 342.5 + index);
+                await store.SaveHomeUnitLengthAsync(key, 1440);
+            }
+        }
+
+        await store.RememberAsync(new ResumeEntry { Id = "watch", Origin = "video-provider", Source = "video-provider", Type = "anime",
+            TitleId = "series", UnitId = "episode", Label = "Episode 2", Title = "Anime with no art" });
 
         var home = context.Render<Home>();
         home.WaitForAssertion(() =>
@@ -54,6 +73,19 @@ internal static class HomeChecks
             Check(home.Find("#home-tab-anime").GetAttribute("aria-selected") == "true", "Anime is active first.");
         });
         Titles(home, "anime", ["Continue Watching", "Latest Episodes", "Upcoming Anime", "Release lists", "Estimated Schedule"]);
+        if (fixture.PopulateCaptures)
+        {
+            home.WaitForAssertion(() => Check(home.FindAll("#home-anime .home-card-target").Count >= 16 &&
+                home.FindAll("#home-anime time").Count >= 3, "All Anime capture shelves are populated."));
+            Capture(captureDirectory!, "anime", home);
+            await Click(home, "[aria-labelledby='home-watch-title'] header button", "View more ›");
+            Check(home.FindAll("[aria-labelledby='home-watch-title'] .home-card-target").Count == 5, "Watch history expansion keeps the saved cards.");
+            await Click(home, "[aria-labelledby='home-upcoming-title'] header button", "View more ›");
+            Check(home.FindAll("[aria-labelledby='home-upcoming-title'] .home-card-target").Count == 6, "Upcoming expansion shows additional results.");
+            await Click(home, "#home-anime button", "Random");
+            Check(home.Find("[role='dialog'] #detail-title").TextContent.Length > 0, "Random opens the details of a latest result.");
+            await home.InvokeAsync(() => home.Find("[aria-label='Close details']").ClickAsync(new()));
+        }
         await Click(home, "#home-anime button", "Newly Added");
         Check(home.Find("[aria-labelledby='home-releases-title']").TextContent.Contains("addition dates"), "Unknown addition dates are explicit.");
         await Click(home, "#home-anime button", "Just Completed");
@@ -77,6 +109,11 @@ internal static class HomeChecks
             var discovery = home.Find("[aria-labelledby='home-discover-title']").TextContent;
             Check(discovery.Contains("The Lantern") && discovery.Contains("sources couldn’t be loaded"), "Failed provider leaves successful discovery usable.");
         });
+        if (fixture.PopulateCaptures)
+        {
+            home.WaitForAssertion(() => Check(home.FindAll("#home-manga .home-card-target").Count >= 15, "All supported Manga shelves are populated."));
+            Capture(captureDirectory!, "manga", home);
+        }
         fixture.Trending.TrySetResult();
         await latest;
         Check(!home.Find("#home-manga").TextContent.Contains("Delayed anime"), "Delayed Anime data stays off Manga.");
@@ -92,6 +129,24 @@ internal static class HomeChecks
         Console.WriteLine("PASS: Home section order, independent filters and asynchronous feeds, resume links, missing artwork, followed chapter, provider failure, and empty schedule.");
     }
 
+    private static string Cover(int index) => $"https://preview.example/art/midnight-lighthouse-{index % 3 + 1}.webp";
+
+    private static void Capture(string directory, string name, IRenderedComponent<Home> home)
+    {
+        Directory.CreateDirectory(directory);
+        var markup = home.Markup.Replace("https://preview.example/art/", "art/", StringComparison.Ordinal);
+        File.WriteAllText(Path.Combine(directory, $"{name}.html"), $$"""
+            <!doctype html><html lang="en"><head><meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link rel="stylesheet" href="app.css"><title>AniKatha Home layout fixture</title></head>
+            <body><div class="app-shell"><main id="main-content">{{markup}}</main>
+            <nav class="bottom-nav" aria-label="Main navigation">
+              <a class="active" href="/">Home</a><a href="/anime">Anime</a><a href="/manga">Manga</a>
+              <a href="/library">Library</a><a href="/profile">Profile</a>
+            </nav></div></body></html>
+            """);
+    }
+
     private static Task Click(IRenderedComponent<Home> home, string selector, string label) =>
         home.InvokeAsync(() => home.FindAll(selector).Single(button => button.TextContent.Trim() == label).ClickAsync(new()));
 
@@ -105,6 +160,7 @@ internal static class HomeChecks
 
     private sealed class HomeFixture : HttpMessageHandler
     {
+        internal bool PopulateCaptures { get; set; }
         internal TaskCompletionSource TrendingStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Trending { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -126,17 +182,22 @@ internal static class HomeChecks
             if (query.Contains("airingSchedules", StringComparison.Ordinal))
             {
                 var from = values.GetProperty("from").GetInt64();
+                var until = values.GetProperty("until").GetInt64();
+                var newest = values.GetProperty("sort")[0].GetString() == "TIME_DESC";
                 var midday = new DateTimeOffset(DateTime.Today.AddHours(12)).ToUnixTimeSeconds();
-                if (midday < from || midday >= values.GetProperty("until").GetInt64())
-                    return Json("""{"data":{"Page":{"airingSchedules":[],"pageInfo":{"hasNextPage":false}}}}""");
-                return Json(JsonSerializer.Serialize(new { data = new { Page = new
+                var times = newest && PopulateCaptures ? Enumerable.Range(1, 6).Select(i => until - i * 1800) :
+                    (PopulateCaptures ? Enumerable.Range(0, 5) : Enumerable.Range(0, 1)).Select(i => midday + i * 1800);
+                var airings = times.Where(time => time >= from && time < until).Select((time, index) => new
                 {
-                    pageInfo = new { hasNextPage = false },
-                    airingSchedules = new[] { new { episode = 7, airingAt = midday, media = new {
-                        id = 99, type = "ANIME", isAdult = false, title = new { userPreferred = "Scheduled anime" },
-                        startDate = new { year = DateTime.Today.Year }, coverImage = new { large = (string?)null }, genres = Array.Empty<string>()
-                    } } }
-                } } }));
+                    episode = 7 + index, airingAt = time, media = new
+                    {
+                        id = 99 + index, type = "ANIME", isAdult = false,
+                        title = new { userPreferred = index == 0 ? "Scheduled anime" : $"The next episode · preview title {index}" },
+                        startDate = new { year = DateTime.Today.Year }, coverImage = new { large = PopulateCaptures ? Cover(index) : null },
+                        format = "TV", genres = Array.Empty<string>()
+                    }
+                }).ToArray();
+                return Json(JsonSerializer.Serialize(new { data = new { Page = new { pageInfo = new { hasNextPage = false }, airingSchedules = airings } } }));
             }
             var kind = values.GetProperty("type").GetString();
             var sort = values.GetProperty("sort")[0].GetString();
@@ -148,12 +209,17 @@ internal static class HomeChecks
             var title = sort == "END_DATE_DESC" ? "Recently finished" :
                 kind == "MANGA" ? "Discovery manga" : sort == "TRENDING_DESC" ? "Delayed anime" : "Other anime";
             var date = DateTime.Today.AddDays(-1);
-            return Json(JsonSerializer.Serialize(new { data = new { Page = new { media = new[]
+            var items = Enumerable.Range(0, PopulateCaptures ? 6 : 1).Select(index => new
             {
-                new { id = kind == "ANIME" ? 10 : 11, type = kind, isAdult = false, title = new { userPreferred = title },
-                    coverImage = new { large = (string?)null }, startDate = new { year = date.Year, month = date.Month, day = date.Day },
-                    endDate = new { year = date.Year, month = date.Month, day = date.Day }, genres = Array.Empty<string>() }
-            }, pageInfo = new { hasNextPage = false } } } }));
+                id = (kind == "ANIME" ? 10 : 20) + index, type = kind, isAdult = false,
+                title = new { userPreferred = index == 0 ? title : $"{title} · Collection {index + 1}" },
+                coverImage = new { large = PopulateCaptures ? Cover(index) : null },
+                startDate = new { year = date.Year, month = date.Month, day = date.Day },
+                endDate = new { year = date.Year, month = date.Month, day = date.Day },
+                format = kind == "ANIME" ? "TV" : "MANGA", chapters = kind == "MANGA" ? (int?)(12 + index) : null,
+                genres = Array.Empty<string>()
+            }).ToArray();
+            return Json(JsonSerializer.Serialize(new { data = new { Page = new { media = items, pageInfo = new { hasNextPage = false } } } }));
         }
 
         private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)

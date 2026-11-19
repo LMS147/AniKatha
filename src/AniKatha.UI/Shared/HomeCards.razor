@@ -27,15 +27,21 @@
     <img src="@poster" alt="" loading="lazy" decoding="async" @onerror="() => failed.Add(card)" hidden="@failed.Contains(card)" />
    }
    @if (!Compact && card.Rank is int rank) { <span class="home-rank" aria-label="@($"Rank {rank}")">#@rank</span> }
-   @if (!Compact && card.Progress is double progress)
-   {
-    <progress class="home-progress" value="@progress" max="1" aria-label="Saved progress"></progress>
-   }
   </span>
   <span class="home-card-copy">
-   @if (card.Caption is { Length: > 0 }) { <small>@card.Caption</small> }
-   <strong>@card.Title</strong>
-   @if (card.Note is { Length: > 0 }) { <small class="home-card-note">@card.Note</small> }
+   @if (Compact) { <strong class="home-card-title">@card.Title</strong> }
+   @if (!string.IsNullOrWhiteSpace(card.Caption) || !string.IsNullOrWhiteSpace(card.Note) || card.Progress.HasValue)
+   {
+    <span class="home-card-meta">
+     @if (!string.IsNullOrWhiteSpace(card.Caption)) { <small class="home-card-label">@card.Caption</small> }
+     @if (!string.IsNullOrWhiteSpace(card.Note)) { <small class="home-card-note">@card.Note</small> }
+     @if (!Compact && card.Progress is double progress)
+     {
+      <progress class="home-progress" value="@progress" max="1" aria-label="Saved progress"></progress>
+     }
+    </span>
+   }
+   @if (!Compact) { <strong class="home-card-title">@card.Title</strong> }
   </span>
   @if (Compact) { <span class="home-row-arrow" aria-hidden="true">›</span> }
  </text>;
