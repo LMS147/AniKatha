@@ -217,7 +217,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await click('Sample trailer');
         await click('Play trailer');
         await wait(() => document.querySelector('video')?.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4', 'resolved anime video');
-        if (${testDownloads}) await click('Download Play trailer');
+        if (${testDownloads}) await click('Download Compatibility clip');
         tab('manga');
         await click('The Midnight Lighthouse');
         await click('Chapter 1');

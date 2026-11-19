@@ -40,7 +40,8 @@
 @if (playbackError)
 {
  <div class="notice" role="alert">
-  The video couldn’t be loaded. Check your connection and try again.
+  @(OfflineFile ? "This device couldn’t play the downloaded video. Try another available source." :
+   "The video couldn’t be loaded. Check your connection and try again.")
   <button type="button" @onclick="Retry">Retry video</button>
  </div>
 }
