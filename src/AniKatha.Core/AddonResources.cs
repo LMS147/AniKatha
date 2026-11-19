@@ -4,7 +4,12 @@ using System.Text.Json;
 
 namespace AniKatha.Core;
 
-public sealed record AddonCatalog(string Type,string Id,string Name,bool Search,bool Skip);
+public sealed record CatalogExtra(string Name, bool Required, IReadOnlyList<string> Options);
+public sealed record AddonCatalog(string Type,string Id,string Name,bool Search,bool Skip)
+{
+ public IReadOnlyList<CatalogExtra> Extras { get; init; } = [];
+}
+
 public sealed class AddonResources(InstalledAddon addon)
 {
  public InstalledAddon Addon => addon;
@@ -42,8 +47,14 @@ public sealed class AddonResources(InstalledAddon addon)
   {
    var type=Field(c,"type"); var id=Field(c,"id");
    if ((kind=="MANGA" ? type!="manga" : type is not ("anime" or "series")) || id=="" || !MatchingRules("catalog",type).Any()) continue;
-   var extras=Items(c,"extra").Select(x=>Field(x,"name")).ToList();
-   yield return new(type,id,Field(c,"name") is {Length:>0} name ? name : id,extras.Contains("search"),extras.Contains("skip"));
+   var extras = Items(c, "extra")
+    .Select(x => new CatalogExtra(Field(x, "name"),
+     x.ValueKind == JsonValueKind.Object && x.TryGetProperty("isRequired", out var required) && required.ValueKind == JsonValueKind.True,
+     Items(x, "options").Where(option => option.ValueKind == JsonValueKind.String)
+      .Select(option => option.GetString()!).Where(option => option.Length > 0).Distinct().ToArray()))
+    .Where(x => x.Name.Length > 0).DistinctBy(x => x.Name).ToList();
+   yield return new(type, id, Field(c,"name") is {Length:>0} name ? name : id,
+    extras.Any(x => x.Name == "search"), extras.Any(x => x.Name == "skip")) { Extras = extras };
   }
  }
  public Uri Resource(string resource,string type,string id,string? extra=null)

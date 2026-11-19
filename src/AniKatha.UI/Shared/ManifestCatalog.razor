@@ -7,13 +7,31 @@
 <section class="settings-card">
  <h3>@Source.Addon.Name @Catalog.Name</h3>
  @if (HasFilters) { <p>Filters check loaded titles only. Titles missing the selected metadata are excluded.</p> }
+ @if (InitialTitle is null)
+ {
+  @foreach (var extra in AdditionalExtras)
+  {
+   <label>
+    @extra.Name @(extra.Required ? "(required)" : "")
+    @if (extra.Options.Count > 0)
+    {
+     <select value="@ExtraValue(extra.Name)" @onchange="args => ChangeExtra(extra.Name, args)">
+      <option value="">Choose @extra.Name</option>
+      @foreach (var option in extra.Options) { <option value="@option">@option</option> }
+     </select>
+    }
+    else { <input value="@ExtraValue(extra.Name)" @onchange="args => ChangeExtra(extra.Name, args)" /> }
+   </label>
+  }
+  @if (MissingRequired) { <p>Provide the required filters to search or browse this catalogue.</p> }
+ }
  @foreach(var item in titles){
   <button class="secondary" @onclick="()=>Open(item)">@Field(item,"name")</button>
  }
  @if(more){<button disabled="@busy" @onclick="()=>Load(false)">Load more</button>}
  @if(busy){<p role="status">Loading…</p>}
  @if(error!=null){<p role="alert">@error <button @onclick="Retry">Retry</button></p>}
- @if(!busy && error==null && titles.Count==0){<p>No matching titles.</p>}
+ @if(!busy && error==null && titles.Count==0 && !MissingRequired){<p>No matching titles.</p>}
  @if(selected!=null){
   <h3>@Field(selected.Value,"name")</h3>
   @if(InitialTitle==null){<button disabled="@saved" @onclick="SaveTitle">@(saved?"Saved to library":"Save to library")</button>}
@@ -42,6 +60,18 @@
  string? unitId,error;
  bool busy,more,retryMeta,retryReset;
  int offset;
+ Dictionary<string, string> extraValues = new(StringComparer.Ordinal);
+ IEnumerable<CatalogExtra> AdditionalExtras => Catalog.Extras.Where(x => x.Name is not ("search" or "skip"));
+ string ExtraValue(string name) => extraValues.GetValueOrDefault(name, "");
+ bool MissingRequired => Catalog.Extras.Any(x => x.Required && x.Name != "skip" &&
+  (x.Name == "search" ? string.IsNullOrWhiteSpace(SubmittedQuery) : ExtraValue(x.Name).Length == 0));
+
+ Task ChangeExtra(string name, ChangeEventArgs args)
+ {
+  extraValues[name] = (args.Value as string ?? "").Trim();
+  return Load(true);
+ }
+
  readonly HashSet<string> seenTitles = new(StringComparer.Ordinal);
  bool HasFilters => Filters is { } f && (f.Genre is { Length: > 0 } || f.Year.HasValue ||
   f.Season is { Length: > 0 } || f.Format is { Length: > 0 });
@@ -74,10 +104,17 @@
  async Task Load(bool reset){
   var token=Begin();retryMeta=false;retryReset=reset;
   if(reset){titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;unitId=null;}
+  if (MissingRequired)
+  {
+   busy = false;
+   return;
+  }
   try{
-   var extras=new List<string>();
+   var extras = AdditionalExtras.Where(extra => ExtraValue(extra.Name).Length > 0)
+    .Select(extra => Uri.EscapeDataString(extra.Name) + "=" + Uri.EscapeDataString(ExtraValue(extra.Name))).ToList();
    if(applied.Length>0)extras.Add("search="+Uri.EscapeDataString(applied));
-   if(offset>0)extras.Add("skip="+offset);
+   if (offset > 0 || Catalog.Extras.Any(x => x.Name == "skip" && x.Required))
+    extras.Add("skip=" + offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
    var uri=Source.Resource("catalog",Catalog.Type,Catalog.Id,extras.Count==0?null:string.Join("&",extras));
    var root=await Client.FetchJsonAsync(uri,token);
    if (!root.TryGetProperty("metas",out var list) || list.ValueKind!=JsonValueKind.Array) throw new FormatException();
