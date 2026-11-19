@@ -1,5 +1,6 @@
 @page "/anime/preview/episode-1"
 @using Microsoft.JSInterop
+@using System.Globalization
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject LocalStore Store
@@ -13,6 +14,18 @@
 </header>
 
 <video @ref="video" class="episode-video" controls playsinline preload="metadata" aria-label="@Title"></video>
+<div class="reader-controls">
+ <label>Playback speed
+  <select value="@speed.ToString(CultureInfo.InvariantCulture)" @onchange="ChangeSpeed">
+   @foreach (var rate in MediaPreferences.PlaybackSpeeds)
+   {
+    <option value="@rate.ToString(CultureInfo.InvariantCulture)">@rate.ToString("0.##")×</option>
+   }
+  </select>
+ </label>
+ <button class="secondary" @onclick="SetDefaultSpeed">Save as default</button>
+</div>
+@if (speedStatus is not null) { <p role="status">@speedStatus</p> }
 @if(Subtitles.Count>0)
 {
  <label>Subtitles<select @onchange="ChangeSubtitle">
@@ -48,6 +61,26 @@
  [Parameter] public string Title {get;set;} = "Big Buck Bunny";
  [Parameter] public string EpisodeLabel {get;set;} = "Episode 1 · Sample trailer";
  [Parameter] public IReadOnlyList<EpisodeSubtitle> Subtitles {get;set;}=[];
+ double speed = 1;
+ string? speedStatus;
+
+ async Task ChangeSpeed(ChangeEventArgs args)
+ {
+  speed = MediaPreferences.ReadSpeed(args.Value?.ToString());
+  if (player is not null) await player.InvokeVoidAsync("setSpeed", speed);
+  speedStatus = null;
+ }
+
+ async Task SetDefaultSpeed()
+ {
+  try
+  {
+   await Store.SetSettingAsync(MediaPreferences.SpeedKey, speed.ToString(CultureInfo.InvariantCulture));
+   speedStatus = "Default playback speed saved.";
+  }
+  catch { speedStatus = "Could not save playback speed."; }
+ }
+
  bool subtitleError;
  CancellationTokenSource? subtitleRequest;
  async Task ChangeSubtitle(ChangeEventArgs args)
@@ -83,6 +116,7 @@
   try
   {
    var position = await Store.GetPlaybackPositionAsync(EpisodeKey);
+   speed = MediaPreferences.ReadSpeed(await Store.GetSettingAsync(MediaPreferences.SpeedKey));
    if (disposed)
     return;
 
@@ -91,7 +125,8 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion);
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed);
+   if (!disposed) await InvokeAsync(StateHasChanged);
   }
   catch (JSDisconnectedException) { }
   catch (Exception)

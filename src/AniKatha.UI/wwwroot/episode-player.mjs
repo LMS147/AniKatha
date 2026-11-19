@@ -1,4 +1,4 @@
-export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false) {
+export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1) {
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
   let ready = false;
@@ -24,6 +24,7 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
 
   video.addEventListener('loadedmetadata', () => {
     if (position > 0 && position < video.duration) video.currentTime = position;
+    video.playbackRate = speed;
     ready = true;
   }, options);
   video.addEventListener('timeupdate', () => save(false), options);
@@ -57,6 +58,11 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
   }
   return {
     clearSubtitle,
+    setSpeed(value) {
+      if (!Number.isFinite(value) || value < 0.5 || value > 2) return;
+      speed = value;
+      video.playbackRate = value;
+    },
     setSubtitle(language, cues) {
       clearSubtitle();
       track = document.createElement('track');
