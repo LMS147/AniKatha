@@ -1,7 +1,15 @@
 @if (Loading && !HasItems)
 {
  <div class="home-loading" role="status" aria-label="Loading section">
-  @if (Posters) { <div class="home-grid" aria-hidden="true"><div class="home-loading-poster"></div><div class="home-loading-poster"></div></div> }
+  @if (Posters)
+  {
+   <div class="home-grid" aria-hidden="true">
+    @for (var slot = 0; slot < 2; slot++)
+    {
+     <div class="home-loading-poster"><span></span><i></i><i></i></div>
+    }
+   </div>
+  }
   else { <p>Loading…</p> }
  </div>
 }

@@ -49,7 +49,7 @@
     <HomeFeedState Loading="upcoming.Loading" Failed="upcoming.Failed" HasItems="upcoming.HasItems" Empty="No upcoming titles were found." Retry="LoadUpcoming"/>
    </section>
 
-   <section class="home-section home-panel" aria-labelledby="home-releases-title">
+   <section class="home-section" aria-labelledby="home-releases-title">
     <header><h2 id="home-releases-title">Release lists</h2></header>
     <div class="home-segment home-release-switch" role="group" aria-label="Release lists">
      @foreach (var tab in ReleaseOptions)
@@ -67,8 +67,9 @@
     }
    </section>
 
-   <section class="home-section home-panel" aria-labelledby="home-schedule-title">
-    <header><h2 id="home-schedule-title">Estimated Schedule</h2></header>
+   <section class="home-section home-schedule-section" aria-labelledby="home-schedule-title">
+    <header class="home-schedule-heading">
+     <h2 id="home-schedule-title">Estimated Schedule</h2>
     <div class="home-calendar" aria-label="Schedule date">
      <button class="home-day-arrow" aria-label="Previous day" @onclick="() => ChangeDay(day.AddDays(-1))">‹</button>
      @foreach (var date in new[] { day.AddDays(-1), day, day.AddDays(1) })
@@ -80,6 +81,7 @@
      <button class="home-day-arrow" aria-label="Next day" @onclick="() => ChangeDay(day.AddDays(1))">›</button>
     </div>
     <p class="home-description">Times shown in your local time zone.</p>
+    </header>
     @if (ActiveSchedule.Items.Count > 0)
     {
      <ul class="home-schedule">
@@ -87,7 +89,8 @@
       {
        <li><button @onclick="() => OpenCard(FromAiring(airing))">
         <time datetime="@airing.AirsAt.ToString("O")">@airing.AirsAt.ToLocalTime().ToString("t")</time>
-        <strong>@airing.Media.Title</strong><small>Episode @airing.Episode</small>
+        <small class="home-schedule-episode">Episode @airing.Episode</small>
+        <strong>@airing.Media.Title</strong>
        </button></li>
       }
      </ul>

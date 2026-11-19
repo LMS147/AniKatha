@@ -23,6 +23,7 @@ jobs:
       - run: dotnet run --project tests/AniKatha.UiChecks -c Release
         env:
           ANIKATHA_TRACKING_CAPTURE_DIRECTORY: ${{ runner.temp }}/tracking-ui
+          ANIKATHA_HOME_CAPTURE_DIRECTORY: ${{ runner.temp }}/home-ui
       - name: Capture the connected and pending tracking fixtures
         shell: bash
         run: |
@@ -43,6 +44,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Compare Home at three mobile widths
+        shell: bash
+        env:
+          BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/home-ui/art"
+          cp src/AniKatha.UI/wwwroot/app.css "$RUNNER_TEMP/home-ui/"
+          cp src/AniKatha.UI/wwwroot/manga/*.webp "$RUNNER_TEMP/home-ui/art/"
+          node scripts/capture_home_layout.mjs "$RUNNER_TEMP/home-ui" artifacts/home-ui/updated
+          if [[ -n "$BASE_COMMIT" ]]; then
+            git fetch --depth=1 origin "$BASE_COMMIT"
+            git worktree add --detach "$RUNNER_TEMP/home-baseline" FETCH_HEAD
+            cp tests/AniKatha.UiChecks/HomeChecks.cs "$RUNNER_TEMP/home-baseline/tests/AniKatha.UiChecks/"
+            mkdir -p "$RUNNER_TEMP/home-before/art"
+            cp "$RUNNER_TEMP/home-baseline/src/AniKatha.UI/wwwroot/app.css" "$RUNNER_TEMP/home-before/"
+            cp "$RUNNER_TEMP/home-ui/art/"*.webp "$RUNNER_TEMP/home-before/art/"
+            ANIKATHA_HOME_CAPTURE_DIRECTORY="$RUNNER_TEMP/home-before" dotnet run --project "$RUNNER_TEMP/home-baseline/tests/AniKatha.UiChecks" -c Release
+            node scripts/capture_home_layout.mjs "$RUNNER_TEMP/home-before" artifacts/home-ui/baseline baseline
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AniKatha-Home-mobile-comparison
+          path: artifacts/home-ui
+          if-no-files-found: warn
       - run: python scripts/test_startup_checks.py
       - run: node --test scripts/*.test.mjs
   android:

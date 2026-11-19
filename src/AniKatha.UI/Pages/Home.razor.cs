@@ -144,7 +144,7 @@ public partial class Home
 
     private static HomeCard FromAiring(AiringEpisode episode) =>
         new(episode.Media.Title, episode.Media.Poster, Caption: $"Episode {episode.Episode}",
-            Note: episode.AirsAt.ToLocalTime().ToString("MMM d"), Detail: episode.Media);
+            Note: episode.Media.Format?.Replace('_', ' ') ?? episode.AirsAt.ToLocalTime().ToString("MMM d"), Detail: episode.Media);
 
     private static HomeCard FromTitle(HomeTitle title, string? note, int? rank)
     {
