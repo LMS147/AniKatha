@@ -38,3 +38,28 @@ public static class MediaPreferences
         return fallback;
     }
 }
+
+public sealed record ReaderPreferences(string Mode = "ltr", string Fit = "width", int Zoom = 100)
+{
+    public const string GlobalKey = "reader:defaults";
+    public static IReadOnlyList<int> ZoomLevels { get; } = Array.AsReadOnly(new[] { 100, 125, 150, 200 });
+    public static string SafeMode(string? mode) => mode is "vertical" or "rtl" ? mode : "ltr";
+    public static string SafeFit(string? fit) => fit == "page" ? fit : "width";
+    public static int SafeZoom(string? value) =>
+        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var zoom) && ZoomLevels.Contains(zoom) ? zoom : 100;
+
+    public static async Task<ReaderPreferences> LoadAsync(LocalStore store, string key)
+    {
+        var json = await store.GetSettingAsync(key);
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try
+        {
+            var value = System.Text.Json.JsonSerializer.Deserialize<ReaderPreferences>(json);
+            return value is null ? new() : new(SafeMode(value.Mode), SafeFit(value.Fit),
+                ZoomLevels.Contains(value.Zoom) ? value.Zoom : 100);
+        }
+        catch (System.Text.Json.JsonException) { return new(); }
+    }
+
+    public Task SaveAsync(LocalStore store, string key) => store.SetSettingAsync(key, System.Text.Json.JsonSerializer.Serialize(this));
+}

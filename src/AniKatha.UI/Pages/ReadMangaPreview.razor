@@ -34,10 +34,15 @@
    </label>
    <label>Zoom
     <select value="@zoom" @onchange="ChangeZoom">
-     @foreach (var level in zoomLevels) { <option value="@level">@level%</option> }
+     @foreach (var level in ReaderPreferences.ZoomLevels) { <option value="@level">@level%</option> }
     </select>
    </label>
   </div>
+  <div class="reader-controls">
+   <button class="secondary" @onclick="SaveTitleSettings">Remember layout for this title</button>
+   @if (titleOverride) { <button class="secondary" @onclick="ClearTitleSettings">Use default layout</button> }
+  </div>
+  @if (layoutStatus is not null) { <p role="status">@layoutStatus</p> }
   <div class="reader-viewport @((zoom == 100 && fit == "page") ? "fit-page" : "") @(zoom > 100 ? "zoomed" : "")"
     style="@($"--reader-zoom:{zoom}%")">
   @if (mode == "vertical")
@@ -92,6 +97,7 @@ else
  [Parameter] public EventCallback NextChapter { get; set; }
  [Parameter] public EventCallback OnCompleted { get; set; }
  string? storageError;
+ [Parameter] public string TitleSettingsKey { get; set; } = "reader:title:midnight-lighthouse";
  [Parameter] public string ChapterKey {get;set;} = MangaSample.ChapterKey;
  [Parameter] public string Title {get;set;} = MangaSample.Title;
  [Parameter] public string ChapterLabel {get;set;} = "Chapter 1";
@@ -115,17 +121,41 @@ else
 
  string mode = "ltr", fit = "width";
  int zoom = 100;
- static readonly int[] zoomLevels = [100, 125, 150, 200];
+ bool titleOverride;
+ string? layoutStatus;
+
+ async Task SaveTitleSettings()
+ {
+  try
+  {
+   await new ReaderPreferences(mode, fit, zoom).SaveAsync(Store, TitleSettingsKey);
+   titleOverride = true;
+   layoutStatus = "Layout saved for this title.";
+  }
+  catch { layoutStatus = "Could not save this title’s layout."; }
+ }
+
+ async Task ClearTitleSettings()
+ {
+  try
+  {
+   var defaults = await ReaderPreferences.LoadAsync(Store, ReaderPreferences.GlobalKey);
+   await Store.SetSettingAsync(TitleSettingsKey, "");
+   await StopObserving();
+   (mode, fit, zoom) = (defaults.Mode, defaults.Fit, defaults.Zoom);
+   titleOverride = false;
+   layoutStatus = "Using reader defaults.";
+  }
+  catch { layoutStatus = "Could not restore the default layout."; }
+ }
 
  void ChangeFit(ChangeEventArgs args)
  {
-  fit = args.Value?.ToString() == "page" ? "page" : "width";
+  fit = ReaderPreferences.SafeFit(args.Value?.ToString());
   zoom = 100;
  }
 
- void ChangeZoom(ChangeEventArgs args) =>
-  zoom = int.TryParse(args.Value?.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var level) &&
-   zoomLevels.Contains(level) ? level : 100;
+ void ChangeZoom(ChangeEventArgs args) => zoom = ReaderPreferences.SafeZoom(args.Value?.ToString());
  bool tracking, disposed;
  ElementReference stack;
  IJSObjectReference? readerModule, pageObserver;
@@ -135,7 +165,7 @@ else
 
  Task ChangeMode(ChangeEventArgs args)
  {
-  mode = args.Value?.ToString() switch { "vertical" => "vertical", "rtl" => "rtl", _ => "ltr" };
+  mode = ReaderPreferences.SafeMode(args.Value?.ToString());
   if (mode != "vertical") return StopObserving();
   return Task.CompletedTask;
  }
@@ -198,6 +228,9 @@ else
   {
    currentPage = Math.Clamp(await Store.GetReadingPageAsync(ChapterKey), 1, PageCount);
    completed = Pages is not null && await Store.IsUnitCompleteAsync(ChapterKey);
+   titleOverride = !string.IsNullOrWhiteSpace(await Store.GetSettingAsync(TitleSettingsKey));
+   var prefs = await ReaderPreferences.LoadAsync(Store, titleOverride ? TitleSettingsKey : ReaderPreferences.GlobalKey);
+   (mode, fit, zoom) = (prefs.Mode, prefs.Fit, prefs.Zoom);
   }
   catch
   {

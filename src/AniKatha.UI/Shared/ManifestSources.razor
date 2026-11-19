@@ -26,7 +26,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
 @if (!loading && !error) { <button type="button" @onclick="Refresh">Refresh sources</button> }
 @if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
 </div>
-@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="readingPages" Title="@Title" ChapterLabel="@Label" PreviousChapter="PreviousChapter" NextChapter="NextChapter" OnCompleted="ProgressChanged"/>}
+@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" TitleSettingsKey="@ReaderTitleKey" Pages="readingPages" Title="@Title" ChapterLabel="@Label" PreviousChapter="PreviousChapter" NextChapter="NextChapter" OnCompleted="ProgressChanged"/>}
 @if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" StartPlaying="AutoOpen" OnNext="NextEpisode" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
 
 @code {
@@ -60,6 +60,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  List<EpisodeSubtitle> subtitles=[];
  List<string> pages=[], readingPages=[];
  List<JsonElement> streams=[];
+ string ReaderTitleKey => $"reader:title:{Origin}/{Type}/{Uri.EscapeDataString(TitleId)}";
  string Key=>ResumeEntry.Key(Origin,Type,TitleId,UnitId,Source.ProviderKey);
  static string StreamName(JsonElement stream)=>Field(stream,"name") is { Length:>0 } name?name:"Play";
  protected override async Task OnInitializedAsync()
