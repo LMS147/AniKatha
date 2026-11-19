@@ -7,6 +7,7 @@
 <header class="page-header" @ref="heading"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
 @if (appliedSearch.Length == 0 && source.Length == 0) { @Featured }
 <form @onsubmit="Search" @onsubmit:preventDefault>
+ <fieldset class="catalog-search-fields" disabled="@(!initialized)">
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
  <div class="filters">
  <label>Source<select aria-label="Catalogue source" value="@source" @onchange="ChangeSource">
@@ -25,6 +26,7 @@
  <label>Sort<select @bind="sort"><option value="TRENDING_DESC">Trending</option><option value="POPULARITY_DESC">Popular</option><option value="SCORE_DESC">Top rated</option><option value="START_DATE_DESC">Newest</option></select></label>
  }
  </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
+ </fieldset>
 </form>
 @foreach(var provider in httpProviders.Where(p => source.Length == 0 || p.ProviderKey == source)){
  @foreach(var catalog in provider.Catalogs(Kind)){
@@ -180,6 +182,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
 
  async Task ChangeSource(ChangeEventArgs change)
  {
+  if (!initialized) return;
   source = FindSource(change.Value as string ?? "");
   selected = null;
   var chosen = source;
@@ -199,6 +202,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
 
  Task Search()
  {
+  if (!initialized) return;
   appliedSearch = search.Trim();
   appliedFilters = new SearchOptions(Kind, appliedSearch, genre, year, Kind == "ANIME" ? season : null, format, sort);
   submission++;
