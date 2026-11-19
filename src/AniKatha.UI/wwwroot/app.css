@@ -129,3 +129,32 @@
 @media(max-width:900px) { .app-shell[data-density="compact"] .poster-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } }
 @media(max-width:700px) { .app-shell[data-density="compact"] .poster-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
 @media(max-width:360px) { .app-shell[data-density="compact"] .poster-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+
+/* AniList and Library tracking */
+.tracking-account-heading { display:flex; align-items:flex-start; gap:1rem; margin-bottom:1rem; }
+.tracking-account-heading > div { min-width:0; }
+.tracking-account-heading h2, .tracking-editor-title h2, .tracking-library-card h3 { overflow-wrap:anywhere; }
+.tracking-account-heading h2 { margin:.2rem 0 .4rem; }
+.tracking-account-heading p { margin:0; }
+.tracking-account-avatar { border-radius:36%; width:3.5rem; height:3.5rem; object-fit:cover; display:grid; place-items:center; flex:none; border:1px solid var(--border); background:var(--raised); color:var(--accent); font-weight:800; }
+.tracking-badge, .tracking-pending { width:fit-content; max-width:100%; border-radius:.7rem; border:1px solid var(--border); background:var(--raised); color:var(--ink); padding:.4rem .65rem; font-size:.875rem; overflow-wrap:anywhere; }
+.tracking-badge span, .tracking-pending span { color:var(--accent); margin-right:.2rem; font-weight:700; }
+.tracking-toggle { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:.7rem; min-height:44px; align-items:center; }
+.tracking-toggle input { width:1.2rem; min-height:1.2rem; margin:0; accent-color:var(--accent); }
+.tracking-toggle small { display:block; margin-top:.25rem; }
+.tracking-tabs { flex-wrap:wrap; }
+.tracking-tabs button { min-height:44px; }
+.tracking-library-card { display:grid; grid-template-columns:auto minmax(0, 1fr); align-items:start; gap:clamp(.65rem, 3vw, 1.1rem); }
+.tracking-library-card > img, .tracking-cover-placeholder { width:clamp(3.5rem, 16vw, 5.5rem); height:auto; aspect-ratio:2/3; border-radius:.7rem; object-fit:cover; }
+.tracking-cover-placeholder { display:grid; place-items:center; background:var(--raised); color:var(--accent); border:1px solid var(--border); }
+.tracking-line { margin:.35rem 0; font-size:.875rem; }
+.tracking-card-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.2rem .65rem; margin-top:.55rem; }
+.tracking-card-actions :is(a,button) { min-height:44px; }
+.tracking-card-actions .secondary { padding:.45rem .65rem; }
+.tracking-editor label { display:block; margin-top:1rem; }
+.tracking-editor label input, .tracking-editor select { min-height:46px; }
+.tracking-editor fieldset p { margin:.4rem 0; }
+.tracking-editor .field-error { color:var(--danger); }
+.tracking-editor [aria-invalid="true"] { border-color:var(--danger); }
+.tracking-removal { margin-top:1.2rem; }
+.tracking-feedback { font-size:.875rem; margin:.65rem 0; }

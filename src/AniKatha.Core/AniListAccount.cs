@@ -7,8 +7,9 @@ using System.Text.Json;
 
 namespace AniKatha.Core;
 
-public sealed record AniListCredential(string Token, DateTimeOffset Expires, int ViewerId, string? Name = null, string? ScoreFormat = null);
-public sealed record AniListViewer(int Id, string Name, string ScoreFormat);
+public sealed record AniListCredential(string Token, DateTimeOffset Expires, int ViewerId, string? Name = null, string? ScoreFormat = null, string? Avatar = null);
+public sealed record AniListViewer(int Id, string Name, string ScoreFormat, string? Avatar = null);
+public sealed record AniListLink(AniListViewer Viewer, bool RequiresReconnect);
 
 public interface IAniListAuthorization
 {
@@ -26,11 +27,19 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
     private CancellationTokenSource session = new();
     public bool CanConnect => int.TryParse(authorization.ClientId, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0;
 
-    public async Task<AniListViewer?> StoredViewerAsync()
+    private string? revokedToken;
+
+    public async Task<AniListLink?> CachedLinkAsync()
     {
-        var credential = await ReadValidCredentialAsync();
-        return credential is { Name: not null, ScoreFormat: not null } ? new(credential.ViewerId, credential.Name, credential.ScoreFormat) : null;
+        var credential = await authorization.ReadAsync();
+        return credential is { Name: not null, ScoreFormat: not null, ViewerId: > 0 }
+            ? new(new(credential.ViewerId, credential.Name, credential.ScoreFormat, credential.Avatar),
+                credential.Expires <= DateTimeOffset.UtcNow || credential.Token == Volatile.Read(ref revokedToken))
+            : null;
     }
+
+    public async Task<AniListViewer?> StoredViewerAsync() =>
+        await CachedLinkAsync() is { RequiresReconnect: false } link ? link.Viewer : null;
 
     public async Task<AniListViewer?> CurrentAsync(CancellationToken token = default)
     {
@@ -47,14 +56,14 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
 
     private async Task UpdateStoredViewerAsync(AniListCredential credential, AniListViewer viewer, CancellationToken token)
     {
-        if (credential.Name == viewer.Name && credential.ScoreFormat == viewer.ScoreFormat) return;
+        if (credential.Name == viewer.Name && credential.ScoreFormat == viewer.ScoreFormat && credential.Avatar == viewer.Avatar) return;
         await sessionGate.WaitAsync(token);
         try
         {
             var stored = await authorization.ReadAsync();
             token.ThrowIfCancellationRequested();
             if (stored?.Token == credential.Token)
-                await authorization.WriteAsync(credential with { Name = viewer.Name, ScoreFormat = viewer.ScoreFormat });
+                await authorization.WriteAsync(credential with { Name = viewer.Name, ScoreFormat = viewer.ScoreFormat, Avatar = viewer.Avatar });
         }
         finally { sessionGate.Release(); }
     }
@@ -75,7 +84,8 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
         try
         {
             request.Token.ThrowIfCancellationRequested();
-            await authorization.WriteAsync(credential with { ViewerId = viewer.Id, Name = viewer.Name, ScoreFormat = viewer.ScoreFormat });
+            await authorization.WriteAsync(credential with { ViewerId = viewer.Id, Name = viewer.Name, ScoreFormat = viewer.ScoreFormat, Avatar = viewer.Avatar });
+            Volatile.Write(ref revokedToken, null);
         }
         finally { sessionGate.Release(); }
         return viewer;
@@ -89,6 +99,7 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
         try
         {
             authorization.Clear();
+            Volatile.Write(ref revokedToken, null);
             Interlocked.CompareExchange(ref session, new CancellationTokenSource(), previous);
         }
         finally { sessionGate.Release(); }
@@ -97,7 +108,7 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
     private async Task<AniListCredential?> ReadValidCredentialAsync()
     {
         var credential = await authorization.ReadAsync();
-        if (credential is null || credential.Expires <= DateTimeOffset.UtcNow) return null;
+        if (credential is null || credential.Expires <= DateTimeOffset.UtcNow || credential.Token == Volatile.Read(ref revokedToken)) return null;
         return credential;
     }
 
@@ -115,11 +126,12 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
 
     private async Task<AniListViewer> ViewerAsync(AniListCredential credential, CancellationToken token)
     {
-        var result = await SendAsync(credential, "query { Viewer { id name mediaListOptions { scoreFormat } } }", new { }, token);
+        var result = await SendAsync(credential, "query { Viewer { id name avatar { large } mediaListOptions { scoreFormat } } }", new { }, token);
         if (!result.TryGetProperty("Viewer", out var viewer) || viewer.ValueKind != JsonValueKind.Object)
             throw new AniListAuthorizationException();
         return new(viewer.GetProperty("id").GetInt32(), viewer.GetProperty("name").GetString()!,
-            AddonResources.Field(viewer.GetProperty("mediaListOptions"), "scoreFormat"));
+            AddonResources.Field(viewer.GetProperty("mediaListOptions"), "scoreFormat"),
+            viewer.TryGetProperty("avatar", out var avatar) ? AddonResources.Field(avatar, "large") : null);
     }
 
     private async Task<JsonElement> SendAsync(AniListCredential credential, string query, object variables, CancellationToken token)
@@ -129,7 +141,10 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.Token);
         using var response = await http.SendAsync(request, token);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            Volatile.Write(ref revokedToken, credential.Token);
             throw new AniListAuthorizationException();
+        }
         response.EnsureSuccessStatusCode();
         using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(token), cancellationToken: token);
         var root = document.RootElement;

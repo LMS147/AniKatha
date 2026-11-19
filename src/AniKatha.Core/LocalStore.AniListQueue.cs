@@ -11,7 +11,10 @@ public sealed partial class LocalStore
     private static string QueuePrefix(int account) => $"anilist:{account}:edit:";
     private static string QueueKey(int account, int media, string field) => $"{QueuePrefix(account)}{media}:{field}";
 
-    public async Task QueueAniListEditAsync(int account, int media, string field, string value, string? scoreFormat = null)
+    public Task QueueAniListEditAsync(int account, int media, string field, string value, string? scoreFormat = null) =>
+        QueueAniListEditsAsync(account, media, new Dictionary<string, string> { [field] = value }, scoreFormat);
+
+    public async Task QueueAniListEditsAsync(int account, int media, IReadOnlyDictionary<string, string> fields, string? scoreFormat = null)
     {
         await ReadyAsync();
         await db.RunInTransactionAsync(connection =>
@@ -19,27 +22,29 @@ public sealed partial class LocalStore
             var item = connection.Find<SavedTitle>(media);
             if (account <= 0 || media <= 0 || item is null || item.ProviderKey is not null)
                 throw new InvalidOperationException("AniList changes require a saved AniList title.");
-            switch (field)
+            foreach (var (field, value) in fields)
             {
-                case "status":
-                    item.Status = value;
-                    item.UpdatedAt = DateTime.UtcNow;
-                    connection.Update(item);
-                    break;
-                case "progress":
-                    connection.Execute("DELETE FROM AppSetting WHERE Key LIKE ?", VerifiedCompletionPattern(account, media));
-                    item.Progress = int.Parse(value, CultureInfo.InvariantCulture);
-                    item.UpdatedAt = DateTime.UtcNow;
-                    connection.Update(item);
-                    break;
-                case "score":
-                    connection.InsertOrReplace(new AppSetting { Key = AniListScoreKey(account, media, scoreFormat), Value = value == "0" ? "" : value });
-                    break;
-                default: throw new ArgumentOutOfRangeException(nameof(field));
+                switch (field)
+                {
+                    case "status":
+                        item.Status = value;
+                        break;
+                    case "progress":
+                        connection.Execute("DELETE FROM AppSetting WHERE Key LIKE ?", VerifiedCompletionPattern(account, media));
+                        item.Progress = int.Parse(value, CultureInfo.InvariantCulture);
+                        break;
+                    case "score":
+                        connection.InsertOrReplace(new AppSetting { Key = AniListScoreKey(account, media, scoreFormat), Value = value == "0" ? "" : value });
+                        break;
+                    default: throw new ArgumentOutOfRangeException(nameof(fields));
+                }
+                var edit = new AniListEdit(media, field, value, Guid.NewGuid().ToString("N"), scoreFormat);
+                connection.InsertOrReplace(new AppSetting { Key = QueueKey(account, media, field), Value = JsonSerializer.Serialize(edit) });
             }
-            var edit = new AniListEdit(media, field, value, Guid.NewGuid().ToString("N"), scoreFormat);
-            connection.InsertOrReplace(new AppSetting { Key = QueueKey(account, media, field), Value = JsonSerializer.Serialize(edit) });
+            item.UpdatedAt = DateTime.UtcNow;
+            connection.Update(item);
         });
+        NotifyAniListChanged();
     }
 
     public async Task<IReadOnlyList<AniListEdit>> AniListEditsAsync(int account)
@@ -77,6 +82,9 @@ public sealed partial class LocalStore
                 title.Progress = progress;
                 connection.Update(title);
             }
+            if (remoteProgress is null || remoteProgress.Value.ToString(CultureInfo.InvariantCulture) == edit.Value)
+                connection.InsertOrReplace(new AppSetting { Key = AniListConfirmationKey(account, edit.MediaId), Value = "true" });
+            else connection.Delete<AppSetting>(AniListConfirmationKey(account, edit.MediaId));
             var baselineKey = AniListBaselineKey(account, edit.MediaId);
             var baselineSetting = connection.Find<AppSetting>(baselineKey);
             if (baselineSetting is null || JsonSerializer.Deserialize<AniListListEntry>(baselineSetting.Value) is not { } baseline) return;
@@ -90,5 +98,6 @@ public sealed partial class LocalStore
             };
             connection.Update(new AppSetting { Key = baselineKey, Value = JsonSerializer.Serialize(updated) });
         });
+        NotifyAniListChanged();
     }
 }

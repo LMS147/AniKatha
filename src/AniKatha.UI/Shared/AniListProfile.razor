@@ -1,105 +1,230 @@
-@implements IDisposable
 @inherits ProfileComponent
+@implements IDisposable
 
-<h2>Tracking</h2>
-<section class="settings-card anilist-card">
- <span class="eyebrow">ANILIST</span>
- <label><input type="checkbox" checked="@automatic" @onchange="ChangeAutomatic" />
-  Automatically sync completed add-on episodes and chapters
- </label>
- @if (viewer is not null)
+<section class="settings-card tracking-account" aria-label="AniList account">
+ @if (loading)
  {
-  <h3>Connected as @viewer.Name</h3>
-  <button class="primary" disabled="@busy" @onclick="Import">Import AniList library</button>
-  <button class="secondary" disabled="@busy" @onclick="Retry">Sync pending changes</button>
-  <button class="secondary" disabled="@busy" @onclick="Disconnect">Disconnect AniList</button>
+  <p role="status">Opening AniList settings…</p>
  }
- else if (account?.CanConnect == true)
+ else if (link is null)
  {
-  <button class="primary" disabled="@busy" @onclick="Connect">Connect AniList</button>
+  <div class="tracking-account-heading">
+   <span class="tracking-account-avatar" aria-hidden="true">AL</span>
+   <div><h2>AniList account</h2><p>Sync your anime and manga lists, scores, and completed progress.</p></div>
+  </div>
+  @if (ProfileAniList?.CanConnect == true)
+  {
+   <button class="primary" disabled="@(operation is not null)" @onclick="Connect">Connect AniList</button>
+  }
+  else
+  {
+   <p class="tracking-badge"><span aria-hidden="true">◇</span> AniList sign-in is unavailable for this build.</p>
+  }
  }
- else { <p>AniList sign-in is unavailable for this build.</p> }
- @if (status is not null) { <p role="status">@status</p> }
+ else
+ {
+  <div class="tracking-account-heading">
+   @if (link.Viewer.Avatar is { } avatar && failedAvatar != avatar && AddonResources.MediaUrl(avatar))
+   {
+    <img class="tracking-account-avatar" src="@avatar" alt="" width="56" height="56" @onerror="() => failedAvatar = avatar" />
+   }
+   else
+   {
+    <span class="tracking-account-avatar" aria-hidden="true">@ProfileAvatar.Glyph(link.Viewer.Name, "")</span>
+   }
+   <div><span class="muted">Linked AniList account</span><h2>@link.Viewer.Name</h2>
+    <p class="tracking-badge" role="status"><span aria-hidden="true">@StateIcon</span> @State</p>
+   </div>
+  </div>
+  @if (summary.LastImport is { } lastImport)
+  {
+   <p class="muted">Last list import <time datetime="@lastImport.ToString("O")">@lastImport.ToLocalTime().ToString("g")</time></p>
+  }
+  @if (pending > 0)
+  {
+   <p class="tracking-pending" role="status">@pending @(pending == 1 ? "change" : "changes") saved on this device · Waiting to sync</p>
+  }
+  <div class="settings-actions">
+   @if (link.RequiresReconnect)
+   {
+    @if (ProfileAniList?.CanConnect == true)
+    {
+     <button class="primary" disabled="@(operation is not null)" @onclick="Connect">Reconnect AniList</button>
+    }
+   }
+   else
+   {
+    @if (pending > 0)
+    {
+     <button class="primary" disabled="@(operation is not null)" @onclick="Retry">Sync pending changes</button>
+    }
+    <button class="@(pending == 0 ? "primary" : "secondary")" disabled="@(operation is not null)" @onclick="Import">
+     @(summary.HasImported ? "Refresh lists" : "Import lists")
+    </button>
+   }
+   @if (showLibrary) { <a class="secondary" href="/library">Open Library</a> }
+  </div>
+  <p class="muted">Import adds Anime and Manga tracking entries to Library. Installed add-ons provide video and chapter pages.</p>
+ }
+ @if (operation is not null) { <p role="status">@operation</p> }
+ @if (message is not null) { <p role="@(hasError ? "alert" : "status")">@message</p> }
 </section>
+@if (link is not null)
+{
+ <section class="settings-card tracking-preferences">
+  <h2>Tracking preferences</h2>
+  <label class="tracking-toggle"><input type="checkbox" checked="@automatic" @onchange="ChangeAutomatic" />
+   <span><strong>Automatically sync completed add-on episodes and chapters</strong><small>Available for units with a verified AniList match.</small></span>
+  </label>
+ </section>
+ <section class="settings-card">
+  <h2>Account management</h2>
+  @if (confirmDisconnect)
+  {
+   <p>Disconnect AniList from this profile? Your local Library, watch and reading progress will remain on this device.</p>
+   <div class="settings-actions">
+    <button class="secondary" disabled="@(operation is not null)" @onclick="() => confirmDisconnect = false">Keep connected</button>
+    <button class="secondary danger-action" disabled="@(operation is not null)" @onclick="Disconnect">Disconnect account</button>
+   </div>
+  }
+  else
+  {
+   <button class="text-link danger-action" disabled="@(operation is not null)" @onclick="() => confirmDisconnect = true">Disconnect AniList</button>
+  }
+ </section>
+}
 
 @code {
- AniListAccount? account;
- AniListViewer? viewer;
- bool busy;
- bool automatic = true;
+ AniListLink? link;
+ AniListImportSummary summary = new(false, null);
+ bool loading = true, automatic = true, showLibrary, confirmDisconnect, hasError, disposed;
+ int pending;
+ long refresh;
+ string? operation, message, failedAvatar;
+ readonly CancellationTokenSource lifetime = new();
+ string State => link?.RequiresReconnect == true ? "Reconnect required" : operation is not null ? "Syncing" :
+  pending > 0 ? "Changes pending" : "Connected";
+ string StateIcon => State switch { "Reconnect required" => "!", "Syncing" => "↻", "Changes pending" => "◷", _ => "✓" };
+
+ protected override async Task OnInitializedAsync()
+ {
+  Store.AniListChanged += Changed;
+  try
+  {
+   automatic = await Store.GetSettingAsync(LocalStore.AutomaticAniListKey) != "false";
+   await Refresh();
+  }
+  catch { Inform("Could not open AniList settings. Reopen this page to try again.", true); }
+  finally { loading = false; }
+  if (link is { RequiresReconnect: false } && ProfileAniList is { } account)
+  {
+   try { await account.CurrentAsync(lifetime.Token); await Refresh(); }
+   catch (AniListAuthorizationException) { await Refresh(); Inform("Reconnect AniList to import lists or send pending changes.", true); }
+   catch (OperationCanceledException) when (disposed) { }
+   catch { Inform("Could not check AniList. Your local Library is available.", true); }
+  }
+ }
+
+ async Task Refresh()
+ {
+  var version = ++refresh;
+  var next = ProfileAniList is { } account ? await account.CachedLinkAsync() : null;
+  var metadata = next is null ? new(false, null) : await Store.ReadAniListImportAsync(next.Viewer.Id);
+  var count = next is null ? 0 : (await Store.AniListEditsAsync(next.Viewer.Id)).Count;
+  if (disposed || version != refresh) return;
+  (link, summary, pending) = (next, metadata, count);
+ }
+
+ void Changed() => _ = InvokeAsync(async () =>
+ {
+  if (disposed) return;
+  try { await Refresh(); }
+  catch { return; }
+  if (!disposed) StateHasChanged();
+ });
+
+ void Inform(string value, bool error = false) { message = value; hasError = error; }
+ async Task Run(string status, Func<AniListAccount, Task> action)
+ {
+  if (operation is not null || ProfileAniList is not { } account) return;
+  operation = status;
+  message = null;
+  hasError = false;
+  try { await action(account); }
+  catch (AniListAuthorizationException)
+  {
+   Inform(link is null ? "Sign-in did not complete. Return to AniList and try again." : "Reconnect AniList to continue.", true);
+  }
+  catch (OperationCanceledException) when (disposed) { }
+  catch (OperationCanceledException)
+  {
+   Inform(status.StartsWith("Waiting", StringComparison.Ordinal) ? "Sign-in cancelled. You can try again." : "AniList did not respond. Try again.", true);
+  }
+  catch (HttpRequestException ex) when (ex.StatusCode is null)
+  {
+   Inform("Could not reach AniList. Check your internet connection and try again. Your local Library is available.", true);
+  }
+  catch { Inform("AniList could not complete this action. Try again. Your local Library is available.", true); }
+  finally
+  {
+   operation = null;
+   if (!disposed)
+   {
+    try { await Refresh(); }
+    catch { Inform("Could not refresh the account status. Reopen this page to try again.", true); }
+   }
+  }
+ }
+
+ Task Connect() => Run("Waiting for AniList sign-in in your browser…", async account =>
+ {
+  await account.ConnectAsync(lifetime.Token);
+  showLibrary = false;
+  Inform("AniList account connected.");
+ });
+
+ Task Import() => link is { RequiresReconnect: false } active
+  ? Run("Reading your Anime and Manga lists from AniList…", async account =>
+  {
+   var count = await account.ImportAsync(Store, active.Viewer.Id, lifetime.Token);
+   showLibrary = true;
+   Inform(count == 0 ? "No Anime or Manga entries found on this AniList account." :
+    $"Checked {count} tracking {(count == 1 ? "entry" : "entries")}. Your lists are available in Library.");
+  })
+  : Task.CompletedTask;
+
+ Task Retry() => link is { RequiresReconnect: false } active
+  ? Run("Syncing pending changes…", async account =>
+  {
+   var sent = await account.SyncPendingAsync(Store, lifetime.Token);
+   var remaining = (await Store.AniListEditsAsync(active.Viewer.Id)).Count;
+   var current = await account.CachedLinkAsync();
+   Inform(current?.RequiresReconnect == true ? "Reconnect AniList to send the pending changes." :
+    remaining > 0 ? "Changes are still waiting. Check your connection or retry later." :
+    sent > 0 ? "AniList acknowledged the pending changes." : "There are no changes waiting to sync.", remaining > 0);
+  })
+  : Task.CompletedTask;
+
+ Task Disconnect() => Run("Disconnecting AniList…", async account =>
+ {
+  await account.DisconnectAsync();
+  confirmDisconnect = false;
+  showLibrary = false;
+  Inform("AniList disconnected. Your local Library and progress remain on this device.");
+ });
 
  async Task ChangeAutomatic(ChangeEventArgs args)
  {
   var enabled = args.Value is true;
-  try
-  {
-   await Store.SetSettingAsync(LocalStore.AutomaticAniListKey, enabled ? "true" : "false");
-   automatic = enabled;
-  }
-  catch { status = "Could not save automatic tracking preference."; }
+  try { await Store.SetSettingAsync(LocalStore.AutomaticAniListKey, enabled ? "true" : "false"); automatic = enabled; }
+  catch { Inform("Could not save the tracking preference.", true); }
  }
- string? status;
- readonly CancellationTokenSource lifetime = new();
 
- protected override async Task OnInitializedAsync()
+ public void Dispose()
  {
-  account = ProfileAniList;
-  if (account is null) return;
-  try { automatic = await Store.GetSettingAsync(LocalStore.AutomaticAniListKey) != "false"; viewer = await account.StoredViewerAsync(); viewer = await account.CurrentAsync(lifetime.Token); }
-  catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-  catch (AniListAuthorizationException) { viewer = null; status = "AniList access expired or was revoked. Connect again."; }
-  catch { status = "Could not check AniList. Try again when connected."; }
+  disposed = true;
+  Store.AniListChanged -= Changed;
+  lifetime.Cancel();
+  lifetime.Dispose();
  }
-
- async Task Connect()
- {
-  if (account is null || busy) return;
-  busy = true;
-  status = null;
-  try { automatic = await Store.GetSettingAsync(LocalStore.AutomaticAniListKey) != "false"; viewer = await account.ConnectAsync(lifetime.Token); }
-  catch (OperationCanceledException) { status = "AniList sign-in cancelled."; }
-  catch { status = "Could not connect to AniList."; }
-  finally { busy = false; }
- }
-
- async Task Retry()
- {
-  if (account is null || viewer is null || busy) return;
-  busy = true;
-  try
-  {
-   await account.SyncPendingAsync(Store, lifetime.Token);
-   var remaining = (await Store.AniListEditsAsync(viewer.Id)).Count;
-   status = remaining == 0 ? "AniList changes synced." : $"{remaining} changes are still pending.";
-  }
-  catch { status = "Could not sync AniList right now."; }
-  finally { busy = false; }
- }
-
- async Task Import()
- {
-  if (account is null || viewer is null || busy) return;
-  busy = true;
-  status = "Reading your AniList library…";
-  try
-  {
-   var count = await account.ImportAsync(Store, viewer.Id, lifetime.Token);
-   status = $"Checked {count} AniList entries. Open Library to see them.";
-  }
-  catch (AniListAuthorizationException) { viewer = null; status = "AniList authorization expired. Connect again."; }
-  catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-  catch { status = "Import could not finish. Existing entries are saved. Retry when connected."; }
-  finally { busy = false; }
- }
-
- async Task Disconnect()
- {
-  if (account is null || busy) return;
-  busy = true;
-  try { await account.DisconnectAsync(); viewer = null; status = "AniList disconnected."; }
-  catch { status = "Could not disconnect AniList. Try again."; }
-  finally { busy = false; }
- }
-
- public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
 }

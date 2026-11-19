@@ -124,6 +124,9 @@ Check(await store.IsUnitCompleteAsync(readingKey) && await store.GetReadingPageA
 await ClickAsync(reopened, "Next chapter →");
 reopened.WaitForAssertion(()=>Check(reopened.Find(".reader-page").GetAttribute("src")=="https://images.example/special.webp","Decimal chapter follows provider order"));
 Check(reopened.FindAll("button").Single(x => x.TextContent.Trim()=="Next chapter →").HasAttribute("disabled"), "Last chapter boundary");
+await ClickAsync(reopened, "Mark chapter read");
+reopened.WaitForAssertion(() => Check(reopened.Markup.Contains("no verified AniList match") && tracking.Manga == 7,
+ "Unmapped completion gives local-only feedback without changing remote count"));
 await ClickAsync(reopened, "← Previous chapter");
 reopened.WaitForAssertion(()=>Check(reopened.Find(".reader-page").GetAttribute("src")=="https://images.example/2.webp","Previous chapter restores page"));
 handler.AlternateOnline = true;
@@ -166,6 +169,7 @@ await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"a
 await DownloadChecks.RunAsync();
 await PlayerChecks.RunAsync();
 await ProfileUiChecks.RunAsync();
+await TrackingScreenChecks.RunAsync();
 
 static async Task ClickAsync<T>(IRenderedComponent<T> view, string label) where T : IComponent
 {

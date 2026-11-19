@@ -8,7 +8,7 @@
  @foreach(var entry in entries)
  {
   <a class="sample-card" href="@($"/resume/{entry.Id}")">
-   <Icon Name="@(kind=="Anime"?"play":"book")"/><span><strong>@entry.Title</strong><small>@entry.Label</small></span>
+   <Icon Name="@(kind=="Anime"?"play":"book")"/><span><strong>@entry.Title</strong><small>@entry.Label</small>@if (positions.TryGetValue(entry.Id, out var position)) { <small>@position</small> }</span>
   </a>
   @if(ShowRemove){<button class="text-link" @onclick="()=>Remove(entry)">Remove from history</button>}
  }
@@ -18,6 +18,25 @@
  [Parameter] public bool ShowRemove {get;set;}
  [Parameter] public string MediaFilter {get;set;}="All";
  List<ResumeEntry> history=[];
- protected override async Task OnInitializedAsync()=>history=await Store.HistoryAsync();
+ readonly Dictionary<string, string> positions = new();
+ protected override async Task OnInitializedAsync()
+ {
+  history = await Store.HistoryAsync();
+  foreach (var entry in history)
+  {
+   var key = ResumeEntry.Key(entry.Origin, entry.Type, entry.TitleId, entry.UnitId, entry.Source);
+   if (entry.Type == "manga")
+    positions[entry.Id] = $"Resume at page {await Store.GetReadingPageAsync(key)}";
+   else
+   {
+    var seconds = await Store.GetPlaybackPositionAsync(key);
+    if (seconds > 0 && seconds <= TimeSpan.MaxValue.TotalSeconds)
+    {
+     var time = TimeSpan.FromSeconds(seconds);
+     positions[entry.Id] = "Resume at " + (time.TotalHours >= 1 ? (int)time.TotalHours + time.ToString(@"\:mm\:ss") : time.ToString(@"m\:ss"));
+    }
+   }
+  }
+ }
  async Task Remove(ResumeEntry entry){await Store.ForgetAsync(entry.Id);history.Remove(entry);}
 }

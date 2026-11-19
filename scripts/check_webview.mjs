@@ -363,6 +363,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
       for (const [scene, label] of [
         ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
         ['appearance', 'appearance'], ['sources', 'sources'],
+        ['anilist', 'anilist-account-android'], ['tracking-editor', 'anilist-editor-android'],
       ]) {
         const result = await command('Runtime.evaluate', {
           expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
@@ -373,7 +374,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
         await writeFile('artifacts/startup/' + label + '.png', image);
       }
-      console.log('PASS: created and switched profiles, verified source and appearance isolation, and captured the four screens.');
+      console.log('PASS: created and switched profiles, verified source and appearance isolation, and captured the profile and tracking screens.');
     }
   } finally {
     socket.close();
@@ -435,6 +436,29 @@ async function verifyProfileScene(scene) {
       return card?.querySelector('strong')?.textContent === 'AniKatha Story Sampler' && card;
     }, 'Restored original sources');
     row.scrollIntoView({ block: 'center' });
+  } else if (scene === 'anilist') {
+    document.querySelector('.bottom-nav a[href="/profile"]').click();
+    await open('/profile/anilist');
+    await heading('AniList');
+    await wait(() => document.querySelector('.tracking-account h2')?.textContent === 'AniList account', 'Disconnected AniList account');
+  } else if (scene === 'tracking-editor') {
+    document.querySelector('.bottom-nav a[href="/anime"]').click();
+    await click('Big Buck Bunny');
+    await click('Save to library');
+    document.querySelector('.bottom-nav a[href="/library"]').click();
+    const editor = await wait(() => [...document.querySelectorAll('.tracking-library-card')].find(card =>
+      card.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a[href$="/tracking"]'), 'Library tracking editor link');
+    editor.click();
+    await heading('Edit tracking');
+    await wait(() => document.querySelector('.tracking-editor input[inputmode="numeric"]'), 'Completed count editor');
+    const status = document.querySelector('.tracking-editor select');
+    status.value = 'CURRENT';
+    status.dispatchEvent(new Event('change', { bubbles:true }));
+    const count = document.querySelector('.tracking-editor input[inputmode="numeric"]');
+    count.value = '1';
+    count.dispatchEvent(new Event('input', { bubbles:true }));
+    await click('Save tracking');
+    await wait(() => document.querySelector('.tracking-editor')?.textContent.includes('Saved on this device.'), 'Local save confirmation');
   }
   return true;
 }
