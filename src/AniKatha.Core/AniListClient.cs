@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 namespace AniKatha.Core;
-public sealed class AniListClient(HttpClient http)
+public sealed partial class AniListClient(HttpClient http)
 {
  public const string Endpoint = "https://graphql.anilist.co";
  public async Task<MediaPage> SearchAsync(SearchOptions options, CancellationToken token = default)
@@ -31,17 +31,19 @@ public sealed class AniListClient(HttpClient http)
   if (doc.RootElement.TryGetProperty("errors", out _))
    throw new InvalidOperationException("AniList could not complete this request. Try again shortly.");
   var page = doc.RootElement.GetProperty("data").GetProperty("Page");
-  var items = page.GetProperty("media").EnumerateArray().Select(m => new Media(
-   m.GetProperty("id").GetInt32(), Text(m,"type")!, Text(m.GetProperty("title"),"userPreferred")!,
-   Text(m.GetProperty("coverImage"),"large"), Text(m,"bannerImage"), Clean(Text(m,"description")),
-   Number(m.GetProperty("startDate"),"year"), Text(m,"format"), Number(m,"averageScore"),
-   Number(m,"episodes"), Number(m,"chapters"), m.GetProperty("genres").EnumerateArray().Select(x=>x.GetString()!).ToArray()
-  )).ToList();
+  var items = page.GetProperty("media").EnumerateArray().Select(ReadMedia).ToList();
   return new(items, page.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean());
  }
+
+ static Media ReadMedia(JsonElement m) => new(
+  m.GetProperty("id").GetInt32(), Text(m,"type")!, Text(m.GetProperty("title"),"userPreferred")!,
+  Text(m.GetProperty("coverImage"),"large"), Text(m,"bannerImage"), Clean(Text(m,"description")),
+  Number(m.GetProperty("startDate"),"year"), Text(m,"format"), Number(m,"averageScore"),
+  Number(m,"episodes"), Number(m,"chapters"), AddonResources.Items(m,"genres").Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray()
+ );
  static string? Empty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
- static string? Text(JsonElement value, string key) => value.TryGetProperty(key,out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
- static int? Number(JsonElement value, string key) => value.TryGetProperty(key,out var p) && p.TryGetInt32Safe(out var n) ? n : null;
+ static string? Text(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key,out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+ static int? Number(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key,out var p) && p.TryGetInt32Safe(out var n) ? n : null;
  static string? Clean(string? value) => value is null ? null : WebUtility.HtmlDecode(Regex.Replace(value,"<[^>]+>"," "));
 }
 internal static class JsonNumbers

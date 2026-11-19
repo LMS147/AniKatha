@@ -230,6 +230,11 @@ else
   {
    currentPage = Math.Clamp(await Store.GetReadingPageAsync(ChapterKey), 1, PageCount);
    completed = Pages is not null && await Store.IsUnitCompleteAsync(ChapterKey);
+   if (Pages is { Count: > 0 })
+   {
+    try { await Store.SaveHomeUnitLengthAsync(ChapterKey, PageCount); }
+    catch { /* Resume page is saved separately. */ }
+   }
    titleOverride = !string.IsNullOrWhiteSpace(await Store.GetSettingAsync(TitleSettingsKey));
    var prefs = await ReaderPreferences.LoadAsync(Store, titleOverride ? TitleSettingsKey : ReaderPreferences.GlobalKey);
    (mode, fit, zoom) = (prefs.Mode, prefs.Fit, prefs.Zoom);

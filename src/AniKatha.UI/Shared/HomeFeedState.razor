@@ -1,0 +1,28 @@
+@if (Loading && !HasItems)
+{
+ <div class="home-loading" role="status" aria-label="Loading section">
+  @if (Posters) { <div class="home-grid" aria-hidden="true"><div class="home-loading-poster"></div><div class="home-loading-poster"></div></div> }
+  else { <p>Loading…</p> }
+ </div>
+}
+else if (!HasItems && !Failed)
+{
+ <div class="home-empty"><p>@Empty</p>@if (ActionHref is not null) { <a href="@ActionHref">@ActionLabel</a> }</div>
+}
+@if (Failed)
+{
+ <div class="home-empty" role="status"><p>@Error</p>
+  @if (Retry.HasDelegate) { <button type="button" class="home-link" @onclick="Retry" disabled="@Loading">Retry</button> }
+ </div>
+}
+@code {
+ [Parameter] public bool Loading { get; set; }
+ [Parameter] public bool HasItems { get; set; }
+ [Parameter] public bool Failed { get; set; }
+ [Parameter] public bool Posters { get; set; } = true;
+ [Parameter] public string Empty { get; set; } = "Nothing to show yet.";
+ [Parameter] public string Error { get; set; } = "This section couldn’t be loaded.";
+ [Parameter] public string? ActionHref { get; set; }
+ [Parameter] public string? ActionLabel { get; set; }
+ [Parameter] public EventCallback Retry { get; set; }
+}

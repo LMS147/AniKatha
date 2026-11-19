@@ -168,6 +168,7 @@ Console.WriteLine("PASS: install via Sources, type routing, pagination, repeat-p
 await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"anikatha-catalog-{Guid.NewGuid()}.db3")));
 await DownloadChecks.RunAsync();
 await PlayerChecks.RunAsync();
+await HomeChecks.RunAsync();
 await ProfileUiChecks.RunAsync();
 await TrackingScreenChecks.RunAsync();
 

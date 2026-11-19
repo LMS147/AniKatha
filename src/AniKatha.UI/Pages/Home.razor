@@ -1,32 +1,156 @@
 @page "/"
-@inject AniListClient Catalog
 @inherits ProfileComponent
-<header class="brand-header"><a class="wordmark" href="/">ani<span>katha</span><i>✦</i></a><a class="avatar" href="/profile" aria-label="Open profile">A</a></header>
-@if(loading){<div class="hero skeleton" aria-label="Loading featured anime"></div>}
-else if(featured is not null){
- <section class="hero" style="background-image:linear-gradient(0deg,#0b0b10 2%,#0b0b1055 65%),url('@(featured.Banner??featured.Poster)')">
-  <div class="hero-copy"><span class="eyebrow">YOUR NEXT STORY</span><h1>@featured.Title</h1><p>@featured.Year · @featured.Format?.Replace('_',' ') · @string.Join(" / ",featured.Genres.Take(2))</p><button class="primary" @onclick="()=>selected=featured">Explore title <span>↗</span></button></div>
- </section>
-}else{<section class="welcome"><span class="eyebrow">WATCH. READ. DISCOVER.</span><h1>A world of stories.<br/>One place to begin.</h1><p class="muted">Your anime and manga companion.</p></section>}
-@if(error is not null){<div class="notice" role="alert">@error <button @onclick="Load">Retry</button></div>}
-<ResumeHistory/>
-<a class="sample-card" href="/anime/preview">
- <Icon Name="play"/>
- <span><strong>Big Buck Bunny</strong><small>Sample episode · Test in-app playback</small></span>
- <span aria-hidden="true">→</span>
-</a>
-<div class="section-title"><div><span class="eyebrow">PICK UP A STORY</span><h2>Your library</h2></div><a href="/library">View all ↗</a></div>
-@if(saved.Count==0){<div class="empty compact"><Icon Name="library"/><h3>Your next favourite belongs here</h3><p>Save titles from Anime or Manga to start your collection.</p><a class="text-link" href="/anime">Discover anime →</a></div>}
-else{<div class="saved-strip">@foreach(var item in saved.Take(8)){<a href="/library" class="saved-mini">@if(item.Poster is not null){<img src="@item.Poster" alt=""/>}<strong>@item.Title</strong><small>@item.Status</small></a>}</div>}
-<div class="section-title"><div><span class="eyebrow">IN THE SPOTLIGHT</span><h2>Trending anime</h2></div><a href="/anime">Explore ↗</a></div>
-<MediaGrid Items="anime.Take(6)" Selected="Select"/>
-<div class="section-title"><div><span class="eyebrow">ONE MORE CHAPTER</span><h2>Trending manga</h2></div><a href="/manga">Explore ↗</a></div>
-<MediaGrid Items="manga.Take(6)" Selected="Select"/>
-<MediaDetails Item="selected" Closed="Close"/>
-@code {
- List<Media> anime=[],manga=[]; List<SavedTitle> saved=[]; Media? featured,selected; bool loading=true; string? error;
- protected override Task OnInitializedAsync()=>Load();
- async Task Load(){loading=true;error=null;try{saved=await Store.GetLibraryAsync();anime=(await Catalog.SearchAsync(new())).Items;featured=anime.FirstOrDefault(x=>x.Banner is not null)??anime.FirstOrDefault();manga=(await Catalog.SearchAsync(new("MANGA"))).Items;}catch{error="The catalogue could not be loaded. Check your connection or try again later. Your saved library is available offline.";}finally{loading=false;}}
- void Select(Media item)=>selected=item;
- async Task Close(){selected=null;saved=await Store.GetLibraryAsync();}
+@implements IDisposable
+
+<PageTitle>Home · AniKatha</PageTitle>
+
+<div class="home-landing">
+ <header class="home-header">
+  <h1 class="wordmark">ani<span>katha</span><i aria-hidden="true">✦</i></h1>
+  <a class="avatar" href="/profile" aria-label="Open profile">A</a>
+ </header>
+ <div class="home-segment home-mode" role="tablist" aria-label="Home media" @onkeydown="HandleTabKeys">
+  <button type="button" id="home-tab-anime" role="tab" aria-controls="home-anime" aria-selected="@Pressed(!manga)" tabindex="@(manga ? -1 : 0)" @ref="animeTab" @onclick="() => Switch(false)">Anime</button>
+  <button type="button" id="home-tab-manga" role="tab" aria-controls="home-manga" aria-selected="@Pressed(manga)" tabindex="@(manga ? 0 : -1)" @ref="mangaTab" @onclick="() => Switch(true)">Manga</button>
+ </div>
+
+ <div class="home-viewports">
+  <div class="home-view" id="home-anime" role="tabpanel" aria-labelledby="home-tab-anime" aria-hidden="@Pressed(manga)" inert="@manga" tabindex="0">
+   <section class="home-section" aria-labelledby="home-watch-title">
+    <header><h2 id="home-watch-title">Continue Watching</h2>
+     @if (watch.Items.Count > watchLimit) { <button class="home-link" @onclick="() => watchLimit += 6">View more <span aria-hidden="true">›</span></button> }
+    </header>
+    <HomeCards Cards="watch.Items.Take(watchLimit)" />
+    <HomeFeedState Loading="watch.Loading" Failed="watch.Failed" HasItems="watch.HasItems" Retry="LoadWatch"
+                   Empty="Episodes you start will appear here." ActionHref="/anime" ActionLabel="Browse Anime"/>
+   </section>
+
+   <section class="home-section" aria-labelledby="home-latest-title">
+    <header><h2 id="home-latest-title">Latest Episodes</h2></header>
+    <div class="home-segment home-inline" role="group" aria-label="Latest episode filters">
+     <button aria-pressed="@Pressed(!showTrending)" @onclick="() => LatestFilter(false)">All</button>
+     <button aria-pressed="@Pressed(showTrending)" @onclick="() => LatestFilter(true)">Trending</button>
+     @if (!showTrending && latest.Items.Count > 1) { <button @onclick="RandomEpisode">Random</button> }
+    </div>
+    @if (showTrending) { <p class="home-description">Trending anime currently airing.</p> }
+    @{
+     var episodeFeed = showTrending ? trending : latest;
+    }
+    <HomeCards Cards="episodeFeed.Items.Take(6)" Selected="OpenCard" />
+    <HomeFeedState Loading="episodeFeed.Loading" Failed="episodeFeed.Failed" HasItems="episodeFeed.HasItems"
+                   Error="The latest feed couldn’t be loaded." Empty="No titles in this feed." Retry="RetryLatest"/>
+   </section>
+
+   <section class="home-section" aria-labelledby="home-upcoming-title">
+    <header><h2 id="home-upcoming-title">Upcoming Anime</h2>
+     @if (upcoming.Items.Count > upcomingLimit) { <button class="home-link" @onclick="() => upcomingLimit += 6">View more <span aria-hidden="true">›</span></button> }
+    </header>
+    <HomeCards Cards="upcoming.Items.Take(upcomingLimit)" Selected="OpenCard" />
+    <HomeFeedState Loading="upcoming.Loading" Failed="upcoming.Failed" HasItems="upcoming.HasItems" Empty="No upcoming titles were found." Retry="LoadUpcoming"/>
+   </section>
+
+   <section class="home-section home-panel" aria-labelledby="home-releases-title">
+    <header><h2 id="home-releases-title">Release lists</h2></header>
+    <div class="home-segment home-release-switch" role="group" aria-label="Release lists">
+     @foreach (var tab in ReleaseOptions)
+     {
+      <button aria-pressed="@Pressed(release == tab)" @onclick="() => ChangeRelease(tab)">@tab</button>
+     }
+    </div>
+    @if (release == "Newly Added") { <div class="home-empty"><p>Catalog addition dates are unavailable.</p></div> }
+    else
+    {
+     var releases = release == "Just Completed" ? completed : newRelease;
+     <HomeCards Cards="releases.Items.Take(5)" Selected="OpenCard" Compact="true"/>
+     <HomeFeedState Loading="releases.Loading" Failed="releases.Failed" HasItems="releases.HasItems" Posters="false" Retry="LoadRelease"
+                    Empty="No matches from the last 30 days."/>
+    }
+   </section>
+
+   <section class="home-section home-panel" aria-labelledby="home-schedule-title">
+    <header><h2 id="home-schedule-title">Estimated Schedule</h2></header>
+    <div class="home-calendar" aria-label="Schedule date">
+     <button class="home-day-arrow" aria-label="Previous day" @onclick="() => ChangeDay(day.AddDays(-1))">‹</button>
+     @foreach (var date in new[] { day.AddDays(-1), day, day.AddDays(1) })
+     {
+      <button class="home-day" aria-pressed="@Pressed(date == day)" @onclick="() => ChangeDay(date)">
+       <small>@date.ToString("MMM d")</small><strong>@date.ToString("ddd")</strong>
+      </button>
+     }
+     <button class="home-day-arrow" aria-label="Next day" @onclick="() => ChangeDay(day.AddDays(1))">›</button>
+    </div>
+    <p class="home-description">Times shown in your local time zone.</p>
+    @if (ActiveSchedule.Items.Count > 0)
+    {
+     <ul class="home-schedule">
+      @foreach (var airing in ActiveSchedule.Items)
+      {
+       <li><button @onclick="() => OpenCard(FromAiring(airing))">
+        <time datetime="@airing.AirsAt.ToString("O")">@airing.AirsAt.ToLocalTime().ToString("t")</time>
+        <strong>@airing.Media.Title</strong><small>Episode @airing.Episode</small>
+       </button></li>
+      }
+     </ul>
+    }
+    <HomeFeedState Loading="ActiveSchedule.Loading" Failed="ActiveSchedule.Failed" HasItems="ActiveSchedule.HasItems" Posters="false"
+                   Empty="No releases scheduled for this day" Error="Schedule unavailable" Retry="LoadSchedule"/>
+   </section>
+  </div>
+
+  <div class="home-view" id="home-manga" role="tabpanel" aria-labelledby="home-tab-manga" aria-hidden="@Pressed(!manga)" inert="@(!manga)" tabindex="0">
+   <section class="home-section" aria-labelledby="home-followed-title">
+    <header><h2 id="home-followed-title">New Chapters from Followed Comics</h2></header>
+    <HomeCards Cards="followed.Items.Take(6)" Selected="OpenCard" />
+    <HomeFeedState Loading="followed.Loading" Failed="followed.Failed" HasItems="followed.HasItems" Retry="LoadFollowed"
+                   Empty="@FollowedMessage" ActionHref="@(hasFollowed ? "/library" : "/manga")" ActionLabel="@(hasFollowed ? "Open Library" : "Browse Manga")"/>
+   </section>
+
+   <section class="home-section" aria-labelledby="home-read-title">
+    <header><h2 id="home-read-title">Reading History</h2>
+     @if (reading.Items.Count > readingLimit) { <button class="home-link" @onclick="() => readingLimit += 6">View more <span aria-hidden="true">›</span></button> }
+    </header>
+    <HomeCards Cards="reading.Items.Take(readingLimit)" />
+    <HomeFeedState Loading="reading.Loading" Failed="reading.Failed" HasItems="reading.HasItems" Retry="LoadReading"
+                   Empty="Chapters you open will appear here." ActionHref="/manga" ActionLabel="Browse Manga"/>
+   </section>
+
+   <section class="home-section" aria-labelledby="home-discover-title">
+    <header><h2 id="home-discover-title">Discover Manga</h2><a class="home-link" href="/manga">View more <span aria-hidden="true">›</span></a></header>
+    <HomeCards Cards="DiscoveryCards" Selected="OpenCard" />
+    <HomeFeedState Loading="discover.Loading || addonManga.Loading" HasItems="DiscoveryCards.Any()" Failed="discover.Failed || addonManga.Failed"
+                   Error="Some discovery sources couldn’t be loaded." Retry="LoadDiscovery" Empty="No discovery titles were found."/>
+   </section>
+
+   <section class="home-section" aria-labelledby="home-popular-title">
+    <header><h2 id="home-popular-title">Most Recent Popular</h2></header>
+    <p class="home-description">Popular manga that began in the past year.</p>
+    <HomeCards Cards="popular.Items.Take(6)" Selected="OpenCard" />
+    <HomeFeedState Loading="popular.Loading" Failed="popular.Failed" HasItems="popular.HasItems" Empty="No recent popular comics were found." Retry="LoadPopular"/>
+   </section>
+
+   <section class="home-section" aria-labelledby="home-new-title">
+    <header><h2 id="home-new-title">New Comics</h2></header>
+    <HomeCards Cards="newManga.Items.Take(6)" Selected="OpenCard" />
+    <HomeFeedState Loading="newManga.Loading" Failed="newManga.Failed" HasItems="newManga.HasItems" Empty="No new comics were found." Retry="LoadNewManga"/>
+   </section>
+
+   <section class="home-section" aria-labelledby="home-updates-title">
+    <header><h2 id="home-updates-title">Latest Updates</h2></header>
+    <div class="home-empty"><p>A catalog-wide chapter update feed is unavailable.</p><a href="/manga">Browse Manga</a></div>
+   </section>
+  </div>
+ </div>
+</div>
+
+<MediaDetails Item="selected" Closed="CloseCard"/>
+@if (selectedProvider is { } picked)
+{
+ <div class="modal-backdrop" @onclick="CloseCard">
+  <section class="detail-sheet home-source-sheet" role="dialog" aria-modal="true" aria-label="@picked.Title.Title" @onclick:stopPropagation="true" @onkeydown="HandleDetailsKeys">
+   <button class="close" aria-label="Close details" @onclick="CloseCard">✕</button>
+   <ManifestCatalog Source="picked.Source" Catalog="@(new AddonCatalog(picked.Type, "", "", false, false))"
+                    Providers="providers" InitialTitle="picked.Title" InitialUnitId="@picked.Unit"
+                    ExpectedAniListId="picked.AniListId" AllowSaveInitialTitle="@(picked.Title.Id == 0)" />
+  </section>
+ </div>
 }

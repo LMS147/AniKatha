@@ -382,6 +382,14 @@
  }
 
  [JSInvokable]
+ public async Task SaveVideoLength(double seconds)
+ {
+  if (disposed || !TrackCompletion) return;
+  try { await Store.SaveHomeUnitLengthAsync(EpisodeKey, seconds); }
+  catch { /* Resume position is saved separately. */ }
+ }
+
+ [JSInvokable]
  public async Task<bool> SavePosition(double seconds)
  {
   try

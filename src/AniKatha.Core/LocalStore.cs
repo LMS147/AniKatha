@@ -147,6 +147,15 @@ public sealed partial class LocalStore
  }
  public async Task<bool> IsUnitCompleteAsync(string unitKey) =>
   await GetSettingAsync($"completed:{unitKey}") == "true";
+ public async Task<double?> GetHomeUnitLengthAsync(string unitKey)
+ {
+  var value = await GetSettingAsync($"unit-length:{unitKey}");
+  return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var amount) &&
+   double.IsFinite(amount) && amount > 0 ? amount : null;
+ }
+ public Task SaveHomeUnitLengthAsync(string unitKey, double length) =>
+  double.IsFinite(length) && length > 0 ? SetSettingAsync($"unit-length:{unitKey}", length.ToString("R", CultureInfo.InvariantCulture)) : Task.CompletedTask;
+
  public Task CompleteUnitAsync(string unitKey) =>
   SetSettingAsync($"completed:{unitKey}", "true");
  public Task SaveReadingPageAsync(string chapterKey, int page)

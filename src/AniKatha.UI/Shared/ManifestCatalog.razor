@@ -34,7 +34,7 @@
  @if(!busy && error==null && titles.Count==0 && !MissingRequired){<p>No matching titles.</p>}
  @if(selected!=null){
   <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type"/>
-  @if(InitialTitle==null){<button disabled="@saved" @onclick="SaveTitle">@(saved?"Saved to library":"Save to library")</button>}
+  @if(InitialTitle==null || AllowSaveInitialTitle){<button disabled="@saved" @onclick="SaveTitle">@(saved?"Saved to library":"Save to library")</button>}
   @foreach (var unit in units)
   {
    var id = Field(unit, "id");
@@ -74,7 +74,7 @@
   }
   <div id="@episodeSources" tabindex="-1">
   @foreach(var target in targets.OrderByDescending(target => target.Provider.ProviderKey == preferredSource)){
-   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId,unitId)" Source="target.Provider" AniListProgress="aniListProgress" HasOriginMetadata="true" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" PreviousChapter="@(CanMove(-1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(-1, target.Provider.ProviderKey)) : default)"
+   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId,unitId)" Source="target.Provider" AniListProgress="aniListProgress" HasOriginMetadata="true" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Poster="@TitlePoster" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" PreviousChapter="@(CanMove(-1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(-1, target.Provider.ProviderKey)) : default)"
     NextChapter="@(CanMove(1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)"
     ProgressChanged="RefreshProgress" ActivateVideo="ActivateVideo" SourcePickerId="@episodeSources" NextEpisodeLabel="@GetNextEpisodeLabel()"/>
   }
@@ -87,6 +87,10 @@
  [Parameter] public SearchOptions? Filters { get; set; }
  [Parameter] public string? SubmittedQuery { get; set; }
  [Parameter] public SavedTitle? InitialTitle {get;set;}
+ [Parameter] public bool AllowSaveInitialTitle { get; set; }
+ [Parameter] public string? InitialUnitId { get; set; }
+ string? TitlePoster => MediaUrl(Field(details,"poster")) ? Field(details,"poster") :
+  selected is { } item && MediaUrl(Field(item,"poster")) ? Field(item,"poster") : null;
  [Parameter] public string? InitialProviderId { get; set; }
  [Parameter] public int? ExpectedAniListId { get; set; }
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
@@ -269,6 +273,11 @@
    if (token.IsCancellationRequested) return;
    preferredSource = preference ?? "";
    await RefreshProgress();
+   if (!token.IsCancellationRequested && InitialUnitId is { } initialUnit)
+   {
+    var match = units.FirstOrDefault(unit => Field(unit, "id") == initialUnit);
+    if (match.ValueKind != JsonValueKind.Undefined) Choose(match);
+   }
   }catch(OperationCanceledException) when(token.IsCancellationRequested){}
   catch(Exception){if(!token.IsCancellationRequested)error="Title request failed.";}
   finally{if(!token.IsCancellationRequested)busy=false;}
