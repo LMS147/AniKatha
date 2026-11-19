@@ -1,0 +1,58 @@
+@implements IDisposable
+@inject IServiceProvider Services
+
+<h2>Tracking</h2>
+<section class="settings-card anilist-card">
+ <span class="eyebrow">ANILIST</span>
+ @if (viewer is not null)
+ {
+  <h3>Connected as @viewer.Name</h3>
+  <button class="secondary" disabled="@busy" @onclick="Disconnect">Disconnect AniList</button>
+ }
+ else if (account?.CanConnect == true)
+ {
+  <button class="primary" disabled="@busy" @onclick="Connect">Connect AniList</button>
+ }
+ else { <p>AniList sign-in is unavailable for this build.</p> }
+ @if (status is not null) { <p role="status">@status</p> }
+</section>
+
+@code {
+ AniListAccount? account;
+ AniListViewer? viewer;
+ bool busy;
+ string? status;
+ readonly CancellationTokenSource lifetime = new();
+
+ protected override async Task OnInitializedAsync()
+ {
+  account = (AniListAccount?)Services.GetService(typeof(AniListAccount));
+  if (account is null) return;
+  try { viewer = await account.CurrentAsync(lifetime.Token); }
+  catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+  catch (AniListAuthorizationException) { status = "AniList access expired or was revoked. Connect again."; }
+  catch { status = "Could not check AniList. Try again when connected."; }
+ }
+
+ async Task Connect()
+ {
+  if (account is null || busy) return;
+  busy = true;
+  status = null;
+  try { viewer = await account.ConnectAsync(lifetime.Token); }
+  catch (OperationCanceledException) { status = "AniList sign-in cancelled."; }
+  catch { status = "Could not connect to AniList."; }
+  finally { busy = false; }
+ }
+
+ async Task Disconnect()
+ {
+  if (account is null || busy) return;
+  busy = true;
+  try { await account.DisconnectAsync(); viewer = null; status = "AniList disconnected."; }
+  catch { status = "Could not disconnect AniList. Try again."; }
+  finally { busy = false; }
+ }
+
+ public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+}
