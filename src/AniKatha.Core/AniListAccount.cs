@@ -34,13 +34,29 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
 
     public async Task<AniListViewer?> CurrentAsync(CancellationToken token = default)
     {
-        var credential = await ReadValidCredentialAsync();
-        if (credential is null) return null;
+        var stored = await authorization.ReadAsync();
+        if (stored is null) return null;
         return await WithCredentialAsync(async (current, ct) =>
         {
             var viewer = await ViewerAsync(current, ct);
-            return viewer.Id == current.ViewerId ? viewer : throw new AniListAuthorizationException();
+            if (viewer.Id != current.ViewerId) throw new AniListAuthorizationException();
+            await UpdateStoredViewerAsync(current, viewer, ct);
+            return viewer;
         }, token);
+    }
+
+    private async Task UpdateStoredViewerAsync(AniListCredential credential, AniListViewer viewer, CancellationToken token)
+    {
+        if (credential.Name == viewer.Name && credential.ScoreFormat == viewer.ScoreFormat) return;
+        await sessionGate.WaitAsync(token);
+        try
+        {
+            var stored = await authorization.ReadAsync();
+            token.ThrowIfCancellationRequested();
+            if (stored?.Token == credential.Token)
+                await authorization.WriteAsync(credential with { Name = viewer.Name, ScoreFormat = viewer.ScoreFormat });
+        }
+        finally { sessionGate.Release(); }
     }
 
     public async Task<AniListViewer> ConnectAsync(CancellationToken token = default)

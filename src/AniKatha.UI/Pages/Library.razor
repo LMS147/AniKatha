@@ -42,7 +42,7 @@ else{<div class="library-list">@foreach(var item in Visible){<article class="lib
     (scoreMaximum, scoreStep) = AniListAccount.ScoreScale(viewer.ScoreFormat);
     await UpdateSyncMessage();
     foreach (var entry in items.Where(IsAniList))
-     scores[entry.Id] = await Store.GetAniListScoreAsync(viewer.Id, entry.Id);
+     scores[entry.Id] = await Store.GetAniListScoreAsync(viewer.Id, entry.Id, viewer.ScoreFormat);
    }
   }
   catch { error = "Some library information could not be loaded."; }

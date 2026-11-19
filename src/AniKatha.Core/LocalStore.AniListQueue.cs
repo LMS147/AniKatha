@@ -32,7 +32,7 @@ public sealed partial class LocalStore
                     connection.Update(item);
                     break;
                 case "score":
-                    connection.InsertOrReplace(new AppSetting { Key = AniListScoreKey(account, media), Value = value == "0" ? "" : value });
+                    connection.InsertOrReplace(new AppSetting { Key = AniListScoreKey(account, media, scoreFormat), Value = value == "0" ? "" : value });
                     break;
                 default: throw new ArgumentOutOfRangeException(nameof(field));
             }
@@ -48,6 +48,12 @@ public sealed partial class LocalStore
         return settings.Select(setting => JsonSerializer.Deserialize<AniListEdit>(setting.Value)!).ToList();
     }
 
+    public async Task<bool> IsCurrentAniListEditAsync(int account, AniListEdit edit)
+    {
+        var value = await GetSettingAsync(QueueKey(account, edit.MediaId, edit.Field));
+        return value is not null && JsonSerializer.Deserialize<AniListEdit>(value)?.Revision == edit.Revision;
+    }
+
     public async Task FinishAniListEditAsync(int account, AniListEdit edit, bool success)
     {
         await initialized.Value;
@@ -56,8 +62,24 @@ public sealed partial class LocalStore
             var key = QueueKey(account, edit.MediaId, edit.Field);
             var current = connection.Find<AppSetting>(key);
             if (current is null || JsonSerializer.Deserialize<AniListEdit>(current.Value)?.Revision != edit.Revision) return;
-            if (success) connection.Delete<AppSetting>(key);
-            else connection.Update(new AppSetting { Key = key, Value = JsonSerializer.Serialize(edit with { Failed = true }) });
+            if (!success)
+            {
+                connection.Update(new AppSetting { Key = key, Value = JsonSerializer.Serialize(edit with { Failed = true }) });
+                return;
+            }
+            connection.Delete<AppSetting>(key);
+            var baselineKey = AniListBaselineKey(account, edit.MediaId);
+            var baselineSetting = connection.Find<AppSetting>(baselineKey);
+            if (baselineSetting is null || JsonSerializer.Deserialize<AniListListEntry>(baselineSetting.Value) is not { } baseline) return;
+            var updated = edit.Field switch
+            {
+                "status" => baseline with { Status = edit.Value },
+                "progress" => baseline with { Progress = int.Parse(edit.Value, CultureInfo.InvariantCulture) },
+                "score" when double.TryParse(edit.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var score) =>
+                    baseline with { Score = score > 0 ? score : null, ScoreFormat = edit.ScoreFormat ?? baseline.ScoreFormat },
+                _ => baseline
+            };
+            connection.Update(new AppSetting { Key = baselineKey, Value = JsonSerializer.Serialize(updated) });
         });
     }
 }

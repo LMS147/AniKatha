@@ -12,10 +12,18 @@ public sealed partial class AniListAccount
             var viewer = await StoredViewerAsync();
             if (viewer is null) return 0;
             var edits = await store.AniListEditsAsync(viewer.Id);
+            if (edits.Count == 0) return 0;
+            if (edits.Any(edit => edit.Field == "score"))
+            {
+                var liveViewer = await CurrentAsync(token);
+                if (liveViewer?.Id != viewer.Id) return 0;
+                viewer = liveViewer;
+            }
             var sent = 0;
             foreach (var edit in edits)
             {
                 token.ThrowIfCancellationRequested();
+                if (!await store.IsCurrentAniListEditAsync(viewer.Id, edit)) continue;
                 try
                 {
                     if (edit.Field == "score" && edit.ScoreFormat != viewer.ScoreFormat)

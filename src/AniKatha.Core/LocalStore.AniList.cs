@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Globalization;
-using SQLite;
 
 namespace AniKatha.Core;
 
@@ -8,16 +7,13 @@ public sealed partial class LocalStore
 {
     private static string AniListBaselineKey(int account, int media) => $"anilist:{account}:baseline:{media}";
 
-    private static string AniListScoreKey(int account, int media) => $"anilist:{account}:score:{media}";
+    private static string AniListScoreKey(int account, int media, string? format) => $"anilist:{account}:score:{media}:{format}";
 
-    public async Task<double?> GetAniListScoreAsync(int account, int media)
+    public async Task<double?> GetAniListScoreAsync(int account, int media, string format)
     {
-        var value = await GetSettingAsync(AniListScoreKey(account, media));
+        var value = await GetSettingAsync(AniListScoreKey(account, media, format));
         return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var score) && score > 0 ? score : null;
     }
-
-    public Task SaveAniListScoreAsync(int account, int media, double? score) =>
-        SetSettingAsync(AniListScoreKey(account, media), score?.ToString(CultureInfo.InvariantCulture) ?? "");
 
     public async Task ImportAniListPageAsync(int account, IReadOnlyList<AniListListEntry> entries, CancellationToken token = default)
     {
@@ -44,13 +40,17 @@ public sealed partial class LocalStore
                 }
                 else if (baseline is not null)
                 {
-                    if (title.Status == baseline.Status) title.Status = entry.Status;
-                    if (title.Progress == baseline.Progress) title.Progress = entry.Progress;
+                    if (title.Status == baseline.Status && connection.Find<AppSetting>(QueueKey(account, entry.MediaId, "status")) is null)
+                        title.Status = entry.Status;
+                    if (title.Progress == baseline.Progress && connection.Find<AppSetting>(QueueKey(account, entry.MediaId, "progress")) is null)
+                        title.Progress = entry.Progress;
                     connection.Update(title);
                 }
-                var scoreKey = AniListScoreKey(account, entry.MediaId);
+                var scoreKey = AniListScoreKey(account, entry.MediaId, entry.ScoreFormat);
                 var score = connection.Find<AppSetting>(scoreKey);
-                if (score is null || score.Value == (baseline?.Score?.ToString(CultureInfo.InvariantCulture) ?? ""))
+                var pendingScore = connection.Find<AppSetting>(QueueKey(account, entry.MediaId, "score"));
+                if (score is null || (pendingScore is null && baseline?.ScoreFormat == entry.ScoreFormat &&
+                    score.Value == (baseline.Score?.ToString(CultureInfo.InvariantCulture) ?? "")))
                     connection.InsertOrReplace(new AppSetting { Key = scoreKey, Value = entry.Score?.ToString(CultureInfo.InvariantCulture) ?? "" });
                 connection.InsertOrReplace(new AppSetting { Key = key, Value = JsonSerializer.Serialize(entry) });
             }

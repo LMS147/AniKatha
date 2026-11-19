@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace AniKatha.Core;
 
-public sealed record AniListListEntry(int MediaId, string Kind, string Title, string? Poster, string Status, int Progress, double? Score);
+public sealed record AniListListEntry(int MediaId, string Kind, string Title, string? Poster, string Status, int Progress, double? Score, string ScoreFormat = "POINT_100");
 
 public sealed partial class AniListAccount
 {
@@ -12,6 +12,7 @@ public sealed partial class AniListAccount
             if (credential.ViewerId != viewerId) throw new AniListAuthorizationException();
             var viewer = await ViewerAsync(credential, ct);
             if (viewer.Id != viewerId) throw new AniListAuthorizationException();
+            await UpdateStoredViewerAsync(credential, viewer, ct);
             var imported = 0;
             foreach (var type in new[] { "ANIME", "MANGA" })
             {
@@ -34,7 +35,7 @@ public sealed partial class AniListAccount
                         viewerId, kind = type, page, scoreFormat = viewer.ScoreFormat
                     }, ct);
                     var list = data.GetProperty("Page");
-                    var entries = list.GetProperty("mediaList").EnumerateArray().Select(ParseListEntry)
+                    var entries = list.GetProperty("mediaList").EnumerateArray().Select(entry => ParseListEntry(entry, viewer.ScoreFormat))
                         .Where(entry => entry.Kind == type && observed.Add(entry.MediaId)).ToArray();
                     if (entries.Length == 0) break;
                     ct.ThrowIfCancellationRequested();
@@ -74,13 +75,13 @@ public sealed partial class AniListAccount
                 ? true : throw new InvalidOperationException("AniList did not acknowledge this edit.");
         }, token);
 
-    private static AniListListEntry ParseListEntry(JsonElement entry)
+    private static AniListListEntry ParseListEntry(JsonElement entry, string scoreFormat)
     {
         var media = entry.GetProperty("media");
         var score = entry.GetProperty("score");
         return new(entry.GetProperty("mediaId").GetInt32(), media.GetProperty("type").GetString()!,
             media.GetProperty("title").GetProperty("userPreferred").GetString()!,
             AddonResources.Field(media.GetProperty("coverImage"), "large"), entry.GetProperty("status").GetString()!,
-            entry.GetProperty("progress").GetInt32(), score.ValueKind == JsonValueKind.Number && score.GetDouble() > 0 ? score.GetDouble() : null);
+            entry.GetProperty("progress").GetInt32(), score.ValueKind == JsonValueKind.Number && score.GetDouble() > 0 ? score.GetDouble() : null, scoreFormat);
     }
 }
