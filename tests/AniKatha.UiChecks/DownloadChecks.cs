@@ -115,7 +115,8 @@ internal static class DownloadChecks
         public int Calls { get; private set; }
         public TaskCompletionSource Cancelling { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private static readonly byte[] Image = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXuIAAAAASUVORK5CYII=");
-        private static readonly byte[] Video = [0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115, 111, 109, 109, 112, 52, 49];
+        private static readonly byte[] Video = [0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115, 111, 109, 109, 112, 52, 49,
+            0, 0, 0, 8, 109, 111, 111, 118, 0, 0, 0, 9, 109, 100, 97, 116, 0];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken token)
         {
@@ -134,7 +135,7 @@ internal static class DownloadChecks
                 "/pages/manga/chapter-1.json" => new StringContent("""{"pages":["https://provider.example/1.png","https://provider.example/2.png"]}"""),
                 "/stream/anime/episode-1.json" => new StringContent("""{"streams":[{"id":"file","downloadable":true,"url":"https://provider.example/video.mp4"}]}"""),
                 "/video.mp4" => new ByteArrayContent(Video),
-                "/broken.png" => new StringContent("error page"),
+                "/broken.png" => new ByteArrayContent(Image[..^12]),
                 _ => new ByteArrayContent(Image)
             };
             return new(HttpStatusCode.OK) { Content = body };

@@ -124,8 +124,15 @@ internal static class AniListAccountChecks
             var variables = doc.RootElement.GetProperty("variables");
             if (query.Contains("Viewer"))
                 return Json(new { Viewer = new { id = 7, name = "Reader", mediaListOptions = new { scoreFormat = "POINT_10_DECIMAL" } } });
+            if (query.Contains("mediaListEntry"))
+            {
+                var mediaId = variables.GetProperty("id").GetInt32();
+                return Json(new { Media = new { id = mediaId, mediaListEntry = new { id = mediaId + 1000 } } });
+            }
             if (query.Contains("SaveMediaListEntry"))
             {
+                var mediaId = variables.GetProperty("id").GetInt32();
+                Assert(variables.GetProperty("entryId").GetInt32() == mediaId + 1000, "Mutation uses list entry ID, not the title ID");
                 var value = variables.GetProperty("value");
                 if (query.Contains("progress:"))
                 {
