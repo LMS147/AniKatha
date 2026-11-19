@@ -7,9 +7,23 @@
 <div class="notice"><strong>@Source.Addon.Name</strong>
 @if(loading){<p>Loading sources…</p>}
 else if(error){<p>Source request failed. <button @onclick="Load">Retry</button></p>}
-else if(Type=="manga" && pages.Count>0){<button @onclick="Read">Read @Label</button>}
-else if(streams.Count>0){@foreach(var stream in streams){<button @onclick="()=>Play(stream)">@StreamName(stream)</button>}}
-else{<p>No sources available.</p>}
+else if (Type == "manga" && pages.Count > 0)
+{
+ <button @onclick="Read">Read @Label</button>
+ @if (translation.Length > 0) { <small>Translation · @translation</small> }
+}
+else if (streams.Count > 0)
+{
+ @foreach (var stream in streams)
+ {
+  <div>
+   <button @onclick="() => Play(stream)">@StreamName(stream)</button>
+   @if (StreamDetails(stream) is { Length: > 0 } description) { <small>@description</small> }
+  </div>
+ }
+}
+else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provider.</p> }
+@if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
 </div>
 @if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="pages" Title="@Title" ChapterLabel="@Label" OnCompleted="ProgressChanged"/>}
 @if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" OnCompleted="ProgressChanged"/>}
@@ -24,7 +38,17 @@ else{<p>No sources available.</p>}
  [Parameter] public string Title {get;set;}="";
  [Parameter] public EventCallback ProgressChanged { get; set; }
  readonly CancellationTokenSource stop=new();
- bool loading,reading,error;
+ bool loading,reading,error,progressError,disposed;
+ string translation = "";
+ long playbackRequest;
+ static string StreamDetails(JsonElement stream)
+ {
+  var quality = Field(stream, "quality");
+  var audio = Field(stream, "audioLanguage");
+  var tracks = ReadSubtitles(stream);
+  var subtitles = tracks.Count > 0 ? "Subtitles available" : "";
+  return string.Join(" · ", new[] { quality, audio, subtitles }.Where(value => value.Length > 0));
+ }
  string? video;
  List<EpisodeSubtitle> subtitles=[];
  List<string> pages=[];
@@ -33,43 +57,62 @@ else{<p>No sources available.</p>}
  static string StreamName(JsonElement stream)=>Field(stream,"name") is { Length:>0 } name?name:"Play";
  protected override Task OnInitializedAsync()=>Load();
  async Task Load(){
+  if (loading || disposed) return;
   loading=true;error=false;
+  streams=[];pages=[];translation="";
   try{
    var resource=Type=="manga"?"pages":"stream";
    var root=await Client.FetchJsonAsync(Source.Resource(resource,Type,UnitId),stop.Token);
+   if (stop.IsCancellationRequested) return;
    if(!root.TryGetProperty(Type=="manga"?"pages":"streams",out var list) || list.ValueKind!=JsonValueKind.Array)throw new FormatException();
    if(Type=="manga"){
     pages=Items(root,"pages").Select(x=>x.GetString()??"").ToList();
+    translation = Field(root, "language");
     if(pages.Any(x=>!MediaUrl(x)))throw new FormatException();
    }else streams=Items(root,"streams").Where(x=>MediaUrl(Field(x,"url"))).ToList();
-  }catch(OperationCanceledException) when(stop.IsCancellationRequested){}
+  }catch(AddonResourceNotFoundException){}
+  catch(OperationCanceledException) when(stop.IsCancellationRequested){}
   catch(Exception){error=true;}
   finally{loading=false;}
  }
  async Task Remember()
  {
-  var id=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Key)));
-  await Store.RememberAsync(new ResumeEntry {Id=id, Origin=Origin, Source=Source.ProviderKey, Type=Type,
-   TitleId=TitleId, UnitId=UnitId, Title=Title, Label=Label});
+  var id = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Key)));
+  try
+  {
+   await Store.RememberAsync(new ResumeEntry { Id=id, Origin=Origin, Source=Source.ProviderKey, Type=Type,
+    TitleId=TitleId, UnitId=UnitId, Title=Title, Label=Label });
+   progressError = false;
+  }
+  catch { progressError = true; }
  }
- async Task Read(){await Remember();reading=true;await ProgressChanged.InvokeAsync();}
- async Task Play(JsonElement stream)
+
+ async Task Read()
  {
   await Remember();
-  video=Field(stream,"url");
+  if (disposed) return;
+  reading = true;
   await ProgressChanged.InvokeAsync();
-  subtitles=ReadSubtitles(stream);
-  if(Source.Supports("subtitles",Type,UnitId))
+ }
+
+ async Task Play(JsonElement stream)
+ {
+  var request = ++playbackRequest;
+  await Remember();
+  if (disposed || request != playbackRequest) return;
+  video = Field(stream, "url");
+  subtitles = ReadSubtitles(stream);
+  await ProgressChanged.InvokeAsync();
+  if (disposed || request != playbackRequest || !Source.Supports("subtitles", Type, UnitId)) return;
+  try
   {
-   try
-   {
-    var response=await Client.FetchJsonAsync(Source.Resource("subtitles",Type,UnitId),stop.Token);
-    subtitles=subtitles.Concat(ReadSubtitles(response)).DistinctBy(x=>x.Url).ToList();
-   }
-   catch(Exception){ /* The video can still play with the embedded tracks. */ }
+   var response = await Client.FetchJsonAsync(Source.Resource("subtitles", Type, UnitId), stop.Token);
+   if (!disposed && request == playbackRequest)
+    subtitles = subtitles.Concat(ReadSubtitles(response)).DistinctBy(x => x.Url).ToList();
   }
+  catch { /* Inline tracks remain available. */ }
  }
  static List<EpisodeSubtitle> ReadSubtitles(JsonElement item)=>Items(item,"subtitles")
   .Where(x=>MediaUrl(Field(x,"url"))).Select(x=>new EpisodeSubtitle(Field(x,"lang"),Field(x,"url"))).ToList();
- public void Dispose(){stop.Cancel();stop.Dispose();}
+ public void Dispose(){disposed=true;stop.Cancel();stop.Dispose();}
 }

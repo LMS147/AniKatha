@@ -107,7 +107,8 @@
          (string.IsNullOrEmpty(filters.Format) || string.Equals(Field(item,"format"), filters.Format, StringComparison.OrdinalIgnoreCase));
  }
  CancellationTokenSource? active;
- bool saved;
+ bool saved, disposed;
+ long progressRequest;
  (string, string, string) PageKey => (Source.ProviderKey, Catalog.Type, Catalog.Id);
  bool pageLoaded;
  protected override Task OnInitializedAsync()
@@ -186,6 +187,8 @@
  }
  async Task RefreshProgress()
  {
+  if (disposed) return;
+  var request = ++progressRequest;
   var token = active?.Token ?? CancellationToken.None;
   var currentTitle = titleId;
   var entries = (await Store.HistoryAsync()).Where(entry => entry.Origin == Source.ProviderKey &&
@@ -208,7 +211,7 @@
    if (current.TryGetValue(id, out var status) && !status.Completed && status.HistoryId is not null)
     unfinished.Add(status.HistoryId);
   }
-  if (token.IsCancellationRequested) return;
+  if (token.IsCancellationRequested || request != progressRequest) return;
   progress = current;
   continueLink = entries.FirstOrDefault(entry => unfinished.Contains(entry.Id))?.Id;
  }
@@ -220,6 +223,7 @@
  }
  public void Dispose()
  {
+  disposed = true;
   active?.Cancel();
   active?.Dispose();
   if (Session is not null && pageLoaded)
