@@ -1,0 +1,32 @@
+@inject LocalStore Store
+
+<section class="settings-card">
+ <h3>Playback &amp; reader</h3>
+ <label>Preferred subtitle language
+  <input placeholder="For example, en or ja" maxlength="35" value="@language" @onchange="SaveLanguage" />
+ </label>
+ @if (message is not null) { <p role="status">@message</p> }
+</section>
+
+@code {
+ string language = "";
+ string? message;
+
+ protected override async Task OnInitializedAsync()
+ {
+  try { language = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey) ?? ""; }
+  catch { message = "Could not load playback settings."; }
+ }
+
+ Task SaveLanguage(ChangeEventArgs args)
+ {
+  language = (args.Value?.ToString() ?? "").Trim();
+  return Save(MediaPreferences.SubtitleLanguageKey, language);
+ }
+
+ async Task Save(string key, string value)
+ {
+  try { await Store.SetSettingAsync(key, value); message = "Preference saved."; }
+  catch { message = "Could not save this preference."; }
+ }
+}

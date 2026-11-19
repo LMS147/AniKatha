@@ -28,7 +28,7 @@
 @if (speedStatus is not null) { <p role="status">@speedStatus</p> }
 @if(Subtitles.Count>0)
 {
- <label>Subtitles<select @onchange="ChangeSubtitle">
+ <label>Subtitles<select value="@(selectedTrack < 0 ? "" : selectedTrack.ToString(CultureInfo.InvariantCulture))" @onchange="ChangeSubtitle">
  <option value="">Off</option>
  @for(var i=0;i<Subtitles.Count;i++){<option value="@i">@Subtitles[i].Language</option>}
  </select></label>
@@ -81,24 +81,46 @@
   catch { speedStatus = "Could not save playback speed."; }
  }
 
- bool subtitleError;
+ bool subtitleError, manualSubtitle;
+ int selectedTrack = -1;
+ string? preferredLanguage, automaticTrack;
  CancellationTokenSource? subtitleRequest;
- async Task ChangeSubtitle(ChangeEventArgs args)
+
+ Task ChangeSubtitle(ChangeEventArgs args)
  {
-  subtitleRequest?.Cancel();subtitleRequest?.Dispose();
-  var token=(subtitleRequest=new()).Token;
-  subtitleError=false;
-  if(player==null)return;
+  manualSubtitle = true;
+  return ApplySubtitle(int.TryParse(args.Value?.ToString(), out var index) ? index : -1);
+ }
+
+ async Task ApplySubtitle(int index)
+ {
+  subtitleRequest?.Cancel();
+  subtitleRequest?.Dispose();
+  var token = (subtitleRequest = new()).Token;
+  selectedTrack = index;
+  subtitleError = false;
+  if (player is null) return;
   try
   {
    await player.InvokeVoidAsync("clearSubtitle");
-   if(!int.TryParse(args.Value?.ToString(),out var index) || index<0 || index>=Subtitles.Count)return;
-   var selected=Subtitles[index];
-   var cues=await Addons.GetSubtitleAsync(selected.Url,token);
-   if(!token.IsCancellationRequested)await player.InvokeVoidAsync("setSubtitle",selected.Language,cues);
+   if (index < 0 || index >= Subtitles.Count) return;
+   var selected = Subtitles[index];
+   var cues = await Addons.GetSubtitleAsync(selected.Url, token);
+   if (!token.IsCancellationRequested) await player.InvokeVoidAsync("setSubtitle", selected.Language, cues);
   }
-  catch(Exception){if(!token.IsCancellationRequested)subtitleError=true;}
+  catch { if (!token.IsCancellationRequested) subtitleError = true; }
  }
+
+ async Task ApplyPreferredSubtitle()
+ {
+  if (manualSubtitle || disposed || player is null) return;
+  var index = MediaPreferences.PreferredTrack(Subtitles, preferredLanguage);
+  if (index < 0 || automaticTrack == Subtitles[index].Url) return;
+  automaticTrack = Subtitles[index].Url;
+  await ApplySubtitle(index);
+  if (!disposed) await InvokeAsync(StateHasChanged);
+ }
+
  ElementReference video;
  DotNetObjectReference<WatchPreview>? callbacks;
  IJSObjectReference? module;
@@ -109,7 +131,7 @@
  bool progressError;
 
  protected override Task OnAfterRenderAsync(bool firstRender)
-  => firstRender ? initialization = InitializePlayerAsync() : Task.CompletedTask;
+  => firstRender ? initialization = InitializePlayerAsync() : ApplyPreferredSubtitle();
 
  async Task InitializePlayerAsync()
  {
@@ -117,6 +139,7 @@
   {
    var position = await Store.GetPlaybackPositionAsync(EpisodeKey);
    speed = MediaPreferences.ReadSpeed(await Store.GetSettingAsync(MediaPreferences.SpeedKey));
+   preferredLanguage = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey);
    if (disposed)
     return;
 
@@ -127,6 +150,7 @@
    callbacks ??= DotNetObjectReference.Create(this);
    player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed);
    if (!disposed) await InvokeAsync(StateHasChanged);
+   await ApplyPreferredSubtitle();
   }
   catch (JSDisconnectedException) { }
   catch (Exception)

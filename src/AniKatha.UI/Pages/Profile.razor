@@ -17,7 +17,7 @@
 <button disabled="@installing" @onclick="()=>Manage(() => Store.RemoveAddonAsync(addon.Url))">Remove</button>
 </div></div>}
 @if(installed.Count==0){<p class="source-note">No add-ons installed.</p>}</section>
-<section class="settings-card"><h3>Playback & reader</h3><p class="muted">Watch the sample from Home or read the offline chapter from Manga. Your place is saved on this device.</p></section>
+<PlaybackSettings/>
 <section class="settings-card"><h3>About AniKatha</h3><p>Anime and manga, one story at a time.</p><small class="muted">Foundation 0.1.0 · .NET MAUI Blazor Hybrid</small></section>
 @code {
  string url="",accent="#b5a0ff";string? message,addonMessage;bool installing,addonError;List<InstalledAddon> installed=[];
