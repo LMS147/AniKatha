@@ -72,4 +72,26 @@ public sealed partial class OfflineDownloads
         }
         return assets.ToArray();
     }
+
+    public static string? DownloadableStreamId(JsonElement stream)
+    {
+        if (stream.ValueKind != JsonValueKind.Object || !stream.TryGetProperty("downloadable", out var flag) ||
+            flag.ValueKind != JsonValueKind.True) return null;
+        var id = AddonResources.Field(stream, "id");
+        var url = AddonResources.Field(stream, "url");
+        if (id.Length == 0 || !AddonResources.MediaUrl(url)) return null;
+        var uri = new Uri(url);
+        return AddonResources.Field(stream, "mediaType") == "video/mp4" ||
+            uri.AbsolutePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ? id : null;
+    }
+
+    private async Task<DownloadedAsset[]> FetchVideoAsync(JsonElement data, string? streamId, string folder,
+        Func<long, int, int?, Task> report, CancellationToken token)
+    {
+        if (streamId is null) throw new InvalidDataException("Select a downloadable video first.");
+        var matches = AddonResources.Items(data, "streams").Where(stream => DownloadableStreamId(stream) == streamId).Take(2).ToArray();
+        if (matches.Length != 1) throw new InvalidDataException("The selected download is no longer available.");
+        var url = AddonResources.Field(matches[0], "url");
+        return [await client.DownloadMediaAsync(url, folder, 1, true, bytes => report(bytes, 0, null), token)];
+    }
 }

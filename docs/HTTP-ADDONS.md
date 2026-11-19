@@ -26,3 +26,5 @@ Different providers may identify the same episode or chapter differently. A unit
 Stream entries may supply `quality`, `audioLanguage`, and `subtitles` for the source picker. Manga page responses may supply a `language` alongside the ordered pages. A 404 for a stream or page resource represents an unavailable unit. Timeouts and other request failures show a retry action.
 
 Successful unit sources can be reused in memory for up to two minutes. A JSON response or stream object may supply an earlier `expiresAt` as an ISO 8601 timestamp with offset. Refresh sources bypasses the stored result. Failed video playback invalidates the cached result for the unit.
+
+Anime downloads require an explicit `downloadable: true`, a stable nonempty stream `id`, and a direct HTTPS MP4 file. The app recognizes MP4 through `mediaType: "video/mp4"` or a URL ending in `.mp4` before its query. It verifies the file signature during download. On retry, it resolves the same stream ID again so expired URLs can be replaced. Manga downloads use the existing ordered page resource and support JPEG, PNG, WebP, GIF and AVIF. Chapter files are published together after every page succeeds.
