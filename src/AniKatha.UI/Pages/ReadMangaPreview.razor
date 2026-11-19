@@ -50,7 +50,7 @@
    <div class="reader-stack" @ref="stack">
     @for (var page = 1; page <= PageCount; page++)
     {
-     <img class="reader-page" data-reader-page="@page" src="@PageUrl(page)" alt="@PageDescription(page)" loading="lazy" />
+     <img class="reader-page" data-reader-page="@(page)" src="@PageUrl(page)" alt="@PageDescription(page)" loading="lazy" />
     }
    </div>
   }
