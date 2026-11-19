@@ -2,6 +2,9 @@
   "streams": [
     {
       "name": "Play trailer",
+      "id": "bunny-trailer",
+      "downloadable": true,
+      "mediaType": "video/mp4",
       "url": "https://media.w3.org/2010/05/bunny/trailer.mp4"
     }
   ]

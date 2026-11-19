@@ -51,6 +51,20 @@ jobs:
           name: AniKatha-android-debug
           path: src/AniKatha.Mobile/bin/Debug/net10.0-android/*-Signed.apk
           if-no-files-found: error
+      - name: Build the pre-roadmap APK for an in-place upgrade check
+        shell: pwsh
+        run: |
+          git fetch --depth=1 origin 2f1a2e455c40f2399c428e695f9bb24ad749d867
+          git worktree add --detach "$env:RUNNER_TEMP/anikatha-baseline" FETCH_HEAD
+          dotnet build "$env:RUNNER_TEMP/anikatha-baseline/src/AniKatha.Mobile/AniKatha.Mobile.csproj" -c Debug -f net10.0-android
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force artifacts/apk-baseline
+          Copy-Item "$env:RUNNER_TEMP/anikatha-baseline/src/AniKatha.Mobile/bin/Debug/net10.0-android/*-Signed.apk" artifacts/apk-baseline/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AniKatha-upgrade-baseline
+          path: artifacts/apk-baseline/*-Signed.apk
+          if-no-files-found: error
 
   android-startup:
     name: Android installed APK startup
@@ -63,6 +77,10 @@ jobs:
         with:
           name: AniKatha-android-debug
           path: artifacts/apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: AniKatha-upgrade-baseline
+          path: artifacts/apk-baseline
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -72,6 +90,8 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Install and launch the downloadable APK
+        env:
+          ANIKATHA_TEST_FIXTURE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35

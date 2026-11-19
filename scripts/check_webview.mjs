@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -7,6 +8,11 @@ export function hasNavigation(snapshot) {
 }
 
 export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
+  const mode = process.argv[2] ?? 'fresh';
+  const fixtureRef = process.env.ANIKATHA_TEST_FIXTURE_REF;
+  const fixture = 'https://raw.githubusercontent.com/LMS147/AniKatha/' +
+    (fixtureRef ?? '118ce2c1895db30ec2ef2dd7db50e952c4de1bff') + '/examples/addons/story-sampler/manifest.json';
+  const testDownloads = mode === 'fresh' && Boolean(fixtureRef);
   const pages = await (await fetch(`${endpoint}/json/list`, {signal: AbortSignal.timeout(10000)})).json();
   const page = pages.find(p => p.type === 'page' && (p.title?.includes('AniKatha') || p.url?.startsWith('https://0.0.0.1')));
   if (!page?.webSocketDebuggerUrl) throw new Error('AniKatha WebView debugging target was not found.');
@@ -50,6 +56,37 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     await writeFile('artifacts/startup/webview.json', JSON.stringify(snapshot, null, 2));
     if (!hasNavigation(snapshot)) throw new Error('App navigation did not render or the Blazor error UI is visible.');
     console.log('PASS: all five navigation tabs rendered in the installed APK WebView.');
+
+    if (mode === 'upgrade') {
+      const upgraded = await command('Runtime.evaluate', {
+        awaitPromise: true, returnByValue: true,
+        expression: `(async () => {
+          async function wait(find, label) {
+            for (let i = 0; i < 250; i++) {
+              const result = find();
+              if (result) return result;
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            throw new Error(label);
+          }
+          const button = name => [...document.querySelectorAll('button')].find(x => x.textContent.trim() === name && !x.disabled);
+          const tab = name => document.querySelector('.bottom-nav a[href="/' + name + '"]').click();
+          tab('profile');
+          await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler' && button('Disable'), 'Installed source did not survive upgrade');
+          tab('manga');
+          for (const name of ['The Midnight Lighthouse', 'Chapter 1', 'Read Chapter 1'])
+            (await wait(() => button(name), name)).click();
+          await wait(() => {
+            const image = document.querySelector('.reader-page');
+            return image?.naturalWidth > 0 && image.src.endsWith('-2.webp');
+          }, 'Reading position lost during upgrade');
+          return true;
+        })()`,
+      }, 90000);
+      if (upgraded.result?.value !== true) throw new Error(upgraded.exceptionDetails?.exception?.description ?? 'Upgrade check failed');
+      console.log('PASS: APK upgrade preserved the enabled provider and existing chapter page.');
+      return;
+    }
 
     for (const tab of ['Anime', 'Manga', 'Anime']) {
       const navigation = await command('Runtime.evaluate', {
@@ -160,7 +197,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         const tab = name => document.querySelector('.bottom-nav a[href="/' + name + '"]').click();
         tab('profile');
         const input = await wait(() => document.querySelector('input[inputmode="url"]'), 'manifest input');
-        input.value = 'https://raw.githubusercontent.com/LMS147/AniKatha/118ce2c1895db30ec2ef2dd7db50e952c4de1bff/examples/addons/story-sampler/manifest.json';
+        input.value = ${JSON.stringify(fixture)};
         input.dispatchEvent(new Event('input', {bubbles:true}));
         await click('Add source');
         await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler', 'installed sampler');
@@ -169,6 +206,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await click('Sample trailer');
         await click('Play trailer');
         await wait(() => document.querySelector('video')?.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4', 'resolved anime video');
+        if (${testDownloads}) await click('Download Play trailer');
         tab('manga');
         await click('The Midnight Lighthouse');
         await click('Chapter 1');
@@ -194,12 +232,57 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await click('Chapter 1');
         await click('Read Chapter 1');
         await wait(() => imageAt(2), 'restored reading position');
+        if (${testDownloads}) {
+          await click('Download chapter');
+          tab('library');
+          await click('Downloads');
+          await wait(() => [...document.querySelectorAll('a')].filter(x => x.textContent.trim() === 'Open offline').length === 2, 'completed downloads');
+        }
         return true;
       })()`,
     }, 180000);
     if (httpAddon.result?.value !== true)
       throw new Error(httpAddon.exceptionDetails?.exception?.description ?? 'Installed HTTP add-on workflow failed.');
     console.log('PASS: installed HTTP add-on supplies anime and manga resources and preserves reading progress across disable/enable.');
+    if (testDownloads) {
+      const adb = (...args) => execFileSync('adb', ['shell', ...args], { encoding: 'utf8' }).trim();
+      adb('cmd', 'connectivity', 'airplane-mode', 'enable');
+      try {
+        if (adb('settings', 'get', 'global', 'airplane_mode_on') !== '1') throw new Error('Airplane mode did not enable.');
+        const offline = await command('Runtime.evaluate', {
+          awaitPromise: true, returnByValue: true,
+          expression: `(async () => {
+            async function wait(find, label) {
+              for (let i = 0; i < 300; i++) {
+                const result = find();
+                if (result) return result;
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              throw new Error(label);
+            }
+            const open = title => [...document.querySelectorAll('.library-item')].find(x => x.querySelector('h3')?.textContent.includes(title))?.querySelector('a');
+            (await wait(() => open('Midnight Lighthouse'), 'Downloaded chapter was not listed')).click();
+            await wait(() => {
+              const image = document.querySelector('.reader-page');
+              return image?.naturalWidth > 0 && image.src.includes('/offline-media/') && /page-0002/.test(image.src);
+            }, 'Downloaded chapter did not load its saved page in airplane mode');
+            (await wait(() => document.querySelector('a[href="/library?view=downloads"]'), 'Downloads link')).click();
+            (await wait(() => open('Big Buck Bunny'), 'Downloaded video was not listed')).click();
+            const video = await wait(() => {
+              const media = document.querySelector('video');
+              return media?.src.includes('/offline-media/') && media.readyState >= 2 && media;
+            }, 'Video frame did not load in airplane mode');
+            video.currentTime = Math.min(3, video.duration / 2);
+            await wait(() => !video.seeking && video.currentTime > 0, 'Offline video could not seek');
+            return true;
+          })()`,
+        }, 115000);
+        if (offline.result?.value !== true) throw new Error(offline.exceptionDetails?.exception?.description ?? 'Offline media failed.');
+        console.log('PASS: downloaded manga restored its exact page and downloaded video loaded and sought in airplane mode.');
+      } finally {
+        adb('cmd', 'connectivity', 'airplane-mode', 'disable');
+      }
+    }
   } finally {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}
