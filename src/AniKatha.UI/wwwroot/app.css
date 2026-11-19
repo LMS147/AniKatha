@@ -76,3 +76,5 @@
 .reader-viewport.zoomed .reader-page { width: var(--reader-zoom); max-width: none; }
 
 .reader-jump { display: flex; align-items: end; gap: 8px; margin-bottom: 12px; }
+
+.tabs[aria-label="Library format"] { flex-wrap: wrap; }

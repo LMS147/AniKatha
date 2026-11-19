@@ -69,8 +69,15 @@ public sealed partial class AniListAccount
                 "progress" => int.Parse(value, System.Globalization.CultureInfo.InvariantCulture),
                 _ => value
             };
-            var mutation = $"mutation ($id: Int!, $value: {graphType}!) {{ SaveMediaListEntry(mediaId: $id, {field}: $value) {{ mediaId }} }}";
-            var data = await SendAsync(credential, mutation, new { id = mediaId, value = typedValue }, ct);
+            var match = await SendAsync(credential,
+                "query ($id: Int!) { Media(id: $id) { id mediaListEntry { id } } }", new { id = mediaId }, ct);
+            var media = match.GetProperty("Media");
+            if (media.GetProperty("id").GetInt32() != mediaId)
+                throw new InvalidOperationException("AniList returned an unexpected title.");
+            var entry = media.GetProperty("mediaListEntry");
+            var entryId = entry.ValueKind == JsonValueKind.Object ? (int?)entry.GetProperty("id").GetInt32() : null;
+            var mutation = $"mutation ($entryId: Int, $id: Int!, $value: {graphType}!) {{ SaveMediaListEntry(id: $entryId, mediaId: $id, {field}: $value) {{ mediaId }} }}";
+            var data = await SendAsync(credential, mutation, new { entryId, id = mediaId, value = typedValue }, ct);
             return data.GetProperty("SaveMediaListEntry").GetProperty("mediaId").GetInt32() == mediaId
                 ? true : throw new InvalidOperationException("AniList did not acknowledge this edit.");
         }, token);
