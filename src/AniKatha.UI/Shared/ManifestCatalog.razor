@@ -6,6 +6,7 @@
 
 <section class="settings-card">
  <h3>@Source.Addon.Name @Catalog.Name</h3>
+ @if (HasFilters) { <p>Filters check loaded titles only. Titles missing the selected metadata are excluded.</p> }
  @foreach(var item in titles){
   <button class="secondary" @onclick="()=>Open(item)">@Field(item,"name")</button>
  }
@@ -28,6 +29,7 @@
 </section>
 
 @code {
+ [Parameter] public SearchOptions? Filters { get; set; }
  [Parameter] public string? SubmittedQuery { get; set; }
  [Parameter] public SavedTitle? InitialTitle {get;set;}
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
@@ -40,6 +42,22 @@
  string? unitId,error;
  bool busy,more,retryMeta,retryReset;
  int offset;
+ readonly HashSet<string> seenTitles = new(StringComparer.Ordinal);
+ bool HasFilters => Filters is { } f && (f.Genre is { Length: > 0 } || f.Year.HasValue ||
+  f.Season is { Length: > 0 } || f.Format is { Length: > 0 });
+
+ bool MatchesFilters(JsonElement item)
+ {
+  if (Filters is not { } filters) return true;
+  if (filters.Genre is { Length: > 0 } && !Items(item,"genres").Any(x =>
+       x.ValueKind == JsonValueKind.String && string.Equals(x.GetString(), filters.Genre, StringComparison.OrdinalIgnoreCase)))
+   return false;
+  if (filters.Year is int year && Field(item,"year") != year.ToString(System.Globalization.CultureInfo.InvariantCulture) &&
+      !(item.TryGetProperty("year", out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var itemYear) && itemYear == year))
+   return false;
+  return (string.IsNullOrEmpty(filters.Season) || string.Equals(Field(item,"season"), filters.Season, StringComparison.OrdinalIgnoreCase)) &&
+         (string.IsNullOrEmpty(filters.Format) || string.Equals(Field(item,"format"), filters.Format, StringComparison.OrdinalIgnoreCase));
+ }
  CancellationTokenSource? active;
  bool saved;
  protected override Task OnInitializedAsync()=> InitialTitle==null?Load(true):Open(JsonSerializer.SerializeToElement(new {id=InitialTitle.ExternalId,name=InitialTitle.Title}));
@@ -55,7 +73,7 @@
  Task Retry()=>retryMeta && selected.HasValue ? Open(selected.Value) : Load(retryReset);
  async Task Load(bool reset){
   var token=Begin();retryMeta=false;retryReset=reset;
-  if(reset){titles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;unitId=null;}
+  if(reset){titles.Clear();seenTitles.Clear();offset=0;more=false;applied=SubmittedQuery ?? "";selected=null;unitId=null;}
   try{
    var extras=new List<string>();
    if(applied.Length>0)extras.Add("search="+Uri.EscapeDataString(applied));
@@ -65,10 +83,17 @@
    if (!root.TryGetProperty("metas",out var list) || list.ValueKind!=JsonValueKind.Array) throw new FormatException();
    token.ThrowIfCancellationRequested();
    var page=Items(root,"metas").ToList();
-   var ids=titles.Select(x=>Field(x,"id")).ToHashSet();
-   var before=titles.Count;
-   titles.AddRange(page.Where(x=>Field(x,"id")!="" && (Field(x,"type")=="" || Field(x,"type")==Catalog.Type) && ids.Add(Field(x,"id"))));
-   offset+=page.Count;more=Catalog.Skip && titles.Count>before;
+   var before = seenTitles.Count;
+   foreach (var item in page)
+   {
+    var id = Field(item, "id");
+    var type = Field(item, "type");
+    if (id.Length == 0 || type.Length > 0 && type != Catalog.Type || !seenTitles.Add(id))
+     continue;
+    if (MatchesFilters(item)) titles.Add(item);
+   }
+   offset += page.Count;
+   more = Catalog.Skip && seenTitles.Count > before;
   }catch(OperationCanceledException) when(token.IsCancellationRequested){}
   catch(Exception){if(!token.IsCancellationRequested)error="Catalogue request failed.";}
   finally{if(!token.IsCancellationRequested)busy=false;}

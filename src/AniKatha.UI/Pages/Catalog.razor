@@ -15,11 +15,11 @@
   <option value="@provider.ProviderKey">@provider.Addon.Name</option>
  }
  </select></label>
- @if (!UsingAddon) {
  <label>Genre<select @bind="genre"><option value="">All genres</option>@foreach(var g in genres){<option>@g</option>}</select></label>
  <label>Year<input type="number" min="1900" max="2100" placeholder="Any year" @bind="year"/></label>
  @if(Kind=="ANIME"){<label>Season<select @bind="season"><option value="">All seasons</option><option value="WINTER">Winter</option><option value="SPRING">Spring</option><option value="SUMMER">Summer</option><option value="FALL">Autumn</option></select></label>}
  <label>Format<select @bind="format"><option value="">All formats</option>@foreach(var f in formats){<option value="@f">@f.Replace('_',' ')</option>}</select></label>
+ @if (ShowBuiltIn && !UsingAddon) {
  <label>Sort<select @bind="sort"><option value="TRENDING_DESC">Trending</option><option value="POPULARITY_DESC">Popular</option><option value="SCORE_DESC">Top rated</option><option value="START_DATE_DESC">Newest</option></select></label>
  }
  </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
@@ -32,7 +32,7 @@
   }
   else
   {
-  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch"/>
+  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch" Filters="appliedFilters"/>
   }
  }
 }
@@ -48,7 +48,8 @@ else if (UsingAddon && starterCatalogue)
  <div class="notice" role="status">Live catalogues are unavailable. Showing the starter catalogue included with AniKatha. <button @onclick="Search" disabled="@busy">Retry live catalogue</button></div>
 }
 else if (UsingAddon) { <p class="source-note">Titles and covers from Jikan.</p> }
-else { <p class="source-note">Titles and covers from AniList.</p> }
+@if (UsingAddon && !usingAniListFallback && HasFilters) { <p>Jikan and the starter catalogue cannot apply these filters.</p> }
+@if (!UsingAddon) { <p class="source-note">Titles and covers from AniList.</p> }
 @if(error is not null){<div class="notice" role="alert">@error <button @onclick="Search">Retry</button></div>}
 <div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch)?"Discover":"Search results")</h2><span class="muted">@ResultCount titles</span></div>
 @if(busy&&ResultCount==0){<div class="loading" role="status">Finding stories…</div>}
@@ -87,6 +88,9 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  bool preferJikan;
  List<AddonTitle> addonItems = [];
  string source = "", appliedSearch = "";
+ SearchOptions appliedFilters = new();
+ bool HasFilters => appliedFilters.Genre is { Length: > 0 } || appliedFilters.Year.HasValue ||
+  appliedFilters.Season is { Length: > 0 } || appliedFilters.Format is { Length: > 0 };
  long submission;
  bool starterCatalogue, usingAniListFallback;
  const string AniListSource = "anilist";
@@ -138,6 +142,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  Task Search()
  {
   appliedSearch = search.Trim();
+  appliedFilters = new SearchOptions(Kind, appliedSearch, genre, year, Kind == "ANIME" ? season : null, format, sort);
   submission++;
   page = 1;
   items = [];
@@ -171,7 +176,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
     if (result.IsStarterCatalogue)
     {
      MediaPage? live = null;
-     try { live = await Api.SearchAsync(new(Kind, appliedSearch), token); }
+     try { live = await Api.SearchAsync(appliedFilters, token); }
      catch (Exception) when (!token.IsCancellationRequested) { /* Keep bundled results when both requests fail. */ }
      if (token.IsCancellationRequested) return;
      if (live is not null)
@@ -188,9 +193,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
    }
    else
    {
-    var options = usingAniListFallback
-     ? new SearchOptions(Kind, appliedSearch, Page: page)
-     : new SearchOptions(Kind, appliedSearch, genre, year, season, format, sort, page);
+    var options = appliedFilters with { Page = page };
     var result = await Api.SearchAsync(options, token);
     if (token.IsCancellationRequested) return;
     items.AddRange(result.Items.Where(item => items.All(existing => existing.Id != item.Id)));
