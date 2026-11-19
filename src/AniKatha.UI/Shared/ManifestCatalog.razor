@@ -6,7 +6,7 @@
 
 <section class="settings-card">
  <h3>@Source.Addon.Name @Catalog.Name</h3>
- @if(Catalog.Search){<form @onsubmit="Search" @onsubmit:preventDefault><label>Search this catalogue<input @bind="query" /></label><button>Search</button></form>}
+ @if(Catalog.Search && SubmittedQuery is null){<form @onsubmit="Search" @onsubmit:preventDefault><label>Search this catalogue<input @bind="query" /></label><button>Search</button></form>}
  @foreach(var item in titles){
   <button class="secondary" @onclick="()=>Open(item)">@Field(item,"name")</button>
  }
@@ -29,6 +29,7 @@
 </section>
 
 @code {
+ [Parameter] public string? SubmittedQuery { get; set; }
  [Parameter] public SavedTitle? InitialTitle {get;set;}
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
  [Parameter,EditorRequired] public AddonCatalog Catalog {get;set;}=null!;
@@ -56,7 +57,7 @@
  Task Retry()=>retryMeta && selected.HasValue ? Open(selected.Value) : Load(retryReset);
  async Task Load(bool reset){
   var token=Begin();retryMeta=false;retryReset=reset;
-  if(reset){titles.Clear();offset=0;more=false;applied=query.Trim();selected=null;unitId=null;}
+  if(reset){titles.Clear();offset=0;more=false;applied=SubmittedQuery ?? query.Trim();selected=null;unitId=null;}
   try{
    var extras=new List<string>();
    if(applied.Length>0)extras.Add("search="+Uri.EscapeDataString(applied));

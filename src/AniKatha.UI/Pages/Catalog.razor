@@ -4,11 +4,6 @@
 @inject LocalStore Store
 <header class="page-header"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
 @Featured
-@foreach(var provider in httpProviders){
- @foreach(var catalog in provider.Catalogs(Kind)){
-  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id)" Source="provider" Catalog="catalog" Providers="httpProviders"/>
- }
-}
 <form @onsubmit="Search" @onsubmit:preventDefault>
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
  <div class="filters">
@@ -25,6 +20,19 @@
  }
  </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit" disabled="@busy">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
 </form>
+@foreach(var provider in httpProviders){
+ @foreach(var catalog in provider.Catalogs(Kind)){
+  @if (Kind == "ANIME" && appliedSearch.Length > 0 && !catalog.Search)
+  {
+   <p>@provider.Addon.Name · @catalog.Name supports browsing only.</p>
+  }
+  else
+  {
+  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@(Kind == "ANIME" ? appliedSearch : null)"/>
+  }
+ }
+}
+
 @if (usingAniListFallback)
 {
  <div class="notice" role="status">Jikan is unreachable. Showing live results from AniList. <button @onclick="Search" disabled="@busy">Retry Jikan</button></div>
@@ -71,6 +79,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  List<InstalledAddon> sources = [];
  List<AddonTitle> addonItems = [];
  string source = "", appliedSearch = "";
+ long submission;
  bool starterCatalogue, usingAniListFallback;
  const string SourceSetting = "catalogue-source";
  bool UsingAddon => source.Length != 0;
@@ -114,7 +123,8 @@ else { <MediaGrid Items="items" Selected="Select"/> }
 
  Task Search()
  {
-  appliedSearch = search;
+  appliedSearch = search.Trim();
+  submission++;
   page = 1;
   items = [];
   addonItems = [];
