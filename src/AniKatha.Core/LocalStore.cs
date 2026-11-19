@@ -12,30 +12,42 @@ public sealed partial class LocalStore
   db = new(path, SQLiteOpenFlags.ReadWrite | SQLiteOpenFlags.Create | SQLiteOpenFlags.FullMutex);
   initialized = new(InitializeAsync);
  }
+ volatile bool retired;
+ async Task ReadyAsync()
+ {
+  if (retired) throw new InvalidOperationException("This profile was removed.");
+  await initialized.Value;
+  if (retired) throw new InvalidOperationException("This profile was removed.");
+ }
+ internal Task CloseAsync()
+ {
+  retired = true;
+  return db.CloseAsync();
+ }
  async Task InitializeAsync() {
   await db.CreateTableAsync<ResumeEntry>(); await db.CreateTableAsync<SavedTitle>(); await db.CreateTableAsync<InstalledAddon>(); await db.CreateTableAsync<AppSetting>();
  }
  public async Task RememberAsync(ResumeEntry entry)
  {
-  await initialized.Value;
+  await ReadyAsync();
   entry.Opened=DateTime.UtcNow;
   await db.InsertOrReplaceAsync(entry);
  }
  public async Task<List<ResumeEntry>> HistoryAsync()
  {
-  await initialized.Value;
+  await ReadyAsync();
   return await db.Table<ResumeEntry>().OrderByDescending(x=>x.Opened).ToListAsync();
  }
  public async Task ForgetAsync(string id)
  {
-  await initialized.Value;
+  await ReadyAsync();
   await db.DeleteAsync<ResumeEntry>(id);
  }
- public async Task<List<SavedTitle>> GetLibraryAsync() { await initialized.Value; return await db.Table<SavedTitle>().OrderByDescending(x=>x.UpdatedAt).ToListAsync(); }
- public async Task SaveAsync(SavedTitle title) { await initialized.Value; title.UpdatedAt=DateTime.UtcNow; await db.InsertOrReplaceAsync(title); }
+ public async Task<List<SavedTitle>> GetLibraryAsync() { await ReadyAsync(); return await db.Table<SavedTitle>().OrderByDescending(x=>x.UpdatedAt).ToListAsync(); }
+ public async Task SaveAsync(SavedTitle title) { await ReadyAsync(); title.UpdatedAt=DateTime.UtcNow; await db.InsertOrReplaceAsync(title); }
  public async Task SaveProviderTitleAsync(string providerKey,string type,string externalId,string title,string? poster = null)
  {
-  await initialized.Value;
+  await ReadyAsync();
   await db.RunInTransactionAsync(connection =>
   {
    if(connection.Table<SavedTitle>().Where(x=>x.ProviderKey==providerKey && x.ResourceType==type && x.ExternalId==externalId).Count()>0) return;
@@ -45,16 +57,16 @@ public sealed partial class LocalStore
   });
  }
  public Task SaveAsync(Media title) => SaveAsync(new SavedTitle { Id=title.Id, Kind=title.Kind, Title=title.Title, Poster=title.Poster });
- public async Task RemoveAsync(int id) { await initialized.Value; await db.DeleteAsync<SavedTitle>(id); }
+ public async Task RemoveAsync(int id) { await ReadyAsync(); await db.DeleteAsync<SavedTitle>(id); }
  public async Task<List<InstalledAddon>> GetAddonsAsync(bool includeDisabled = false)
  {
-  await initialized.Value;
+  await ReadyAsync();
   var rows = await db.QueryAsync<InstalledAddon>("SELECT * FROM InstalledAddon ORDER BY COALESCE(SortOrder,0), rowid");
   return includeDisabled ? rows : rows.Where(row => !row.Disabled).ToList();
  }
  public async Task SaveAddonAsync(InstalledAddon addon)
  {
-  await initialized.Value;
+  await ReadyAsync();
   await db.RunInTransactionAsync(connection =>
   {
    if (connection.Find<InstalledAddon>(addon.Url) != null)
@@ -65,7 +77,7 @@ public sealed partial class LocalStore
  }
  public async Task RefreshAddonAsync(InstalledAddon addon)
  {
-  await initialized.Value;
+  await ReadyAsync();
   await db.RunInTransactionAsync(connection =>
   {
    var current = connection.Find<InstalledAddon>(addon.Url) ?? throw new InvalidOperationException("Source was removed.");
@@ -76,12 +88,12 @@ public sealed partial class LocalStore
  }
  public async Task SetAddonDisabledAsync(string url, bool disabled)
  {
-  await initialized.Value;
+  await ReadyAsync();
   await db.ExecuteAsync("UPDATE InstalledAddon SET Disabled=? WHERE Url=?",disabled,url);
  }
  public async Task MoveAddonAsync(string url, int direction)
  {
-  await initialized.Value;
+  await ReadyAsync();
   await db.RunInTransactionAsync(connection =>
   {
    var rows = connection.Query<InstalledAddon>("SELECT * FROM InstalledAddon ORDER BY COALESCE(SortOrder,0), rowid");
@@ -93,9 +105,9 @@ public sealed partial class LocalStore
     connection.Execute("UPDATE InstalledAddon SET SortOrder=? WHERE Url=?",i+1,rows[i].Url);
   });
  }
- public async Task RemoveAddonAsync(string url) { await initialized.Value; await db.DeleteAsync<InstalledAddon>(url); }
- public async Task<string?> GetSettingAsync(string key) { await initialized.Value; return (await db.FindAsync<AppSetting>(key))?.Value; }
- public async Task SetSettingAsync(string key,string value) { await initialized.Value; await db.InsertOrReplaceAsync(new AppSetting { Key=key, Value=value }); }
+ public async Task RemoveAddonAsync(string url) { await ReadyAsync(); await db.DeleteAsync<InstalledAddon>(url); }
+ public async Task<string?> GetSettingAsync(string key) { await ReadyAsync(); return (await db.FindAsync<AppSetting>(key))?.Value; }
+ public async Task SetSettingAsync(string key,string value) { await ReadyAsync(); await db.InsertOrReplaceAsync(new AppSetting { Key=key, Value=value }); }
  public async Task<double> GetPlaybackPositionAsync(string episodeKey)
  {
   var value = await GetSettingAsync($"playback:{episodeKey}");

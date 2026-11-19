@@ -1,4 +1,4 @@
-@inject LocalStore Store
+@inherits ProfileComponent
 @foreach(var kind in new[]{"Anime","Manga"})
 {
  var entries=history.Where(x=>(x.Type=="manga"?"Manga":"Anime")==kind).ToList();

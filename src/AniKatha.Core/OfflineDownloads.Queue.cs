@@ -7,7 +7,20 @@ public sealed partial class OfflineDownloads
     private const string JobPrefix = "offline-job:";
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly Dictionary<string, DownloadJob> jobs = new(StringComparer.Ordinal);
-    private bool loaded, running;
+    private bool loaded, running, retired;
+    private Task worker = Task.CompletedTask;
+
+    internal async Task RetireAsync()
+    {
+        await gate.WaitAsync();
+        try
+        {
+            retired = true;
+            activeCancellation?.Cancel();
+        }
+        finally { gate.Release(); }
+        await worker;
+    }
     private string? activeId;
     private CancellationTokenSource? activeCancellation;
     public event Action? Changed;
@@ -82,9 +95,9 @@ public sealed partial class OfflineDownloads
 
     private void StartWorker()
     {
-        if (running || !jobs.Values.Any(job => job.State == DownloadState.Queued)) return;
+        if (retired || running || !jobs.Values.Any(job => job.State == DownloadState.Queued)) return;
         running = true;
-        _ = Task.Run(WorkAsync);
+        worker = Task.Run(WorkAsync);
     }
 
     private async Task WorkAsync()
@@ -98,6 +111,7 @@ public sealed partial class OfflineDownloads
                 await gate.WaitAsync();
                 try
                 {
+                    if (retired) { running = false; return; }
                     job = jobs.Values.FirstOrDefault(item => item.State == DownloadState.Queued);
                     if (job is null) { running = false; return; }
                     await SaveAsync(job with { State = DownloadState.Downloading });

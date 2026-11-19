@@ -17,7 +17,7 @@ public sealed partial class LocalStore
 
     public async Task ImportAniListPageAsync(int account, IReadOnlyList<AniListListEntry> entries, CancellationToken token = default)
     {
-        await initialized.Value;
+        await ReadyAsync();
         await db.RunInTransactionAsync(connection =>
         {
             foreach (var entry in entries)

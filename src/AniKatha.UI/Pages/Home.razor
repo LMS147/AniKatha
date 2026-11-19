@@ -1,6 +1,6 @@
 @page "/"
 @inject AniListClient Catalog
-@inject LocalStore Store
+@inherits ProfileComponent
 <header class="brand-header"><a class="wordmark" href="/">ani<span>katha</span><i>✦</i></a><a class="avatar" href="/profile" aria-label="Open profile">A</a></header>
 @if(loading){<div class="hero skeleton" aria-label="Loading featured anime"></div>}
 else if(featured is not null){

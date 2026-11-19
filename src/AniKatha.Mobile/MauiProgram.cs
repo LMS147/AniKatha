@@ -3,6 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 namespace AniKatha.Mobile;
 public static class MauiProgram
 {
+ private sealed class AniListTransport
+ {
+  public AniListTransport() { }
+  public HttpClient Http { get; } = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(25) };
+ }
+
  public static MauiApp CreateMauiApp()
  {
   var builder=MauiApp.CreateBuilder();
@@ -11,14 +17,15 @@ public static class MauiProgram
 #if DEBUG
   builder.Services.AddBlazorWebViewDeveloperTools();
 #endif
-  builder.Services.AddSingleton(_ => new LocalStore(Path.Combine(FileSystem.AppDataDirectory,"anikatha.db3")));
   builder.Services.AddSingleton(new AniListClient(new HttpClient { Timeout=TimeSpan.FromSeconds(25) }));
   builder.Services.AddSingleton(new JikanCatalogue(new HttpClient { Timeout=TimeSpan.FromSeconds(25) }));
   builder.Services.AddSingleton(new AddonClient(new HttpClient(new HttpClientHandler { AllowAutoRedirect=false }) { Timeout=TimeSpan.FromSeconds(20) }));
-  builder.Services.AddSingleton(_ => new AniListAccount(new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(25) }, new AniListAuthorization()));
-  builder.Services.AddSingleton(services => new OfflineDownloads(services.GetRequiredService<LocalStore>(),
-   services.GetRequiredService<AddonClient>(), Path.Combine(FileSystem.AppDataDirectory, "offline")));
-  builder.Services.AddSingleton<IYouTubePlayer, YouTubePlayer>();
+  builder.Services.AddSingleton(services => new LocalProfiles(FileSystem.AppDataDirectory, "anikatha.db3",
+   services.GetRequiredService<AddonClient>(), new AndroidProfileSecrets(),
+   id => new AniListAccount(services.GetRequiredService<AniListTransport>().Http, new AniListAuthorization(id)),
+   store => new YouTubePlayer(store)));
+  builder.Services.AddSingleton<AniListTransport>();
+  builder.Services.AddSingleton<IAppearancePlatform, NativeAppearance>();
   builder.Services.AddSingleton<IExternalVideoPlayer, ExternalVideoPlayer>();
   builder.Services.AddSingleton<MainPage>();
   return builder.Build();

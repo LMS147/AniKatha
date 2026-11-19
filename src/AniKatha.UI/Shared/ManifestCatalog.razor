@@ -2,7 +2,7 @@
 @using static AniKatha.Core.AddonResources
 @implements IDisposable
 @inject AddonClient Client
-@inject LocalStore Store
+@inherits ProfileComponent
 
 <section class="settings-card">
  <h3>@Source.Addon.Name @Catalog.Name</h3>

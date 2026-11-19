@@ -21,6 +21,27 @@ public sealed class AddonResources(InstalledAddon addon)
   node.ValueKind==JsonValueKind.Object && node.TryGetProperty(key,out var value) && value.ValueKind==JsonValueKind.String ? value.GetString()! : "";
  static bool Contains(JsonElement node,string key,string value) =>
   Items(node,key).Any(item=>item.ValueKind==JsonValueKind.String && item.GetString()==value);
+ public string[] DisplayCapabilities()
+ {
+  var labels = new List<string>();
+  var anime = new[] { "anime", "series" };
+  var jikan = Addon.CatalogueProvider == JikanCatalogue.Provider;
+  var youtube = Addon.YouTubeEpisodesJson is not null;
+  var catalogues = Catalogs("ANIME").Concat(Catalogs("MANGA")).ToList();
+  var resourceNames = new[] { "catalog", "meta", "stream", "subtitles", "chapters", "pages" };
+  bool Offers(string resource, string type) => MatchingRules(resource, type).Any();
+  var streams = youtube || anime.Any(type => Offers("stream", type));
+  var pages = Offers("pages", "manga");
+  if (jikan || youtube || anime.Any(type => resourceNames.Any(resource => Offers(resource, type)))) labels.Add("Anime");
+  if (jikan || resourceNames.Any(resource => Offers(resource, "manga"))) labels.Add("Manga");
+  if (jikan || catalogues.Count > 0) labels.Add("Catalog");
+  if (jikan || catalogues.Any(item => item.Search)) labels.Add("Search");
+  if (streams) labels.Add(youtube ? "YouTube playback" : "Playback");
+  if (pages) labels.Add("Chapter pages");
+  if (!streams && !pages && labels.Count > 0) labels.Add("Metadata only");
+  return labels.Count > 0 ? labels.ToArray() : ["Refresh to load capabilities"];
+ }
+
  public bool Supports(string resource,string type,string id)
  {
   return MatchingRules(resource,type).Any(prefixes=>prefixes.Count==0 || MatchesPrefix(prefixes,id));

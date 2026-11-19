@@ -7,18 +7,21 @@ namespace AniKatha.Mobile;
 
 public sealed class OfflineMediaWebView : BlazorWebView
 {
-    public override IFileProvider CreateFileProvider(string contentRootDir) =>
-        new MediaFileProvider(base.CreateFileProvider(contentRootDir));
+    internal LocalProfiles? Profiles { get; set; }
 
-    private sealed class MediaFileProvider(IFileProvider appFiles) : IFileProvider
+    public override IFileProvider CreateFileProvider(string contentRootDir) =>
+        new MediaFileProvider(base.CreateFileProvider(contentRootDir), Profiles);
+
+    private sealed class MediaFileProvider(IFileProvider appFiles, LocalProfiles? profiles) : IFileProvider
     {
         public IFileInfo GetFileInfo(string subpath)
         {
             var relative = subpath.TrimStart('/');
             if (!relative.StartsWith("offline-media/", StringComparison.Ordinal)) return appFiles.GetFileInfo(subpath);
             var parts = relative.Split('/');
-            if (parts.Length != 3) return new NotFoundFileInfo(relative);
-            var path = OfflineDownloads.FindAssetIn(Path.Combine(FileSystem.AppDataDirectory, "offline"), parts[1], parts[2]);
+            if (parts.Length != 4 || profiles?.Session is not { } session || session.Id != parts[1])
+                return new NotFoundFileInfo(relative);
+            var path = session.Downloads.FindAsset(parts[2], parts[3]);
             return path is null ? new NotFoundFileInfo(relative) : new MediaFile(new FileInfo(path));
         }
 

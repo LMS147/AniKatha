@@ -1,5 +1,5 @@
+@inherits ProfileComponent
 @implements IDisposable
-@inject IServiceProvider Services
 
 @if (storage is not null) { <p class="source-note">@storage</p> }
 @if (downloads is null)
@@ -41,7 +41,7 @@ else
 
  protected override async Task OnInitializedAsync()
  {
-  downloads = (OfflineDownloads?)Services.GetService(typeof(OfflineDownloads));
+  downloads = ProfileDownloads;
   if (downloads is null) return;
   downloads.Changed += Changed;
   await Run(downloads.StartAsync);

@@ -1,6 +1,15 @@
 @inherits LayoutComponentBase
-@inject LocalStore Store
-<div class="app-shell" style="--accent:@accent">
+@implements IDisposable
+@inject IServiceProvider Services
+@if (!ready)
+{
+ <main class="app-shell" data-theme="system"><p role="status">Opening your profile…</p></main>
+}
+else
+{
+<div class="app-shell" data-theme="@appearance.Mode" data-density="@appearance.Density" style="@appearance.Css">
+ <CascadingValue Value="appearance" Name="CurrentAppearance">
+ <CascadingValue Value="apply" IsFixed="true">
  <CascadingValue Value="catalogSession" IsFixed="true">
   <CascadingValue Value="sourceResultCache" IsFixed="true">
    <main id="main-content">@Body</main>
@@ -13,10 +22,42 @@
   <NavLink href="/library"><Icon Name="library" /><span>Library</span></NavLink>
   <NavLink href="/profile"><Icon Name="user" /><span>Profile</span></NavLink>
  </nav>
+ </CascadingValue>
+ </CascadingValue>
 </div>
+}
 @code {
  readonly SourceResultCache sourceResultCache = new();
  readonly CatalogSession catalogSession = new();
- string accent="#b5a0ff";
- protected override async Task OnInitializedAsync() { accent=await Store.GetSettingAsync("accent")??accent; }
+ [CascadingParameter] public ProfileSession? Session { get; set; }
+ AppearanceSettings appearance = new();
+ Func<AppearanceSettings, Task> apply = null!;
+ bool ready, disposed;
+
+ protected override async Task OnInitializedAsync()
+ {
+  apply = Apply;
+  try
+  {
+   if (Session?.Store is { } store) appearance = await AppearanceSettings.LoadAsync(store);
+   else if (Services.GetService(typeof(LocalStore)) is LocalStore legacy) appearance = await AppearanceSettings.LoadAsync(legacy);
+   await ApplyPlatform();
+  }
+  catch { /* The UI can start with the default theme. */ }
+  finally { ready = true; }
+ }
+
+ async Task Apply(AppearanceSettings value)
+ {
+  appearance = value;
+  await ApplyPlatform();
+  await InvokeAsync(StateHasChanged);
+ }
+
+ async Task ApplyPlatform()
+ {
+  if (!disposed && Services.GetService(typeof(IAppearancePlatform)) is IAppearancePlatform platform)
+   await platform.ApplyAsync(appearance.Mode);
+ }
+ public void Dispose() => disposed = true;
 }

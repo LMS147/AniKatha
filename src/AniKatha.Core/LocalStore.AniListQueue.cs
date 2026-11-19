@@ -13,7 +13,7 @@ public sealed partial class LocalStore
 
     public async Task QueueAniListEditAsync(int account, int media, string field, string value, string? scoreFormat = null)
     {
-        await initialized.Value;
+        await ReadyAsync();
         await db.RunInTransactionAsync(connection =>
         {
             var item = connection.Find<SavedTitle>(media);
@@ -44,7 +44,7 @@ public sealed partial class LocalStore
 
     public async Task<IReadOnlyList<AniListEdit>> AniListEditsAsync(int account)
     {
-        await initialized.Value;
+        await ReadyAsync();
         var settings = await db.QueryAsync<AppSetting>("SELECT * FROM AppSetting WHERE Key LIKE ? ORDER BY Key", QueuePrefix(account) + "%");
         return settings.Select(setting => JsonSerializer.Deserialize<AniListEdit>(setting.Value)!).ToList();
     }
@@ -57,7 +57,7 @@ public sealed partial class LocalStore
 
     public async Task FinishAniListEditAsync(int account, AniListEdit edit, bool success, int? remoteProgress = null)
     {
-        await initialized.Value;
+        await ReadyAsync();
         await db.RunInTransactionAsync(connection =>
         {
             var key = QueueKey(account, edit.MediaId, edit.Field);

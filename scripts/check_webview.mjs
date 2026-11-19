@@ -83,6 +83,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           const button = name => [...document.querySelectorAll('button')].find(x => x.textContent.trim() === name && !x.disabled);
           const tab = name => document.querySelector('.bottom-nav a[href="/' + name + '"]').click();
           tab('profile');
+          (await wait(() => document.querySelector('a[href="/profile/sources"]'), 'Sources link')).click();
           await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler' && button('Disable'), 'Installed source did not survive upgrade');
           tab('manga');
           for (const name of ['The Midnight Lighthouse', 'Chapter 1', 'Read Chapter 1'])
@@ -204,20 +205,29 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           }
           throw new Error('Timed out waiting for ' + description);
         }
-        const button = name => Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === name && !b.disabled);
+        const button = name => Array.from(document.querySelectorAll('button')).find(b => (b.textContent.trim() === name || b.getAttribute('aria-label') === name) && !b.disabled);
         const click = async name => (await wait(() => button(name), name)).click();
         const tab = name => document.querySelector('.bottom-nav a[href="/' + name + '"]').click();
+        const open = async path => (await wait(() => document.querySelector('a[href="' + path + '"]'), path)).click();
+        const oldProfile = ${mode === 'seed'};
+        const sources = async () => {
+          tab('profile');
+          if (!oldProfile) await open('/profile/sources');
+        };
         tab('profile');
         const expectedAniList = ${JSON.stringify(mode === 'fresh' ? aniListConfigured ?? '' : '')};
+        if (!oldProfile && expectedAniList) await open('/profile/anilist');
         if (expectedAniList === 'true') {
           await wait(() => button('Connect AniList'), 'AniList sign-in in the configured APK');
         } else if (expectedAniList === 'false') {
           await wait(() => document.querySelector('.anilist-card')?.textContent.includes('AniList sign-in is unavailable for this build.'),
             'AniList availability notice in the unconfigured APK');
         }
+        await sources();
         const input = await wait(() => document.querySelector('input[inputmode="url"]'), 'manifest input');
         input.value = ${JSON.stringify(fixture)};
         input.dispatchEvent(new Event('input', {bubbles:true}));
+        if (!oldProfile) await click('Check manifest');
         await click('Add source');
         await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler', 'installed sampler');
         tab('anime');
@@ -237,13 +247,13 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await wait(() => imageAt(1), 'resolved manga page');
         await click('Next page →');
         await wait(() => imageAt(2), 'second manga page');
-        tab('profile');
+        await sources();
         await click('Disable');
         await wait(() => button('Enable'), 'disabled source');
         tab('manga');
         await wait(() => document.querySelector('h1')?.textContent === 'Manga', 'manga tab');
         if (button('The Midnight Lighthouse')) throw new Error('Disabled provider still contributes results');
-        tab('profile');
+        await sources();
         await click('Enable');
         await wait(() => button('Disable'), 'enabled source');
         tab('manga');
@@ -349,10 +359,84 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         adb('cmd', 'connectivity', 'airplane-mode', 'disable');
       }
     }
+    if (mode === 'fresh') {
+      for (const [scene, label] of [
+        ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
+        ['appearance', 'appearance'], ['sources', 'sources'],
+      ]) {
+        const result = await command('Runtime.evaluate', {
+          expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
+          awaitPromise: true, returnByValue: true,
+        }, 45000);
+        if (result.result?.value !== true)
+          throw new Error(result.exceptionDetails?.exception?.description ?? 'Could not verify ' + label);
+        const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
+        await writeFile('artifacts/startup/' + label + '.png', image);
+      }
+      console.log('PASS: created and switched profiles, verified source and appearance isolation, and captured the four screens.');
+    }
   } finally {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}
   }
+}
+
+async function verifyProfileScene(scene) {
+  async function wait(find, label) {
+    for (let i = 0; i < 130; i++) {
+      const found = find();
+      if (found) return found;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error(label);
+  }
+  const button = name => Array.from(document.querySelectorAll('button')).find(b => (b.textContent.trim() === name || b.getAttribute('aria-label') === name) && !b.disabled);
+  const click = async name => (await wait(() => button(name), name)).click();
+  const open = async path => (await wait(() => document.querySelector('a[href="' + path + '"]'), path)).click();
+  const heading = name => wait(() => document.querySelector('h1')?.textContent === name, name);
+  const activate = async name => {
+    (await wait(() => [...document.querySelectorAll('.settings-row')].find(row => row.textContent.includes(name)), name)).click();
+    await wait(() => document.querySelector('.profile-card h2')?.textContent === name, 'Active profile ' + name);
+  };
+
+  if (scene === 'hub') {
+    document.querySelector('.bottom-nav a[href="/profile"]').click();
+    await heading('Profile');
+    await wait(() => document.querySelector('.profile-card h2')?.textContent === 'Story explorer', 'Default profile');
+  } else if (scene === 'switcher') {
+    await open('/profile/profiles');
+    await open('/profile/profiles/new');
+    const input = await wait(() => document.querySelector('input[maxlength="32"]'), 'Profile name');
+    input.value = 'Night reader';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await click('Moon');
+    await click('Save profile');
+    await heading('Switch profile');
+    await wait(() => document.querySelector('.profile-switcher')?.textContent.includes('Night reader'), 'Created profile');
+  } else if (scene === 'appearance') {
+    await activate('Night reader');
+    await open('/profile/sources');
+    await wait(() => document.body.innerText.includes('No sources installed'), 'Isolated sources');
+    await open('/profile');
+    await open('/profile/appearance');
+    await click('Light');
+    await click('Compact');
+    await click('Save appearance');
+    await wait(() => document.querySelector('.app-shell')?.dataset.theme === 'light' &&
+      document.querySelector('.app-shell')?.dataset.density === 'compact', 'Saved profile appearance');
+  } else if (scene === 'sources') {
+    await open('/profile');
+    await open('/profile/profiles');
+    await activate('Story explorer');
+    await wait(() => document.querySelector('.app-shell')?.dataset.theme === 'system', 'Original theme');
+    await open('/profile/sources');
+    const row = await wait(() => {
+      const card = document.querySelector('.source-card');
+      return card?.querySelector('strong')?.textContent === 'AniKatha Story Sampler' && card;
+    }, 'Restored original sources');
+    row.scrollIntoView({ block: 'center' });
+  }
+  return true;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

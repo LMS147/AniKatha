@@ -4,9 +4,8 @@ namespace AniKatha.UI.Shared;
 
 internal static class AddonCompletion
 {
-    public static async Task<(string Message, Task<string>? Sync)> SaveAsync(LocalStore store, IServiceProvider services, string unitKey)
+    public static async Task<(string Message, Task<string>? Sync)> SaveAsync(LocalStore store, AniListAccount? account, string unitKey)
     {
-        var account = services.GetService(typeof(AniListAccount)) as AniListAccount;
         var mapping = await store.GetAddonAniListProgressAsync(unitKey);
         AniListViewer? viewer = null;
         if (mapping is not null && account is not null)

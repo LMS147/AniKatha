@@ -1,4 +1,51 @@
-<Router AppAssembly="typeof(Routes).Assembly">
- <Found Context="routeData"><RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" /><FocusOnNavigate RouteData="routeData" Selector="h1" /></Found>
- <NotFound><LayoutView Layout="typeof(Layout.MainLayout)"><h1>Page not found</h1><a href="/">Return home</a></LayoutView></NotFound>
-</Router>
+@implements IDisposable
+@inject IServiceProvider Services
+@if (loading)
+{
+ <main class="app-shell" data-theme="system"><p role="status">Opening AniKatha…</p></main>
+}
+else if (error)
+{
+ <main class="app-shell" data-theme="system"><h1>Could not open profiles</h1><button class="primary" @onclick="Load">Try again</button></main>
+}
+else if (profiles is not null && session is null)
+{
+ <main class="app-shell" data-theme="system"><ProfileSwitcher /></main>
+}
+else
+{
+ <CascadingValue Value="session" @key="session" IsFixed="true">
+  <Router AppAssembly="typeof(Routes).Assembly">
+   <Found Context="routeData"><RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" /><FocusOnNavigate RouteData="routeData" Selector="h1" /></Found>
+   <NotFound><LayoutView Layout="typeof(Layout.MainLayout)"><h1>Page not found</h1><a href="/">Return home</a></LayoutView></NotFound>
+  </Router>
+ </CascadingValue>
+}
+
+@code {
+ LocalProfiles? profiles;
+ ProfileSession? session;
+ bool loading = true, error;
+
+ protected override async Task OnInitializedAsync()
+ {
+  profiles = Services.GetService(typeof(LocalProfiles)) as LocalProfiles;
+  if (profiles is not null) profiles.Changed += Changed;
+  await Load();
+ }
+
+ async Task Load()
+ {
+  loading = true;
+  error = false;
+  try
+  {
+   if (profiles is not null) await profiles.InitializeAsync();
+   session = profiles?.Session;
+  }
+  catch { error = true; }
+  finally { loading = false; }
+ }
+ void Changed() => _ = InvokeAsync(() => { session = profiles?.Session; StateHasChanged(); });
+ public void Dispose() { if (profiles is not null) profiles.Changed -= Changed; }
+}
