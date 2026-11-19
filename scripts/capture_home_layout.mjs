@@ -133,6 +133,12 @@ function measure({ active, width, enlarged }) {
     if (band && active === '#home-anime' && grid.querySelector('.home-card:first-child .home-card-meta') &&
         Math.abs(bounds(band).top - poster.bottom) > 1) issues.push('detached anime strip');
   }
+  const calendar = view.querySelector('.home-calendar');
+  if (calendar) {
+    const heading = bounds(calendar.closest('header') ?? calendar.closest('section'));
+    if (bounds(calendar).width < heading.width - 28 || calendar.querySelectorAll('.home-day').length !== 3)
+      issues.push('schedule dates do not fill their panel');
+  }
   const release = view.querySelector('.home-schedule button');
   if (release) {
     const time = bounds(release.querySelector('time'));

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using AniKatha.Core;
 using AniKatha.UI.Pages;
+using AniKatha.UI.Shared;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -11,6 +12,7 @@ internal static class HomeChecks
     {
         var db = Path.Combine(Path.GetTempPath(), $"anikatha-home-{Guid.NewGuid():N}.db3");
         var store = new LocalStore(db);
+        var captureDirectory = Environment.GetEnvironmentVariable("ANIKATHA_HOME_CAPTURE_DIRECTORY");
         const string manifest = """
             {"types":["manga"],"resources":["catalog","chapters","pages"],"catalogs":[{"type":"manga","id":"books","name":"Books"}]}
             """;
@@ -19,7 +21,7 @@ internal static class HomeChecks
         await store.SaveAddonAsync(enabled);
         await store.SaveAddonAsync(broken);
         var origin = new AddonResources(enabled).ProviderKey;
-        await store.SaveProviderTitleAsync(origin, "manga", "lantern", "The Lantern");
+        await store.SaveProviderTitleAsync(origin, "manga", "lantern", "The Lantern", captureDirectory is null ? null : Cover(1));
         using var fixture = new HomeFixture();
         using var http = new HttpClient(fixture);
         await using var context = new BunitContext();
@@ -28,12 +30,11 @@ internal static class HomeChecks
         context.Services.AddSingleton(new AniListClient(http));
         context.Services.AddSingleton(new AddonClient(http, (_, _) => Task.FromResult(new[] { IPAddress.Parse("192.0.2.5") })));
 
-        var captureDirectory = Environment.GetEnvironmentVariable("ANIKATHA_HOME_CAPTURE_DIRECTORY");
         fixture.PopulateCaptures = !string.IsNullOrWhiteSpace(captureDirectory);
         var fresh = context.Render<Home>();
         fresh.WaitForAssertion(() => Check(fresh.Find("#home-anime").TextContent.Contains("Episodes you start will appear here"),
             "Fresh launch shows compact empty history without an AniList login."));
-        if (fixture.PopulateCaptures) Capture(captureDirectory!, "empty", fresh);
+        if (fixture.PopulateCaptures) Capture(captureDirectory!, "empty", fresh, context);
         fresh.Dispose();
 
         var chapter = ResumeEntry.Key(origin, "manga", "lantern", "first", origin);
@@ -77,7 +78,7 @@ internal static class HomeChecks
         {
             home.WaitForAssertion(() => Check(home.FindAll("#home-anime .home-card-target").Count >= 16 &&
                 home.FindAll("#home-anime time").Count >= 3, "All Anime capture shelves are populated."));
-            Capture(captureDirectory!, "anime", home);
+            Capture(captureDirectory!, "anime", home, context);
             await Click(home, "[aria-labelledby='home-watch-title'] header button", "View more ›");
             Check(home.FindAll("[aria-labelledby='home-watch-title'] .home-card-target").Count == 5, "Watch history expansion keeps the saved cards.");
             await Click(home, "[aria-labelledby='home-upcoming-title'] header button", "View more ›");
@@ -112,7 +113,7 @@ internal static class HomeChecks
         if (fixture.PopulateCaptures)
         {
             home.WaitForAssertion(() => Check(home.FindAll("#home-manga .home-card-target").Count >= 15, "All supported Manga shelves are populated."));
-            Capture(captureDirectory!, "manga", home);
+            Capture(captureDirectory!, "manga", home, context);
         }
         fixture.Trending.TrySetResult();
         await latest;
@@ -131,18 +132,22 @@ internal static class HomeChecks
 
     private static string Cover(int index) => $"https://preview.example/art/midnight-lighthouse-{index % 3 + 1}.webp";
 
-    private static void Capture(string directory, string name, IRenderedComponent<Home> home)
+    private static void Capture(string directory, string name, IRenderedComponent<Home> home, BunitContext context)
     {
         Directory.CreateDirectory(directory);
         var markup = home.Markup.Replace("https://preview.example/art/", "art/", StringComparison.Ordinal);
+        string IconMarkup(string icon) => context.Render<Icon>(parameters => parameters.Add(component => component.Name, icon)).Markup;
         File.WriteAllText(Path.Combine(directory, $"{name}.html"), $$"""
             <!doctype html><html lang="en"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <link rel="stylesheet" href="app.css"><title>AniKatha Home layout fixture</title></head>
             <body><div class="app-shell"><main id="main-content">{{markup}}</main>
             <nav class="bottom-nav" aria-label="Main navigation">
-              <a class="active" href="/">Home</a><a href="/anime">Anime</a><a href="/manga">Manga</a>
-              <a href="/library">Library</a><a href="/profile">Profile</a>
+              <a class="active" href="/">{{IconMarkup("home")}}<span>Home</span></a>
+              <a href="/anime">{{IconMarkup("anime")}}<span>Anime</span></a>
+              <a href="/manga">{{IconMarkup("book")}}<span>Manga</span></a>
+              <a href="/library">{{IconMarkup("library")}}<span>Library</span></a>
+              <a href="/profile">{{IconMarkup("user")}}<span>Profile</span></a>
             </nav></div></body></html>
             """);
     }

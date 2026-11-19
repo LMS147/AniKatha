@@ -393,17 +393,21 @@ main#main-content:has(> .home-landing) { padding: 0; }
 }
 .home-empty p, .home-loading p { font-size: .83rem; margin: 0; line-height: 1.45; padding-block: 7px; }
 .home-empty a { color: var(--home-blue); display: inline-flex; align-items: center; min-height: 44px; font-size: .81rem; font-weight: 680; }
-.home-loading-poster {
+.home-loading-poster { display: grid; gap: 6px; }
+.home-loading-poster > span {
  aspect-ratio: var(--home-poster-ratio); border-radius: 8px; background: linear-gradient(120deg,var(--home-panel),var(--home-raised));
  animation: breathe 1.5s infinite alternate;
 }
+.home-loading-poster > i { height: 20px; background: var(--home-panel); border-radius: 4px; }
+.home-loading-poster > i:last-child { width: 75%; height: 12px; margin-bottom: 5px; }
 .home-description { margin: 0 0 8px; font-size: .78rem; }
 .home-section > .home-schedule-heading {
- display: grid; gap: 8px; padding: 12px 10px 6px; background: var(--home-panel); border-radius: 10px 10px 5px 5px;
+ display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; padding: 12px 10px 6px;
+ background: var(--home-panel); border-radius: 10px 10px 5px 5px;
 }
 .home-schedule-heading h2, .home-schedule-heading p { text-align: center; }
 .home-schedule-heading .home-description { margin: 0; }
-.home-calendar { display: grid; grid-template-columns: 40px repeat(3,minmax(0,1fr)) 40px; gap: 3px; }
+.home-calendar { display: grid; grid-template-columns: 44px repeat(3,minmax(0,1fr)) 44px; gap: 3px; }
 .home-calendar button { min-height: 46px; padding: 3px; background: transparent; border: 0; border-radius: 6px; }
 .home-calendar .home-day { display: grid; place-content: center; gap: 2px; line-height: 1.18; }
 .home-day small { font-size: .71rem; }
