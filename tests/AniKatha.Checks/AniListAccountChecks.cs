@@ -93,6 +93,11 @@ internal static class AniListAccountChecks
         private AniListCredential? credential;
         public Task<Uri> AuthorizeAsync(Uri request, CancellationToken token)
         {
+            Assert(request.GetLeftPart(UriPartial.Path) == "https://anilist.co/api/v2/oauth/authorize",
+                "OAuth uses the official AniList authorization endpoint");
+            Assert(request.Query.StartsWith("?response_type=token&client_id=123&state=", StringComparison.Ordinal) &&
+                !request.Query.Contains("redirect_uri", StringComparison.Ordinal),
+                "Implicit OAuth uses the registered redirect and sends the public client ID and state");
             var state = request.Query.Split('&').Single(item => item.StartsWith("state="))[6..];
             return Task.FromResult(new Uri(Callback + "#access_token=mock&expires_in=3600&state=" + (BadState ? "unmatched" : state)));
         }
