@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject IServiceProvider Services
+@inject LocalStore Store
 
 <h2>Tracking</h2>
 <section class="settings-card anilist-card">
@@ -7,6 +8,7 @@
  @if (viewer is not null)
  {
   <h3>Connected as @viewer.Name</h3>
+  <button class="primary" disabled="@busy" @onclick="Import">Import AniList library</button>
   <button class="secondary" disabled="@busy" @onclick="Disconnect">Disconnect AniList</button>
  }
  else if (account?.CanConnect == true)
@@ -42,6 +44,22 @@
   try { viewer = await account.ConnectAsync(lifetime.Token); }
   catch (OperationCanceledException) { status = "AniList sign-in cancelled."; }
   catch { status = "Could not connect to AniList."; }
+  finally { busy = false; }
+ }
+
+ async Task Import()
+ {
+  if (account is null || viewer is null || busy) return;
+  busy = true;
+  status = "Reading your AniList library…";
+  try
+  {
+   var count = await account.ImportAsync(Store, viewer.Id, lifetime.Token);
+   status = $"Checked {count} AniList entries. Open Library to see them.";
+  }
+  catch (AniListAuthorizationException) { viewer = null; status = "AniList authorization expired. Connect again."; }
+  catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+  catch { status = "Import could not finish. Existing entries are saved. Retry when connected."; }
   finally { busy = false; }
  }
 
