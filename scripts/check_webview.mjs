@@ -446,6 +446,8 @@ async function verifyProfileScene(scene) {
     document.querySelector('.bottom-nav a[href="/anime"]').click();
     await click('Big Buck Bunny');
     await click('Save to library');
+    await wait(() => [...document.querySelectorAll('button')].some(button =>
+      button.disabled && button.textContent.trim() === 'Saved to library'), 'Saved title confirmation');
     document.querySelector('.bottom-nav a[href="/library"]').click();
     const editor = await wait(() => [...document.querySelectorAll('.tracking-library-card')].find(card =>
       card.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a[href$="/tracking"]'), 'Library tracking editor link');
@@ -465,9 +467,14 @@ async function verifyProfileScene(scene) {
     await click('The Midnight Lighthouse');
     await click('Chapter 1');
     await click('Read Chapter 1');
-    await click('Next page →');
-    await wait(() => document.querySelector('.reader-page')?.naturalWidth > 0 &&
-      document.querySelector('.reader-position')?.textContent === 'Page 3 of 3', 'Last chapter page');
+    const getPage = () => Number(document.querySelector('.reader-position')?.textContent.match(/Page ([0-9]+)/)?.[1]);
+    let page = await wait(getPage, 'Saved chapter page');
+    while (page < 3) {
+      await click('Next page →');
+      const next = page + 1;
+      page = await wait(() => getPage() === next && next, 'Chapter page ' + next);
+    }
+    await wait(() => document.querySelector('.reader-page')?.naturalWidth > 0, 'Last chapter image');
     await click('Mark chapter read');
     const feedback = await wait(() => {
       const message = document.querySelector('.tracking-feedback');
