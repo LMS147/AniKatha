@@ -114,6 +114,10 @@ public sealed class LocalStore
   return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var page)
    && page >= 1 ? page : 1;
  }
+ public async Task<bool> IsUnitCompleteAsync(string unitKey) =>
+  await GetSettingAsync($"completed:{unitKey}") == "true";
+ public Task CompleteUnitAsync(string unitKey) =>
+  SetSettingAsync($"completed:{unitKey}", "true");
  public Task SaveReadingPageAsync(string chapterKey, int page)
  {
   ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);

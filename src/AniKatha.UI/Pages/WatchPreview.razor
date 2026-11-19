@@ -40,6 +40,8 @@
 
 }
 @code {
+ [Parameter] public bool TrackCompletion { get; set; }
+ [Parameter] public EventCallback OnCompleted { get; set; }
  [Parameter] public string EpisodeKey {get;set;} = PlaybackSample.EpisodeKey;
  [Parameter] public string VideoUrl {get;set;} = PlaybackSample.VideoUrl;
  [Parameter] public string Title {get;set;} = "Big Buck Bunny";
@@ -88,7 +90,7 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position);
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion);
   }
   catch (JSDisconnectedException) { }
   catch (Exception)
@@ -122,6 +124,27 @@
   catch
   {
    if (!disposed && !progressError)
+   {
+    progressError = true;
+    await InvokeAsync(StateHasChanged);
+   }
+   return false;
+  }
+ }
+
+ [JSInvokable]
+ public async Task<bool> CompleteEpisode()
+ {
+  if (!TrackCompletion) return false;
+  try
+  {
+   await Store.CompleteUnitAsync(EpisodeKey);
+   if (!disposed) await InvokeAsync(() => OnCompleted.InvokeAsync());
+   return true;
+  }
+  catch
+  {
+   if (!disposed)
    {
     progressError = true;
     await InvokeAsync(StateHasChanged);

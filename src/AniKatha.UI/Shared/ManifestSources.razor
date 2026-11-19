@@ -11,8 +11,8 @@ else if(Type=="manga" && pages.Count>0){<button @onclick="Read">Read @Label</but
 else if(streams.Count>0){@foreach(var stream in streams){<button @onclick="()=>Play(stream)">@StreamName(stream)</button>}}
 else{<p>No sources available.</p>}
 </div>
-@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="pages" Title="@Title" ChapterLabel="@Label"/>}
-@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label"/>}
+@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="pages" Title="@Title" ChapterLabel="@Label" OnCompleted="ProgressChanged"/>}
+@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" OnCompleted="ProgressChanged"/>}
 
 @code {
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
@@ -22,6 +22,7 @@ else{<p>No sources available.</p>}
  [Parameter] public string Type {get;set;}="";
  [Parameter] public string Label {get;set;}="";
  [Parameter] public string Title {get;set;}="";
+ [Parameter] public EventCallback ProgressChanged { get; set; }
  readonly CancellationTokenSource stop=new();
  bool loading,reading,error;
  string? video;
@@ -51,11 +52,12 @@ else{<p>No sources available.</p>}
   await Store.RememberAsync(new ResumeEntry {Id=id, Origin=Origin, Source=Source.ProviderKey, Type=Type,
    TitleId=TitleId, UnitId=UnitId, Title=Title, Label=Label});
  }
- async Task Read(){await Remember();reading=true;}
+ async Task Read(){await Remember();reading=true;await ProgressChanged.InvokeAsync();}
  async Task Play(JsonElement stream)
  {
   await Remember();
   video=Field(stream,"url");
+  await ProgressChanged.InvokeAsync();
   subtitles=ReadSubtitles(stream);
   if(Source.Supports("subtitles",Type,UnitId))
   {
