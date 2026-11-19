@@ -51,6 +51,7 @@ internal static class CatalogChecks
         }
         async Task Search(string query)
         {
+            root.WaitForAssertion(() => Expect(!root.Find(".catalog-search-fields").HasAttribute("disabled"), "Catalogue initialized"));
             await root.InvokeAsync(async () =>
             {
                 await root.Find("[aria-label='Search titles']").ChangeAsync(new ChangeEventArgs { Value = query });
