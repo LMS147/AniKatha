@@ -12,7 +12,8 @@ public partial class WatchPreview
     private IReadOnlyList<PlaybackTrack> audioTracks = [];
     private string? preferredLanguage, preferredAudioLanguage;
     private string subtitleSize = "normal", subtitleBackground = "dark", subtitlePlacement = "automatic";
-    private string subtitleChoice = "", audioChoice = "";
+    private string subtitleChoice = "", attemptedSubtitle = "", audioChoice = "";
+    private bool audioError;
     private string? lastAutomaticChoice;
     private EpisodeSubtitle? activeSidecar;
     private string? activeCues;
@@ -24,6 +25,13 @@ public partial class WatchPreview
         Subtitles.Select((track, index) => new PlaybackTrack($"external:{index}", track.Language, track.Label, track.Role))
             .Concat(embeddedSubtitles);
 
+    private static string TrackLanguage(PlaybackTrack track)
+    {
+        if (string.IsNullOrWhiteSpace(track.Language) || track.Language == "und") return "Language unspecified";
+        try { return System.Globalization.CultureInfo.GetCultureInfo(track.Language).DisplayName; }
+        catch (System.Globalization.CultureNotFoundException) { return track.Language; }
+    }
+
     private static string TrackLabel(PlaybackTrack track)
     {
         var role = track.Role.ToLowerInvariant() switch
@@ -34,16 +42,15 @@ public partial class WatchPreview
             "full" => "Full subtitles",
             _ => track.Role
         };
-        var values = new[] { track.Label, track.Language, role }.Where(value => !string.IsNullOrWhiteSpace(value))
+        var values = new[] { track.Label, role }.Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase);
-        var label = string.Join(" · ", values);
-        return label.Length > 0 ? label : "Unlabelled track";
+        return string.Join(" · ", values);
     }
 
-    private Task ChangeSubtitle(ChangeEventArgs args)
+    private Task ChangeSubtitle(string choice)
     {
         manualSubtitle = true;
-        return ApplySubtitle(args.Value?.ToString() ?? "");
+        return ApplySubtitle(choice);
     }
 
     private async Task ApplySubtitle(string choice)
@@ -52,7 +59,7 @@ public partial class WatchPreview
         subtitleRequest?.Dispose();
         var token = (subtitleRequest = new()).Token;
         var version = ++subtitleVersion;
-        subtitleChoice = choice;
+        attemptedSubtitle = choice;
         subtitleError = false;
         loadingSubtitle = false;
         if (player is null) return;
@@ -61,6 +68,8 @@ public partial class WatchPreview
             if (!choice.StartsWith("external:", StringComparison.Ordinal))
             {
                 await player.InvokeVoidAsync("selectEmbeddedSubtitle", choice);
+                if (token.IsCancellationRequested || disposed) return;
+                subtitleChoice = choice;
                 activeSidecar = null;
                 activeCues = null;
                 subtitleOffset = 0;
@@ -75,6 +84,7 @@ public partial class WatchPreview
             if (token.IsCancellationRequested || disposed) return;
             await player.InvokeVoidAsync("setSubtitle", track.Language, cues, subtitlePlacement, 0, version);
             if (token.IsCancellationRequested || disposed) return;
+            subtitleChoice = choice;
             activeSidecar = track;
             activeCues = cues;
             subtitleOffset = 0;
@@ -97,13 +107,16 @@ public partial class WatchPreview
         if (!disposed) await InvokeAsync(StateHasChanged);
     }
 
-    private async Task ChangeAudio(ChangeEventArgs args)
+    private async Task ChangeAudio(string choice)
     {
-        var choice = args.Value?.ToString();
-        if (choice is null || !audioTracks.Any(track => track.Id == choice) || player is null) return;
+        if (!audioTracks.Any(track => track.Id == choice) || player is null) return;
         manualAudio = true;
-        await player.InvokeVoidAsync("selectAudio", choice);
-        audioChoice = choice;
+        try
+        {
+            audioError = !await player.InvokeAsync<bool>("selectAudio", choice);
+            if (!audioError) audioChoice = choice;
+        }
+        catch (JSException) { audioError = true; }
     }
 
     [JSInvokable]
@@ -120,8 +133,7 @@ public partial class WatchPreview
             audioChoice = current?.Id ?? audio.FirstOrDefault()?.Id ?? "";
             if (match is not null && player is not null && match.Id != audioChoice)
             {
-                await player.InvokeVoidAsync("selectAudio", match.Id);
-                audioChoice = match.Id;
+                if (await player.InvokeAsync<bool>("selectAudio", match.Id)) audioChoice = match.Id;
             }
         }
         await ApplyPreferredSubtitle();
@@ -133,6 +145,7 @@ public partial class WatchPreview
     {
         if (disposed || version != subtitleVersion) return Task.CompletedTask;
         subtitleError = true;
+        subtitleChoice = "";
         activeSidecar = null;
         activeCues = null;
         return InvokeAsync(StateHasChanged);
@@ -149,6 +162,6 @@ public partial class WatchPreview
             await player.InvokeVoidAsync("setSubtitle", track.Language, cues, subtitlePlacement, offset, ++subtitleVersion);
             subtitleOffset = offset;
         }
-        catch { subtitleError = true; }
+        catch { attemptedSubtitle = subtitleChoice; subtitleError = true; }
     }
 }

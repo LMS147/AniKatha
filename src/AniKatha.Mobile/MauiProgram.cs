@@ -27,6 +27,7 @@ public static class MauiProgram
   builder.Services.AddSingleton<AniListTransport>();
   builder.Services.AddSingleton<IAppearancePlatform, NativeAppearance>();
   builder.Services.AddSingleton<IExternalVideoPlayer, ExternalVideoPlayer>();
+  builder.Services.AddSingleton<AniKatha.UI.PlayerBackHandler>();
   builder.Services.AddSingleton<MainPage>();
   return builder.Build();
  }

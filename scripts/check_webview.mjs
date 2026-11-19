@@ -140,7 +140,8 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         (await waitFor('a[href="/anime/preview"]')).click();
         (await waitFor('a[href="/anime/preview/episode-1"]')).click();
         const video = await waitFor('video[src]');
-        return location.pathname === '/anime/preview/episode-1' && video.controls &&
+        const controlsReady = ${mode === 'seed'} ? video.controls : !!document.querySelector('[data-player-toggle]');
+        return location.pathname === '/anime/preview/episode-1' && controlsReady &&
           video.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4';
       })()`,
     });
@@ -344,18 +345,31 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           expression: `(async () => {
             const video = document.querySelector('video');
             video.muted = true;
-            const speed = [...document.querySelectorAll('label')].find(x => x.textContent.trim().startsWith('Playback speed'))?.querySelector('select');
-            speed.value = '1.25';
-            speed.dispatchEvent(new Event('change', { bubbles: true }));
-            for (let i = 0; i < 50 && video.playbackRate !== 1.25; i++) await new Promise(resolve => setTimeout(resolve, 100));
-            if (video.playbackRate !== 1.25) throw new Error('Speed control did not change the offline video rate');
-            await video.play();
+            const wait = async find => {
+              for (let i = 0; i < 45; i++) {
+                const item = find();
+                if (item) return item;
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              throw new Error('Playback control did not update');
+            };
+            document.querySelector('[data-player-menu="speed"]').click();
+            (await wait(() => document.querySelector('[data-player-rate="1.25"]'))).click();
+            await wait(() => video.playbackRate === 1.25);
+            document.querySelector('[data-player-close]').click();
+            await wait(() => !document.querySelector('.player-sheet'));
+            document.querySelector('[data-player-toggle]').click();
+            await wait(() => !video.paused);
             const checkpoint = Math.min(6, video.duration / 2);
-            video.currentTime = checkpoint;
+            const scrubber = document.querySelector('[data-player-scrubber]');
+            scrubber.value = checkpoint;
+            scrubber.dispatchEvent(new Event('input', {bubbles:true}));
+            scrubber.dispatchEvent(new Event('change', {bubbles:true}));
             for (let i = 0; i < 150; i++) {
               if (video.error) throw new Error('Media error ' + video.error.code);
               if (!video.seeking && video.currentTime >= checkpoint - 0.1) {
-                video.pause();
+                document.querySelector('[data-player-toggle]').click();
+                await wait(() => video.paused);
                 return video.currentTime;
               }
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -369,7 +383,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           awaitPromise: true, returnByValue: true,
           expression: `(async () => {
             const pause = () => new Promise(resolve => setTimeout(resolve, 100));
-            document.querySelector('a[href="/library?view=downloads"]').click();
+            document.querySelector('.player-back').click();
             const open = () => [...document.querySelectorAll('.library-item')].find(x => x.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a');
             for (let i = 0; i < 100 && !open(); i++) await pause();
             open()?.click();
@@ -384,6 +398,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         }, 28000);
         if (resume.result?.value !== true) throw new Error('Downloaded episode did not reopen at the saved timestamp.');
         console.log('PASS: downloaded video played at the chosen speed, sought, and reopened at its saved timestamp in airplane mode.');
+        await checkPlayerScreens(command, adb);
       } finally {
         adb('cmd', 'connectivity', 'airplane-mode', 'disable');
       }
@@ -497,4 +512,116 @@ async function verifyProfileScene(scene) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   checkWebView().catch(error => {console.error(`FAIL: ${error.message}`); process.exitCode = 1;});
+}
+
+async function checkPlayerScreens(command, adb) {
+  async function scene(action) {
+    const result = await command('Runtime.evaluate', {
+      expression: '(' + exercisePlayerScene.toString() + ')(' + JSON.stringify(action) + ')',
+      awaitPromise: true, returnByValue: true, userGesture: true,
+    }, 35000);
+    if (result.result?.value !== true)
+      throw new Error(result.exceptionDetails?.exception?.description ?? 'Player screen check failed: ' + action);
+  }
+  async function screenshot(name) {
+    // SurfaceFlinger may still display the previous frame after WebView reports the new viewport.
+    await new Promise(resolve => setTimeout(resolve, 750));
+    const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
+    await writeFile('artifacts/startup/' + name + '.png', image);
+  }
+  await scene('portrait');
+  await screenshot('player-portrait');
+  await scene('subtitles');
+  await screenshot('player-subtitle-picker');
+  adb('input', 'keyevent', '4');
+  await scene('sheet dismissed');
+  await scene('fullscreen');
+  try {
+    adb('settings', 'put', 'system', 'accelerometer_rotation', '0');
+    adb('settings', 'put', 'system', 'user_rotation', '1');
+    await scene('landscape');
+    await screenshot('player-fullscreen');
+    adb('input', 'keyevent', '4');
+    await scene('fullscreen dismissed');
+  } finally {
+    adb('settings', 'put', 'system', 'user_rotation', '0');
+  }
+  await scene('recovery');
+  await screenshot('player-recovery');
+  await scene('retry');
+  await scene('settings');
+  await screenshot('player-subtitle-appearance');
+  console.log('PASS: Android player sheets, embedded caption selection, system Back, fullscreen rotation, retry, and subtitle appearance preview.');
+}
+
+async function exercisePlayerScene(action) {
+  const query = selector => document.querySelector(selector);
+  async function wait(find, label) {
+    for (let attempt = 0; attempt < 210; attempt++) {
+      const value = find();
+      if (value) return value;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('Player: ' + label);
+  }
+  async function click(selector) {
+    (await wait(() => query(selector), selector)).click();
+  }
+  const video = query('video');
+  if (action === 'portrait') {
+    await wait(() => innerWidth < innerHeight && video?.readyState >= 2 && !video.seeking, 'portrait and saved frame');
+    scrollTo(0, 0);
+  } else if (action === 'subtitles') {
+    // Feed a local caption into Android WebView's track inventory without network access.
+    for (const [label, kind] of [['Full dialogue', 'subtitles'], ['English SDH', 'captions']]) {
+      const track = document.createElement('track');
+      track.kind = kind;
+      track.srclang = 'en';
+      track.label = label;
+      track.src = URL.createObjectURL(new Blob(['WEBVTT\n\n00:00:00.000 --> 00:00:15.000\nThe story continues.\n'], {type:'text/vtt'}));
+      video.append(track);
+    }
+    await click('[data-player-menu="subtitles"]');
+    const track = await wait(() => [...document.querySelectorAll('.player-option')].find(option => option.textContent.includes('English SDH')), 'captions listed');
+    track.click();
+    await wait(() => track.getAttribute('aria-pressed') === 'true' && [...video.textTracks].some(track => track.label === 'English SDH' && track.mode === 'showing'), 'captions selected');
+  } else if (action === 'sheet dismissed') {
+    await wait(() => !query('.player-sheet') && query('.player-stage'), 'Back dismisses sheet');
+  } else if (action === 'fullscreen') {
+    window.playerRotationCheck = { video, time: video.currentTime };
+    await click('.player-heading button:last-child');
+    await wait(() => query('.player-fullscreen'), 'fullscreen stage');
+  } else if (action === 'landscape') {
+    await wait(() => {
+      const stage = query('.player-fullscreen')?.getBoundingClientRect();
+      const transport = query('.player-transport')?.getBoundingClientRect();
+      return innerWidth > innerHeight && stage?.width >= innerWidth * 0.95 && stage.height >= innerHeight * 0.95 &&
+        transport?.bottom > 0 && transport.bottom < innerHeight;
+    }, 'fullscreen occupies the landscape viewport');
+    if (video !== window.playerRotationCheck.video || Math.abs(video.currentTime - window.playerRotationCheck.time) > 0.25)
+      throw new Error('Rotation changed the playback session or its checkpoint.');
+  } else if (action === 'fullscreen dismissed') {
+    await wait(() => !query('.player-fullscreen') && query('.player-stage'), 'Back exits fullscreen');
+  } else if (action === 'recovery') {
+    await wait(() => innerWidth < innerHeight && video?.readyState >= 2, 'return to portrait');
+    video.dispatchEvent(new Event('error'));
+    const panel = await wait(() => query('.player-recovery'), 'video recovery action');
+    panel.scrollIntoView({block:'center', behavior:'instant'});
+    window.playerRotationCheck.source = video.src;
+  } else if (action === 'retry') {
+    await click('.player-recovery button');
+    await wait(() => !query('.player-recovery') && video.src !== window.playerRotationCheck.source && video.readyState >= 2 && !video.seeking, 'video recovered');
+    if (Math.abs(video.currentTime - window.playerRotationCheck.time) > 0.25)
+      throw new Error('Retry changed the saved position.');
+  } else if (action === 'settings') {
+    await click('.bottom-nav a[href="/profile"]');
+    await click('a[href="/profile/playback"]');
+    const preview = await wait(() => query('.subtitle-preview'), 'subtitle appearance');
+    await wait(() => {
+      const box = preview.getBoundingClientRect();
+      if (box.top >= 0 && box.bottom < innerHeight - 80) return true;
+      preview.scrollIntoView({block:'center', behavior:'instant'});
+    }, 'subtitle preview is visible');
+  }
+  return true;
 }

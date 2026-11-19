@@ -1,13 +1,29 @@
 @inherits ProfileComponent
 
 <section class="settings-card">
- <h3>Playback &amp; reader</h3>
- <label>Preferred subtitle language
-  <input placeholder="For example, en or ja" maxlength="35" value="@language" @onchange="SaveLanguage" />
+ <h3>Video playback</h3>
+ <label>Default playback speed
+  <select value="@speed" @onchange='args => SaveChoice(MediaPreferences.SpeedKey, args, value => speed = value)'>
+   @foreach (var rate in MediaPreferences.PlaybackSpeeds)
+   {
+    <option value="@rate.ToString(System.Globalization.CultureInfo.InvariantCulture)">@($"{rate:0.##}×")</option>
+   }
+  </select>
  </label>
  <label>Preferred audio language
   <input placeholder="For example, ja or en" maxlength="35" value="@audioLanguage"
          @onchange='args => SaveChoice(MediaPreferences.AudioLanguageKey, args, value => audioLanguage = value.Trim())' />
+ </label>
+ <label>Skip forward and rewind interval
+  <select value="@seekSeconds" @onchange='args => SaveChoice(MediaPreferences.SeekIntervalKey, args, value => seekSeconds = MediaPreferences.ReadSeekInterval(value))'>
+   @foreach (var interval in MediaPreferences.SeekIntervals) { <option value="@interval">@interval seconds</option> }
+  </select>
+ </label>
+ <label><input type="checkbox" checked="@autoplay" @onchange="SaveAutoplay" /> Autoplay next episode</label>
+ <div class="playback-settings-subtitles">
+ <h3>Subtitles</h3>
+ <label>Preferred subtitle language
+  <input placeholder="For example, en or ja" maxlength="35" value="@language" @onchange="SaveLanguage" />
  </label>
  <label>Subtitle size
   <select value="@size" @onchange='args => SaveChoice(MediaPreferences.SubtitleSizeKey, args, value => size = value)'>
@@ -24,14 +40,12 @@
    <option value="automatic">From the track</option><option value="top">Top</option><option value="bottom">Bottom</option>
   </select>
  </label>
+ <div class="@($"subtitle-preview preview-{size} preview-{background} preview-{placement}")" aria-label="Subtitle appearance preview">
+  <span>We’re almost home.</span>
+ </div>
  <button class="secondary" @onclick="ResetAppearance">Reset subtitle appearance</button>
- <p class="muted">Appearance applies to subtitle tracks in AniKatha’s video player.</p>
- <label>Skip forward and rewind interval
-  <select value="@seekSeconds" @onchange='args => SaveChoice(MediaPreferences.SeekIntervalKey, args, value => seekSeconds = MediaPreferences.ReadSeekInterval(value))'>
-   @foreach (var interval in MediaPreferences.SeekIntervals) { <option value="@interval">@interval seconds</option> }
-  </select>
- </label>
- <label><input type="checkbox" checked="@autoplay" @onchange="SaveAutoplay" /> Autoplay next episode</label>
+ <p class="muted">Embedded players manage their own captions. Subtitle placement applies to external subtitle tracks.</p>
+ </div>
  <h3>Reader defaults</h3>
  <label>Default reading mode
   <select value="@reader.Mode" @onchange='args => SaveReader(reader with { Mode = ReaderPreferences.SafeMode(args.Value?.ToString()) })'>
@@ -53,6 +67,7 @@
 
 @code {
  string language = "", audioLanguage = "", size = "normal", background = "dark", placement = "automatic";
+ string speed = "1";
  ReaderPreferences reader = new();
  bool autoplay;
  int seekSeconds = 10;
@@ -63,6 +78,7 @@
   try
   {
    reader = await ReaderPreferences.LoadAsync(Store, ReaderPreferences.GlobalKey);
+   speed = MediaPreferences.ReadSpeed(await Store.GetSettingAsync(MediaPreferences.SpeedKey)).ToString(System.Globalization.CultureInfo.InvariantCulture);
    language = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey) ?? "";
    audioLanguage = await Store.GetSettingAsync(MediaPreferences.AudioLanguageKey) ?? "";
    size = await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey) ?? "normal";

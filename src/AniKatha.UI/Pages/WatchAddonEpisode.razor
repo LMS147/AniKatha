@@ -2,7 +2,7 @@
 @inherits ProfileComponent
 
 <PageTitle>Watch episode · AniKatha</PageTitle>
-<header class="page-header">
+<header class="page-header embedded-player-heading">
  <a class="text-link" href="/anime">← Anime</a>
  @if (episode is not null)
  {
@@ -13,15 +13,20 @@
 
 @if (episode is not null)
 {
+ <section class="settings-card embedded-player-card" aria-label="YouTube playback">
+ <h2>YouTube</h2>
+ <p>The YouTube player manages its playback and captions.</p>
  @if (Player is not null)
  {
   <button class="primary" disabled="@opening" @onclick="Watch"><Icon Name="play"/> Watch in AniKatha</button>
  }
  <a class="secondary" href="@episode.WatchUrl" target="_blank" rel="noopener">Open in YouTube</a>
+ @if (opening) { <p role="status">Opening the YouTube player…</p> }
  @if (error is not null)
  {
   <p class="notice" role="alert">@error</p>
  }
+ </section>
 }
 else
 {
