@@ -1,0 +1,39 @@
+namespace AniKatha.Core;
+
+public sealed partial class AniListAccount
+{
+    private readonly SemaphoreSlim syncGate = new(1, 1);
+
+    public async Task<int> SyncPendingAsync(LocalStore store, CancellationToken token = default)
+    {
+        await syncGate.WaitAsync(token);
+        try
+        {
+            var viewer = await StoredViewerAsync();
+            if (viewer is null) return 0;
+            var edits = await store.AniListEditsAsync(viewer.Id);
+            var sent = 0;
+            foreach (var edit in edits)
+            {
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    if (edit.Field == "score" && edit.ScoreFormat != viewer.ScoreFormat)
+                        throw new InvalidOperationException("The score scale changed. Enter the score again.");
+                    await UpdateFieldAsync(viewer.Id, edit.MediaId, edit.Field, edit.Value, token);
+                    await store.FinishAniListEditAsync(viewer.Id, edit, true);
+                    sent++;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch
+                {
+                    await store.FinishAniListEditAsync(viewer.Id, edit, false);
+                    if (edit.Field == "score" && edit.ScoreFormat != viewer.ScoreFormat) continue;
+                    break;
+                }
+            }
+            return sent;
+        }
+        finally { syncGate.Release(); }
+    }
+}

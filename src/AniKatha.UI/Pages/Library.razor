@@ -5,6 +5,7 @@
 <header class="page-header"><span class="eyebrow">STORIES YOU KEEP</span><h1>Library</h1><p>Your collection, always close.</p></header>
 <div class="tabs" role="group" aria-label="Library format">@foreach(var tab in new[]{"All","Anime","Manga","Favourites"}){<button class="@(filter==tab?"selected":"")" @onclick="()=>filter=tab">@tab</button>}</div>
 @if(error is not null){<div class="notice" role="alert">@error</div>}
+@if (syncMessage is not null) { <p role="status">@syncMessage</p> }
 @if(loading){<p role="status">Opening your library…</p>}
 else if(!Visible.Any()){<div class="empty"><Icon Name="library"/><h2>A shelf full of possibilities</h2><p>Save titles from Anime or Manga. They’ll stay on this device even when you’re offline.</p><a class="primary" href="/anime">Find a story</a></div>}
 else{<div class="library-list">@foreach(var item in Visible){<article class="library-item" @key="item.Id">@if(item.Poster is not null){<img src="@item.Poster" alt="" loading="lazy"/>}<div><small class="eyebrow">@item.Kind</small><h3>@if(item.ProviderKey!=null){<a href="@($"/library/title/{item.Id}")">@item.Title →</a>}else{@item.Title}</h3>
@@ -22,6 +23,7 @@ else{<div class="library-list">@foreach(var item in Visible){<article class="lib
 @code {
  List<SavedTitle> items=[];string filter="All";string? error;bool loading=true;
  IEnumerable<SavedTitle> Visible=>items.Where(x=>filter=="Favourites"?x.IsFavourite:filter=="All"||x.Kind==filter.ToUpperInvariant());
+ string? syncMessage;
  AniListAccount? tracking;
  AniListViewer? viewer;
  double scoreMaximum, scoreStep;
@@ -38,6 +40,7 @@ else{<div class="library-list">@foreach(var item in Visible){<article class="lib
    if (viewer is not null)
    {
     (scoreMaximum, scoreStep) = AniListAccount.ScoreScale(viewer.ScoreFormat);
+    await UpdateSyncMessage();
     foreach (var entry in items.Where(IsAniList))
      scores[entry.Id] = await Store.GetAniListScoreAsync(viewer.Id, entry.Id);
    }
@@ -59,21 +62,64 @@ else{<div class="library-list">@foreach(var item in Visible){<article class="lib
   }
   try
   {
-   await Store.SaveAniListScoreAsync(viewer.Id, item.Id, score > 0 ? score : null);
+   await Store.QueueAniListEditAsync(viewer.Id, item.Id, "score", score.ToString(CultureInfo.InvariantCulture), viewer.ScoreFormat);
    scores[item.Id] = score > 0 ? score : null;
-   await Sync(item, "score", score.ToString(CultureInfo.InvariantCulture));
+   await Sync(item);
   }
   catch { error = "Could not save this score."; }
  }
 
- async Task Sync(SavedTitle item, string field, string value)
+ async Task UpdateSyncMessage()
  {
-  if (viewer is null || tracking is null || !IsAniList(item)) return;
-  try { await tracking.UpdateFieldAsync(viewer.Id, item.Id, field, value); }
-  catch { error = "Saved locally. AniList did not acknowledge the change."; }
+  if (viewer is null) return;
+  var pending = await Store.AniListEditsAsync(viewer.Id);
+  syncMessage = pending.Count == 0 ? "AniList changes synced." : pending.Any(x => x.Failed)
+   ? $"{pending.Count} AniList changes saved locally. Retry from Profile." : $"{pending.Count} AniList changes pending.";
  }
+
+ async Task Sync(SavedTitle item)
+ {
+  if (tracking is null || viewer is null || !IsAniList(item)) return;
+  try
+  {
+   await UpdateSyncMessage();
+   await tracking.SyncPendingAsync(Store);
+   await UpdateSyncMessage();
+  }
+  catch { syncMessage = "AniList changes are saved locally. Retry from Profile."; }
+ }
+
  async Task Favourite(SavedTitle item){item.IsFavourite=!item.IsFavourite;try{await Store.SaveAsync(item);}catch{item.IsFavourite=!item.IsFavourite;error="Could not save favourite.";}}
- async Task UpdateStatus(SavedTitle item,ChangeEventArgs e){var previous=item.Status;item.Status=e.Value?.ToString()??"PLANNING";try{await Store.SaveAsync(item);error=null;await Sync(item,"status",item.Status);}catch{item.Status=previous;error="Could not save the change.";}}
- async Task Progress(SavedTitle item,int delta){var previous=item.Progress;item.Progress=Math.Max(0,item.Progress+delta);try{await Store.SaveAsync(item);error=null;await Sync(item,"progress",item.Progress.ToString(CultureInfo.InvariantCulture));}catch{item.Progress=previous;error="Could not save progress.";}}
+
+ async Task UpdateStatus(SavedTitle item, ChangeEventArgs e)
+ {
+  var previous = item.Status;
+  item.Status = e.Value?.ToString() ?? "PLANNING";
+  try
+  {
+   if (viewer is not null && IsAniList(item))
+    await Store.QueueAniListEditAsync(viewer.Id, item.Id, "status", item.Status);
+   else await Store.SaveAsync(item);
+   error = null;
+   await Sync(item);
+  }
+  catch { item.Status = previous; error = "Could not save the change."; }
+ }
+
+ async Task Progress(SavedTitle item, int delta)
+ {
+  var previous = item.Progress;
+  item.Progress = Math.Max(0, item.Progress + delta);
+  var value = item.Progress.ToString(CultureInfo.InvariantCulture);
+  try
+  {
+   if (viewer is not null && IsAniList(item))
+    await Store.QueueAniListEditAsync(viewer.Id, item.Id, "progress", value);
+   else await Store.SaveAsync(item);
+   error = null;
+   await Sync(item);
+  }
+  catch { item.Progress = previous; error = "Could not save progress."; }
+ }
  async Task Remove(SavedTitle item){try{await Store.RemoveAsync(item.Id);items.Remove(item);error=null;}catch{error="Could not remove this title.";}}
 }

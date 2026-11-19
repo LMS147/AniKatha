@@ -68,10 +68,14 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
 
     public async Task DisconnectAsync()
     {
-        var previous = Interlocked.Exchange(ref session, new CancellationTokenSource());
+        var previous = Volatile.Read(ref session);
         previous.Cancel();
         await sessionGate.WaitAsync();
-        try { authorization.Clear(); }
+        try
+        {
+            authorization.Clear();
+            Interlocked.CompareExchange(ref session, new CancellationTokenSource(), previous);
+        }
         finally { sessionGate.Release(); }
     }
 

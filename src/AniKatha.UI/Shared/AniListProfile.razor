@@ -9,6 +9,7 @@
  {
   <h3>Connected as @viewer.Name</h3>
   <button class="primary" disabled="@busy" @onclick="Import">Import AniList library</button>
+  <button class="secondary" disabled="@busy" @onclick="Retry">Sync pending changes</button>
   <button class="secondary" disabled="@busy" @onclick="Disconnect">Disconnect AniList</button>
  }
  else if (account?.CanConnect == true)
@@ -30,9 +31,9 @@
  {
   account = (AniListAccount?)Services.GetService(typeof(AniListAccount));
   if (account is null) return;
-  try { viewer = await account.CurrentAsync(lifetime.Token); }
+  try { viewer = await account.StoredViewerAsync(); viewer = await account.CurrentAsync(lifetime.Token); }
   catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-  catch (AniListAuthorizationException) { status = "AniList access expired or was revoked. Connect again."; }
+  catch (AniListAuthorizationException) { viewer = null; status = "AniList access expired or was revoked. Connect again."; }
   catch { status = "Could not check AniList. Try again when connected."; }
  }
 
@@ -44,6 +45,20 @@
   try { viewer = await account.ConnectAsync(lifetime.Token); }
   catch (OperationCanceledException) { status = "AniList sign-in cancelled."; }
   catch { status = "Could not connect to AniList."; }
+  finally { busy = false; }
+ }
+
+ async Task Retry()
+ {
+  if (account is null || viewer is null || busy) return;
+  busy = true;
+  try
+  {
+   await account.SyncPendingAsync(Store, lifetime.Token);
+   var remaining = (await Store.AniListEditsAsync(viewer.Id)).Count;
+   status = remaining == 0 ? "AniList changes synced." : $"{remaining} changes are still pending.";
+  }
+  catch { status = "Could not sync AniList right now."; }
   finally { busy = false; }
  }
 
