@@ -108,6 +108,10 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
     return checkpoint;
   }
 
+  video.addEventListener('durationchange', () => {
+    if (trackCompletion && Number.isFinite(video.duration) && video.duration > 0)
+      callbacks.invokeMethodAsync('SaveVideoLength', video.duration).catch(() => {});
+  }, options);
   video.addEventListener('loadedmetadata', () => {
     if (position > 0 && position < video.duration) video.currentTime = position;
     video.playbackRate = speed;

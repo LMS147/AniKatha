@@ -64,6 +64,7 @@ public sealed class ResumeEntry
  public string UnitId { get; set; } = "";
  public string Title { get; set; } = "";
  public string Label { get; set; } = "";
+ public string? Poster { get; set; }
  public DateTime Opened { get; set; }
  public static string Key(string origin,string type,string titleId,string unitId,string source) =>
   string.Join("/",origin,type,Uri.EscapeDataString(titleId),Uri.EscapeDataString(unitId),source);

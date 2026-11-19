@@ -136,7 +136,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           }
           throw new Error('Missing ' + selector);
         }
-        document.querySelector('.bottom-nav a[href="/"]').click();
+        document.querySelector('.bottom-nav a[href="${mode === 'seed' ? '/' : '/anime'}"]').click();
         (await waitFor('a[href="/anime/preview"]')).click();
         (await waitFor('a[href="/anime/preview/episode-1"]')).click();
         const video = await waitFor('video[src]');
@@ -146,7 +146,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
       })()`,
     });
     if (player.result?.value !== true) throw new Error('Sample episode player did not mount in the APK WebView.');
-    console.log('PASS: Home → sample → Episode 1 mounts the in-app video player.');
+    console.log('PASS: Sample Episode 1 mounts the in-app video player.');
 
     const reader = await command('Runtime.evaluate', {
       awaitPromise: true,
@@ -398,12 +398,14 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         }, 28000);
         if (resume.result?.value !== true) throw new Error('Downloaded episode did not reopen at the saved timestamp.');
         console.log('PASS: downloaded video played at the chosen speed, sought, and reopened at its saved timestamp in airplane mode.');
+        await checkHomeAnimeResume(command, seek.result.value);
         await checkPlayerScreens(command, adb);
       } finally {
         adb('cmd', 'connectivity', 'airplane-mode', 'disable');
       }
     }
     if (mode === 'fresh') {
+      await checkHomeViews(command);
       for (const [scene, label] of [
         ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
         ['appearance', 'appearance'], ['sources', 'sources'],
@@ -622,6 +624,128 @@ async function exercisePlayerScene(action) {
       if (box.top >= 0 && box.bottom < innerHeight - 80) return true;
       preview.scrollIntoView({block:'center', behavior:'instant'});
     }, 'subtitle preview is visible');
+  }
+  return true;
+}
+
+async function runHomeCheck(command, action, expected = null) {
+  const reply = await command('Runtime.evaluate', {
+    expression: '(' + exerciseHome.toString() + ')(' + JSON.stringify(action) + ', ' + JSON.stringify(expected) + ')',
+    awaitPromise: true, returnByValue: true,
+  }, 90000);
+  if (reply.result?.value !== true)
+    throw new Error(reply.exceptionDetails?.exception?.description ?? 'Home check failed: ' + action);
+}
+
+async function checkHomeAnimeResume(command, expected) {
+  await runHomeCheck(command, 'resume anime', expected);
+  console.log('PASS: Home → Continue Watching → downloaded episode restored the exact timestamp in airplane mode.');
+}
+
+async function checkHomeViews(command) {
+  for (const [action, name] of [
+    ['anime top', 'home-anime-top'], ['anime below', 'home-anime-releases-schedule'],
+    ['manga top', 'home-manga-history'], ['manga below', 'home-manga-discovery'],
+    ['manga updates', 'home-manga-updates']
+  ]) {
+    await runHomeCheck(command, action);
+    await new Promise(resolve => setTimeout(resolve, 750));
+    const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], {maxBuffer: 12 * 1024 * 1024});
+    await writeFile('artifacts/startup/' + name + '.png', image);
+  }
+  await runHomeCheck(command, 'verify memory');
+  await runHomeCheck(command, 'resume manga');
+  console.log('PASS: Home opens on Anime, keeps all sections in order, preserves both scroll positions and Anime filters, and opens the saved manga page.');
+}
+
+async function exerciseHome(action, expected) {
+  const find = selector => document.querySelector(selector);
+  async function wait(condition, description) {
+    for (let retry = 0; retry < 420; retry++) {
+      const value = condition();
+      if (value) return value;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('Home: ' + description);
+  }
+  const home = async () => {
+    find('.bottom-nav a[href="/"]').click();
+    await wait(() => find('.home-landing') && find('.bottom-nav a[href="/"].active'), 'Home navigation');
+  };
+  const click = async selector => (await wait(() => find(selector), selector)).click();
+  const active = view => find('#home-' + view + '[aria-hidden="false"]');
+  const format = async (view) => {
+    await click('#home-tab-' + view);
+    await wait(() => active(view), 'active ' + view);
+  };
+  function sections(view, order) {
+    const actual = [...active(view).querySelectorAll('.home-section > header h2')].map(heading => heading.textContent.trim());
+    if (JSON.stringify(actual) !== JSON.stringify(order)) throw new Error('Unexpected Home section order: ' + actual);
+  }
+  const selectButton = (selector, label) => [...document.querySelectorAll(selector)].find(button => button.textContent.trim() === label);
+  const scroll = selector => {
+    const section = find(selector);
+    section.scrollIntoView({block:'start', behavior:'instant'});
+    if (section.getBoundingClientRect().bottom <= 0) throw new Error('Home section did not scroll into view');
+  };
+  const settle = selector => wait(() => !find(selector + ' .home-loading'), selector + ' settles');
+  if (action === 'resume anime') {
+    await home();
+    await wait(() => active('anime'), 'Anime is default');
+    await click('#home-anime .home-section:first-child a[href^="/resume/"]');
+    (await wait(() => [...document.querySelectorAll('a')].find(link => link.textContent.trim() === 'Open downloaded copy'), 'downloaded resume option')).click();
+    await wait(() => {
+      const video = find('video');
+      return video?.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - expected) < 0.25;
+    }, 'exact anime checkpoint');
+  } else if (action === 'anime top') {
+    await home();
+    await wait(() => active('anime'), 'Anime is default');
+    sections('anime', ['Continue Watching', 'Latest Episodes', 'Upcoming Anime', 'Release lists', 'Estimated Schedule']);
+    await wait(() => find('#home-anime a[href^="/resume/"]'), 'watch history is shown');
+    await settle('#home-anime .home-section:nth-child(2)');
+    const grid = find('#home-anime .home-grid');
+    if (getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 2) throw new Error('Phone Home should show two poster columns');
+    active('anime').scrollTop = 0;
+  } else if (action === 'anime below') {
+    selectButton('#home-anime button', 'Trending').click();
+    await wait(() => selectButton('#home-anime button', 'Trending').getAttribute('aria-pressed') === 'true', 'Trending filter');
+    selectButton('#home-anime button', 'Just Completed').click();
+    await wait(() => selectButton('#home-anime button', 'Just Completed').getAttribute('aria-pressed') === 'true', 'completion filter');
+    find('#home-anime [aria-label="Next day"]').click();
+    await settle('#home-anime .home-section:last-child');
+    scroll('#home-anime .home-section:nth-child(4)');
+    window.aniKathaHome = { anime: active('anime').scrollTop,
+      date: find('#home-anime .home-day[aria-pressed="true"]').textContent };
+  } else if (action === 'manga top') {
+    await format('manga');
+    sections('manga', ['New Chapters from Followed Comics', 'Reading History', 'Discover Manga', 'Most Recent Popular', 'New Comics', 'Latest Updates']);
+    await wait(() => find('#home-manga a[href^="/resume/"]'), 'reading history is shown');
+    active('manga').scrollTop = 0;
+  } else if (action === 'manga below') {
+    await settle('#home-manga .home-section:nth-child(3)');
+    scroll('#home-manga .home-section:nth-child(3)');
+  } else if (action === 'manga updates') {
+    await settle('#home-manga .home-section:nth-child(5)');
+    scroll('#home-manga .home-section:last-child');
+    window.aniKathaHome.manga = active('manga').scrollTop;
+  } else if (action === 'verify memory') {
+    await format('anime');
+    const memory = window.aniKathaHome;
+    if (Math.abs(active('anime').scrollTop - memory.anime) > 5 ||
+        find('#home-anime .home-day[aria-pressed="true"]')?.textContent !== memory.date ||
+        selectButton('#home-anime button', 'Trending').getAttribute('aria-pressed') !== 'true' ||
+        selectButton('#home-anime button', 'Just Completed').getAttribute('aria-pressed') !== 'true')
+      throw new Error('Anime position or filters were lost');
+    await format('manga');
+    if (Math.abs(active('manga').scrollTop - memory.manga) > 5) throw new Error('Manga position was lost');
+  } else if (action === 'resume manga') {
+    await click('#home-manga a[href^="/resume/"]');
+    (await wait(() => selectButton('button', 'Read Chapter 1'), 'saved chapter action')).click();
+    await wait(() => {
+      const page = find('.reader-page');
+      return page?.naturalWidth > 0 && page.src.endsWith('-3.webp');
+    }, 'exact manga page');
   }
   return true;
 }

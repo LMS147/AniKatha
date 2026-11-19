@@ -1,0 +1,44 @@
+<div class="@(Compact ? "home-rows" : "home-grid")">
+ @foreach (var card in Cards)
+ {
+  <article class="home-card" @key="card">
+   @if (card.Link is not null)
+   {
+    <a class="home-card-target" href="@card.Link">@Body(card)</a>
+   }
+   else
+   {
+    <button class="home-card-target" type="button" @onclick="() => Selected.InvokeAsync(card)">@Body(card)</button>
+   }
+  </article>
+ }
+</div>
+
+@code {
+ [Parameter, EditorRequired] public IEnumerable<HomeCard> Cards { get; set; } = [];
+ [Parameter] public bool Compact { get; set; }
+ [Parameter] public EventCallback<HomeCard> Selected { get; set; }
+
+ RenderFragment Body(HomeCard card) => @<text>
+  <span class="home-art">
+   <Icon Name="@(card.Manga ? "book" : "play")"/>
+   @if (card.Poster is { } poster && AddonResources.MediaUrl(poster))
+   {
+    <img src="@poster" alt="" loading="lazy" decoding="async" @onerror="() => failed.Add(card)" hidden="@failed.Contains(card)" />
+   }
+   @if (!Compact && card.Rank is int rank) { <span class="home-rank" aria-label="@($"Rank {rank}")">#@rank</span> }
+   @if (!Compact && card.Progress is double progress)
+   {
+    <progress class="home-progress" value="@progress" max="1" aria-label="Saved progress"></progress>
+   }
+  </span>
+  <span class="home-card-copy">
+   @if (card.Caption is { Length: > 0 }) { <small>@card.Caption</small> }
+   <strong>@card.Title</strong>
+   @if (card.Note is { Length: > 0 }) { <small class="home-card-note">@card.Note</small> }
+  </span>
+  @if (Compact) { <span class="home-row-arrow" aria-hidden="true">›</span> }
+ </text>;
+
+ readonly HashSet<HomeCard> failed = [];
+}
