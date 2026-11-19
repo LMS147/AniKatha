@@ -2,6 +2,8 @@
 
 Android builds use AniList's client-side token flow through the system browser. Register AniKatha in AniList's developer settings and set its redirect URI to `co.zyma.anikatha://anilist/callback`. Supply the public client ID with `-p:AniListClientId=<id>` when building AniKatha.Mobile. The ID is public. Android SecureStorage holds the authorization token. The desktop preview runs without account authorization.
 
+AniList uses the redirect URL saved in the registered client's settings for this flow. If the browser shows `unsupported_grant_type`, use an APK with the registered-redirect fix and confirm the callback above is saved for the same client ID used in the build.
+
 ## Build a sign-in-enabled APK on GitHub
 
 1. Copy the public **Client ID** from [AniList developer settings](https://anilist.co/settings/developer).

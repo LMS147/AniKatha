@@ -66,8 +66,7 @@ public sealed partial class AniListAccount(HttpClient http, IAniListAuthorizatio
         using var request = CancellationTokenSource.CreateLinkedTokenSource(token, active.Token);
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var url = new Uri("https://anilist.co/api/v2/oauth/authorize?response_type=token&client_id=" +
-            Uri.EscapeDataString(authorization.ClientId!) + "&redirect_uri=" +
-            Uri.EscapeDataString(authorization.Callback.AbsoluteUri) + "&state=" + state);
+            Uri.EscapeDataString(authorization.ClientId!) + "&state=" + state);
         var reply = await authorization.AuthorizeAsync(url, request.Token);
         var credential = ParseCallback(reply, authorization.Callback, state, DateTimeOffset.UtcNow);
         var viewer = await ViewerAsync(credential, request.Token);
