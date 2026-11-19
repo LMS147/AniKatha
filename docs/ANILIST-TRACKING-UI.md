@@ -10,4 +10,4 @@ The editor saves changed fields and their outbox rows in one transaction. A sepa
 
 The player and reader continue using verified add-on-to-AniList mappings. Completion feedback describes the device save, pending queue, confirmation, or missing match. Partial playback time and reading page changes stay local.
 
-GitHub Actions captures the disconnected account and local editor from the Android APK. The linked account and pending screenshots use deterministic UI fixtures and AniKatha's stylesheet. The test account shown in those screenshots is synthetic. A physical device and an authorized account are needed to verify the live OAuth callback and network transition end to end.
+GitHub Actions captures the disconnected account, local editor, and local-only reader completion feedback from the Android APK. The linked account and pending screenshots use deterministic UI fixtures and AniKatha's stylesheet. The test account shown in those screenshots is synthetic. A physical device and an authorized account are needed to verify the live OAuth callback and network transition end to end.

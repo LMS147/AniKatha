@@ -364,6 +364,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
         ['appearance', 'appearance'], ['sources', 'sources'],
         ['anilist', 'anilist-account-android'], ['tracking-editor', 'anilist-editor-android'],
+        ['reader-feedback', 'anilist-reader-feedback-android'],
       ]) {
         const result = await command('Runtime.evaluate', {
           expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
@@ -459,6 +460,20 @@ async function verifyProfileScene(scene) {
     count.dispatchEvent(new Event('input', { bubbles:true }));
     await click('Save tracking');
     await wait(() => document.querySelector('.tracking-editor')?.textContent.includes('Saved on this device.'), 'Local save confirmation');
+  } else if (scene === 'reader-feedback') {
+    document.querySelector('.bottom-nav a[href="/manga"]').click();
+    await click('The Midnight Lighthouse');
+    await click('Chapter 1');
+    await click('Read Chapter 1');
+    await click('Next page →');
+    await wait(() => document.querySelector('.reader-page')?.naturalWidth > 0 &&
+      document.querySelector('.reader-position')?.textContent === 'Page 3 of 3', 'Last chapter page');
+    await click('Mark chapter read');
+    const feedback = await wait(() => {
+      const message = document.querySelector('.tracking-feedback');
+      return message?.textContent.includes('no verified AniList match') && message;
+    }, 'Local-only completion feedback');
+    feedback.scrollIntoView({ block: 'end' });
   }
   return true;
 }
