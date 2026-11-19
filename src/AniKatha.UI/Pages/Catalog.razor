@@ -22,13 +22,13 @@
 </form>
 @foreach(var provider in httpProviders){
  @foreach(var catalog in provider.Catalogs(Kind)){
-  @if (Kind == "ANIME" && appliedSearch.Length > 0 && !catalog.Search)
+  @if (appliedSearch.Length > 0 && !catalog.Search)
   {
    <p>@provider.Addon.Name · @catalog.Name supports browsing only.</p>
   }
   else
   {
-  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@(Kind == "ANIME" ? appliedSearch : null)"/>
+  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch"/>
   }
  }
 }
