@@ -19,14 +19,14 @@ Baseline: node --test scripts/*.test.mjs passed 6/6; python scripts/test_startup
 | 11 | Source information | Verified | Quality, audio and translation labels with separate missing and failed states | ManifestSources | Show independent success and failure |
 | 12 | Preferred source | Verified | Provider preference persisted by title, independent of playback choice | ManifestSources, LocalStore | Fallback retains preference |
 | 13 | Recent sources | Verified | In-memory unit cache with refresh and expiry | ManifestSources | Refresh expired link |
-| 14 | AniList connection | Pending | Public metadata client; account authorization pending | AniListClient, Profile | Connect, revoke and disconnect |
-| 15 | List import | Pending | Local library; account import pending | LocalStore, AniListClient | Repeat paginated import |
-| 16 | Statuses and scores | Pending | Account field mapping pending | Models, AniListClient | Round trip account score scale |
-| 17 | Completed counts | Pending | Local progress exists; account updates pending | LocalStore | Partial unit leaves remote count intact |
-| 18 | Offline queue | Pending | Durable account queue pending | LocalStore | Restart and replay newest edit |
-| 19 | Sync conflicts | Pending | Conflict handling pending | LocalStore | Test reset and independent edits |
-| 20 | Cross-device resume | Pending | Local resume exists; authorized backend must be established | Resume, LocalStore | Restore between two devices |
-| 21 | Settings sync | Optional and pending | Optional; disabled because no selection was made | Profile | Requires explicit enablement and authorized backend |
+| 14 | AniList connection | Implemented but unverified | Profile and Android OAuth wired. Fixture tests passed. Registered client ID and native flow still needed. | AniListClient, Profile | Connect, revoke and disconnect |
+| 15 | List import | Verified | Paginated, idempotent two-media import passed against fixtures. | LocalStore, AniListClient | Repeat paginated import |
+| 16 | Statuses and scores | Verified | Status and nullable scores round-tripped through fixtures. | Models, AniListClient | Round trip account score scale |
+| 17 | Completed counts | Verified | Explicit Library count updates and reset passed. Provider-only unit counts stay local without an AniList mapping. | LocalStore | Partial unit leaves remote count intact |
+| 18 | Offline queue | Verified | Edits stayed queued across SQLite reopen and retried after simulated network recovery. | LocalStore | Restart and replay newest edit |
+| 19 | Sync conflicts | Verified | Field-level conflict, intentional reset, account isolation and revision acknowledgement checks passed. | LocalStore | Test reset and independent edits |
+| 20 | Cross-device resume | Blocked | No authorized AniKatha sync backend found. Local precise positions remain intact. | Resume, LocalStore | Restore between two devices |
+| 21 | Settings sync | Optional and pending | Disabled for this run because the session switch was unspecified | Profile | Requires explicit enablement and authorized backend |
 | 22 | Playback speed | Pending | Persistent speed control pending | WatchPreview | Restart restores default |
 | 23 | Subtitle language | Pending | Manual tracks exist; preferred language pending | WatchPreview | Absent language and override |
 | 24 | Subtitle appearance | Pending | Track styling pending | WatchPreview, episode-player.mjs | Check native and embedded support |
@@ -53,3 +53,9 @@ The Android emulator, physical Samsung and the APK upgrade gate require a device
 ## Phase 2 gate
 
 The rendered check opened provider titles from search and Library, verified an explicit mapping to a different episode ID, showed the direct stream while the alternate provider failed, reopened a preferred provider, refreshed cached sources and retained the chapter page after marking it complete. Two unrelated providers with the same local title ID stayed separate. The Node media test verified that a repeated end event saves the existing timestamp and records provider episode completion once. Live playback and upgrade on an installed APK still require the Android workflow or a device. Completion and source preferences use the existing AppSetting table. No SQLite migration. Optional metadata, source mappings, stream details and expiry are documented in HTTP-ADDONS.md.
+
+## Phase 3 gate
+
+The account fixture exercised OAuth callback state validation, two-media pagination and repeat import, decimal and unset scores, a restart of the local store with pending edits, reconnection, concurrent queue revisions, a remote status edit alongside a local progress reset, revocation and disconnect. Both exact positions remained intact. No schema migration. Credential storage on Android uses SecureStorage. Account sync records use scoped keys in the existing settings table.
+
+Live authorization and mutations require a registered public AniList client ID, the matching redirect, and an Android device or emulator signed into a test AniList account. The public .NET tests use simulated GraphQL replies. No authorized service was found for cross-device exact positions or settings. See ANILIST-SYNC.md.

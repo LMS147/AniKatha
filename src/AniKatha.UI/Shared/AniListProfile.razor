@@ -1,0 +1,91 @@
+@implements IDisposable
+@inject IServiceProvider Services
+@inject LocalStore Store
+
+<h2>Tracking</h2>
+<section class="settings-card anilist-card">
+ <span class="eyebrow">ANILIST</span>
+ @if (viewer is not null)
+ {
+  <h3>Connected as @viewer.Name</h3>
+  <button class="primary" disabled="@busy" @onclick="Import">Import AniList library</button>
+  <button class="secondary" disabled="@busy" @onclick="Retry">Sync pending changes</button>
+  <button class="secondary" disabled="@busy" @onclick="Disconnect">Disconnect AniList</button>
+ }
+ else if (account?.CanConnect == true)
+ {
+  <button class="primary" disabled="@busy" @onclick="Connect">Connect AniList</button>
+ }
+ else { <p>AniList sign-in is unavailable for this build.</p> }
+ @if (status is not null) { <p role="status">@status</p> }
+</section>
+
+@code {
+ AniListAccount? account;
+ AniListViewer? viewer;
+ bool busy;
+ string? status;
+ readonly CancellationTokenSource lifetime = new();
+
+ protected override async Task OnInitializedAsync()
+ {
+  account = (AniListAccount?)Services.GetService(typeof(AniListAccount));
+  if (account is null) return;
+  try { viewer = await account.StoredViewerAsync(); viewer = await account.CurrentAsync(lifetime.Token); }
+  catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+  catch (AniListAuthorizationException) { viewer = null; status = "AniList access expired or was revoked. Connect again."; }
+  catch { status = "Could not check AniList. Try again when connected."; }
+ }
+
+ async Task Connect()
+ {
+  if (account is null || busy) return;
+  busy = true;
+  status = null;
+  try { viewer = await account.ConnectAsync(lifetime.Token); }
+  catch (OperationCanceledException) { status = "AniList sign-in cancelled."; }
+  catch { status = "Could not connect to AniList."; }
+  finally { busy = false; }
+ }
+
+ async Task Retry()
+ {
+  if (account is null || viewer is null || busy) return;
+  busy = true;
+  try
+  {
+   await account.SyncPendingAsync(Store, lifetime.Token);
+   var remaining = (await Store.AniListEditsAsync(viewer.Id)).Count;
+   status = remaining == 0 ? "AniList changes synced." : $"{remaining} changes are still pending.";
+  }
+  catch { status = "Could not sync AniList right now."; }
+  finally { busy = false; }
+ }
+
+ async Task Import()
+ {
+  if (account is null || viewer is null || busy) return;
+  busy = true;
+  status = "Reading your AniList library…";
+  try
+  {
+   var count = await account.ImportAsync(Store, viewer.Id, lifetime.Token);
+   status = $"Checked {count} AniList entries. Open Library to see them.";
+  }
+  catch (AniListAuthorizationException) { viewer = null; status = "AniList authorization expired. Connect again."; }
+  catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+  catch { status = "Import could not finish. Existing entries are saved. Retry when connected."; }
+  finally { busy = false; }
+ }
+
+ async Task Disconnect()
+ {
+  if (account is null || busy) return;
+  busy = true;
+  try { await account.DisconnectAsync(); viewer = null; status = "AniList disconnected."; }
+  catch { status = "Could not disconnect AniList. Try again."; }
+  finally { busy = false; }
+ }
+
+ public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+}
