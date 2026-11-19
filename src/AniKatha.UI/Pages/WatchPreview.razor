@@ -40,6 +40,7 @@
 
 }
 @code {
+ [Parameter] public EventCallback OnSourceFailed { get; set; }
  [Parameter] public bool TrackCompletion { get; set; }
  [Parameter] public EventCallback OnCompleted { get; set; }
  [Parameter] public string EpisodeKey {get;set;} = PlaybackSample.EpisodeKey;
@@ -154,12 +155,13 @@
  }
 
  [JSInvokable]
- public Task SetPlaybackError()
+ public async Task SetPlaybackError()
  {
   if (disposed)
-   return Task.CompletedTask;
+   return;
   playbackError = true;
-  return InvokeAsync(StateHasChanged);
+  await InvokeAsync(() => OnSourceFailed.InvokeAsync());
+  await InvokeAsync(StateHasChanged);
  }
 
  public async ValueTask DisposeAsync()

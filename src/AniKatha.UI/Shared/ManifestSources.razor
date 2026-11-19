@@ -23,12 +23,14 @@ else if (streams.Count > 0)
  }
 }
 else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provider.</p> }
+@if (!loading && !error) { <button type="button" @onclick="Refresh">Refresh sources</button> }
 @if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
 </div>
-@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="pages" Title="@Title" ChapterLabel="@Label" OnCompleted="ProgressChanged"/>}
-@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" OnCompleted="ProgressChanged"/>}
+@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="readingPages" Title="@Title" ChapterLabel="@Label" OnCompleted="ProgressChanged"/>}
+@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
 
 @code {
+ [CascadingParameter] public SourceResultCache? Cache { get; set; }
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
  [Parameter] public string Origin {get;set;}="";
  [Parameter] public string TitleId {get;set;}="";
@@ -52,18 +54,28 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  }
  string? video;
  List<EpisodeSubtitle> subtitles=[];
- List<string> pages=[];
+ List<string> pages=[], readingPages=[];
  List<JsonElement> streams=[];
  string Key=>ResumeEntry.Key(Origin,Type,TitleId,UnitId,Source.ProviderKey);
  static string StreamName(JsonElement stream)=>Field(stream,"name") is { Length:>0 } name?name:"Play";
  protected override Task OnInitializedAsync()=>Load();
+ void Invalidate() => Cache?.Invalidate(Key);
+
+ Task Refresh()
+ {
+  Invalidate();
+  return Load();
+ }
+
  async Task Load(){
   if (loading || disposed) return;
   loading=true;error=false;
   streams=[];pages=[];translation="";
   try{
    var resource=Type=="manga"?"pages":"stream";
-   var root=await Client.FetchJsonAsync(Source.Resource(resource,Type,UnitId),stop.Token);
+   JsonElement result = default;
+   var cached = Cache is not null && Cache.TryGet(Key, Source.Addon.ManifestJson, out result);
+   var root = cached ? result : await Client.FetchJsonAsync(Source.Resource(resource,Type,UnitId),stop.Token);
    if (stop.IsCancellationRequested) return;
    if(!root.TryGetProperty(Type=="manga"?"pages":"streams",out var list) || list.ValueKind!=JsonValueKind.Array)throw new FormatException();
    if(Type=="manga"){
@@ -71,6 +83,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
     translation = Field(root, "language");
     if(pages.Any(x=>!MediaUrl(x)))throw new FormatException();
    }else streams=Items(root,"streams").Where(x=>MediaUrl(Field(x,"url"))).ToList();
+   if (!cached && (pages.Count > 0 || streams.Count > 0)) Cache?.Set(Key, Source.Addon.ManifestJson, root);
   }catch(AddonResourceNotFoundException){}
   catch(OperationCanceledException) when(stop.IsCancellationRequested){}
   catch(Exception){error=true;}
@@ -92,6 +105,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  {
   await Remember();
   if (disposed) return;
+  if (!reading) readingPages = pages;
   reading = true;
   await ProgressChanged.InvokeAsync();
  }
