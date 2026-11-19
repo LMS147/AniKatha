@@ -42,18 +42,28 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
   });
   try {
     await connected;
-    const reply = await command('Runtime.evaluate', {returnByValue: true, expression: `(() => {
-      const visible = element => !!element && element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0;
-      return {
-        links: Array.from(document.querySelectorAll('.bottom-nav a')).filter(visible).map(a => a.textContent.trim()),
-        errorVisible: visible(document.querySelector('#blazor-error-ui')),
-        text: document.body.innerText
-      };
-    })()`});
+    const reply = await command('Runtime.evaluate', {
+      awaitPromise: true,
+      returnByValue: true,
+      expression: `(async () => {
+        const visible = element => !!element && element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0;
+        let snapshot;
+        for (let i = 0; i < 160; i++) {
+          snapshot = {
+            links: Array.from(document.querySelectorAll('.bottom-nav a')).filter(visible).map(a => a.textContent.trim()),
+            errorVisible: visible(document.querySelector('#blazor-error-ui')),
+            text: document.body?.innerText
+          };
+          if (snapshot.links.length >= 5 && !snapshot.errorVisible) return snapshot;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        return snapshot;
+      })()`,
+    }, 20000);
     if (reply.exceptionDetails) throw new Error('WebView DOM inspection failed.');
     const snapshot = reply.result?.value;
     if (!snapshot) throw new Error('WebView returned no DOM snapshot.');
-    await writeFile('artifacts/startup/webview.json', JSON.stringify(snapshot, null, 2));
+    await writeFile('artifacts/startup/webview-' + mode + '.json', JSON.stringify(snapshot, null, 2));
     if (!hasNavigation(snapshot)) throw new Error('App navigation did not render or the Blazor error UI is visible.');
     console.log('PASS: all five navigation tabs rendered in the installed APK WebView.');
 
@@ -273,13 +283,34 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
               const media = document.querySelector('video');
               return media?.dataset.offlineSource?.includes('offline-media/') && media.readyState >= 2 && media;
             }, 'Video frame did not load in airplane mode');
-            video.currentTime = Math.min(3, video.duration / 2);
-            await wait(() => !video.seeking && video.currentTime > 0, 'Offline video could not seek');
-            return true;
+            return { duration: video.duration, readyState: video.readyState };
+
           })()`,
         }, 115000);
-        if (offline.result?.value !== true) throw new Error(offline.exceptionDetails?.exception?.description ?? 'Offline media failed.');
-        console.log('PASS: downloaded manga restored its exact page and downloaded video loaded and sought in airplane mode.');
+        if (!offline.result?.value) throw new Error(offline.exceptionDetails?.exception?.description ?? 'Offline media failed.');
+        console.log('PASS: downloaded manga restored its exact page and a downloaded video frame loaded in airplane mode.');
+        const seek = await command('Runtime.evaluate', {
+          awaitPromise: true, returnByValue: true, userGesture: true,
+          expression: `(async () => {
+            const video = document.querySelector('video');
+            video.muted = true;
+            await video.play();
+            const checkpoint = Math.min(6, video.duration / 2);
+            video.currentTime = checkpoint;
+            for (let i = 0; i < 150; i++) {
+              if (video.error) throw new Error('Media error ' + video.error.code);
+              if (!video.seeking && video.currentTime >= checkpoint - 0.1) {
+                video.pause();
+                return true;
+              }
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            throw new Error('Offline seek stalled at ' + video.currentTime + ' of ' + video.duration +
+              ', ready state ' + video.readyState + ', seekable ranges ' + video.seekable.length);
+          })()`,
+        }, 22000);
+        if (seek.result?.value !== true) throw new Error(seek.exceptionDetails?.exception?.description ?? 'Offline video seek failed.');
+        console.log('PASS: downloaded video played and sought in airplane mode.');
       } finally {
         adb('cmd', 'connectivity', 'airplane-mode', 'disable');
       }
