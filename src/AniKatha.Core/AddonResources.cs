@@ -59,6 +59,30 @@ public sealed class AddonResources(InstalledAddon addon)
     extras.Any(x => x.Name == "search"), extras.Any(x => x.Name == "skip")) { Extras = extras };
   }
  }
+ public IEnumerable<(AddonResources Provider, string UnitId)> ResolveUnitProviders(
+  string type, JsonElement unit, IEnumerable<AddonResources> providers)
+ {
+  var resource = type == "manga" ? "pages" : "stream";
+  var unitId = Field(unit, "id");
+  foreach (var provider in providers)
+  {
+   if (provider.ProviderKey == ProviderKey)
+   {
+    if (provider.Supports(resource, type, unitId)) yield return (provider, unitId);
+    continue;
+   }
+   if (provider.HasPrefix(resource, type, unitId))
+   {
+    yield return (provider, unitId);
+    continue;
+   }
+   var mappings = Items(unit, "sourceMappings")
+    .Where(mapping => Field(mapping, "providerKey") == provider.ProviderKey)
+    .Select(mapping => Field(mapping, "unitId"))
+    .Where(id => provider.HasPrefix(resource, type, id)).Distinct(StringComparer.Ordinal).Take(2).ToList();
+   if (mappings.Count == 1) yield return (provider, mappings[0]);
+  }
+ }
  public Uri Resource(string resource,string type,string id,string? extra=null)
  {
   if (resource is not ("catalog" or "meta" or "stream" or "chapters" or "pages" or "subtitles") || type is not ("anime" or "series" or "manga") || string.IsNullOrWhiteSpace(id) || id is "." or "..")

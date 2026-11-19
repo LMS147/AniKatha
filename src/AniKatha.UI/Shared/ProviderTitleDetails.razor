@@ -1,0 +1,43 @@
+@using System.Text.Json
+@using static AniKatha.Core.AddonResources
+
+<h3>@Name</h3>
+@if (MediaUrl(Poster))
+{
+ <img class="provider-detail-poster" src="@Poster" alt="" loading="lazy" />
+}
+@if (Synopsis.Length > 0) { <p>@Synopsis</p> }
+@if (Genres.Length > 0)
+{
+ <div class="chips">@foreach (var genre in Genres) { <span>@genre</span> }</div>
+}
+@if (Status.Length > 0) { <p>Release status · @Status</p> }
+@if (Count is int count) { <p>@count @UnitLabel(count)</p> }
+
+@code {
+ [Parameter] public JsonElement Listing { get; set; }
+ [Parameter] public JsonElement Details { get; set; }
+ [Parameter] public string Type { get; set; } = "";
+
+ string Name => Text("name");
+ string Poster => Text("poster");
+ string Synopsis => Text("description") is { Length: > 0 } description ? description : Text("synopsis");
+ string Status => Text("status");
+ string[] Genres => new[] { Details, Listing }
+  .Select(item => Items(item, "genres").Where(value => value.ValueKind == JsonValueKind.String)
+   .Select(value => value.GetString()!).Where(value => value.Length > 0).ToArray())
+  .FirstOrDefault(genres => genres.Length > 0) ?? [];
+ int? Count => ReadCount(Details) ?? ReadCount(Listing);
+
+ string Text(string key) => Field(Details, key) is { Length: > 0 } value ? value : Field(Listing, key);
+ string UnitLabel(int count) => Type == "manga" ? (count == 1 ? "chapter" : "chapters") : (count == 1 ? "episode" : "episodes");
+
+ int? ReadCount(JsonElement item)
+ {
+  var field = Type == "manga" ? "chapterCount" : "episodeCount";
+  if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty(field, out var value) &&
+      value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var count) && count >= 0)
+   return count;
+  return null;
+ }
+}

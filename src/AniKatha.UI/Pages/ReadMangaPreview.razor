@@ -19,7 +19,11 @@
    {
     <button type="button" class="primary" disabled="@saving" @onclick="() => MoveTo(currentPage + 1)">Next page →</button>
    }
-   else if(Pages==null)
+   else if (Pages is not null)
+   {
+    <button class="primary" disabled="@(completed || saving)" @onclick="Finish">@(completed ? "Chapter completed" : "Mark chapter read")</button>
+   }
+   else
    {
     <a class="primary" href="/manga/preview">Back to chapters</a>
    }
@@ -38,7 +42,8 @@ else
 @code {
  int currentPage = 1;
  bool ready;
- bool saving;
+ bool saving, completed;
+ [Parameter] public EventCallback OnCompleted { get; set; }
  string? storageError;
  [Parameter] public string ChapterKey {get;set;} = MangaSample.ChapterKey;
  [Parameter] public string Title {get;set;} = MangaSample.Title;
@@ -52,6 +57,7 @@ else
   try
   {
    currentPage = Math.Clamp(await Store.GetReadingPageAsync(ChapterKey), 1, PageCount);
+   completed = Pages is not null && await Store.IsUnitCompleteAsync(ChapterKey);
   }
   catch
   {
@@ -61,6 +67,22 @@ else
   {
    ready = true;
   }
+ }
+
+ async Task Finish()
+ {
+  if (saving || completed || currentPage != PageCount) return;
+  saving = true;
+  try
+  {
+   await Store.SaveReadingPageAsync(ChapterKey, currentPage);
+   await Store.CompleteUnitAsync(ChapterKey);
+   completed = true;
+   storageError = null;
+   await OnCompleted.InvokeAsync();
+  }
+  catch { storageError = "Could not mark this chapter read."; }
+  finally { saving = false; }
  }
 
  async Task MoveTo(int next)

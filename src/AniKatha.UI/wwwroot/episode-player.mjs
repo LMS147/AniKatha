@@ -1,15 +1,16 @@
-export function attachPlayer(video, callbacks, url, resumePosition) {
+export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false) {
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
   let ready = false;
   let position = resumePosition;
   let savedPosition = resumePosition;
+  let completed = false;
   let checkpoint = Promise.resolve();
 
   function save(force) {
     if (!ready || video.seeking || !Number.isFinite(video.currentTime)) return checkpoint;
 
-    const next = video.ended ? 0 : video.currentTime;
+    const next = video.ended && !trackCompletion ? 0 : video.currentTime;
     if (!force && Math.abs(next - position) < 2) return checkpoint;
     if (next === position && next === savedPosition) return checkpoint;
 
@@ -26,9 +27,16 @@ export function attachPlayer(video, callbacks, url, resumePosition) {
     ready = true;
   }, options);
   video.addEventListener('timeupdate', () => save(false), options);
-  for (const event of ['pause', 'seeked', 'ended']) {
+  for (const event of ['pause', 'seeked']) {
     video.addEventListener(event, () => save(true), options);
   }
+  video.addEventListener('ended', async () => {
+    await save(true);
+    if (!trackCompletion || completed) return;
+    completed = true;
+    try { completed = !!(await callbacks.invokeMethodAsync('CompleteEpisode')); }
+    catch { completed = false; }
+  }, options);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) save(true);
   }, options);
