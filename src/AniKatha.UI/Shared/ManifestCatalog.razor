@@ -41,7 +41,7 @@
  @if(unitId!=null){
   @if(targets.Count==0){<p>No compatible add-on.</p>}
   @foreach(var target in targets){
-   <ManifestSources @key="(target.ProviderKey,unitId,titleId)" Source="target" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@unitId" Label="@label" Title="@Field(selected!.Value,"name")"/>
+   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")"/>
   }
  }
 </section>
@@ -55,7 +55,7 @@
  [Parameter,EditorRequired] public AddonCatalog Catalog {get;set;}=null!;
  [Parameter,EditorRequired] public List<AddonResources> Providers {get;set;}=[];
  List<JsonElement> titles=[],units=[];
- List<AddonResources> targets=[];
+ List<(AddonResources Provider, string UnitId)> targets=[];
  JsonElement? selected;
  JsonElement details;
  string applied="",titleId="",label="";
@@ -167,10 +167,11 @@
   catch(Exception){if(!token.IsCancellationRequested)error="Title request failed.";}
   finally{if(!token.IsCancellationRequested)busy=false;}
  }
- void Choose(JsonElement unit){
-  unitId=Field(unit,"id");label=Field(unit,"title");
-  targets=Providers.Where(p=>p.Supports(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId) &&
-   (p.ProviderKey==Source.ProviderKey || p.HasPrefix(Catalog.Type=="manga"?"pages":"stream",Catalog.Type,unitId))).ToList();
+ void Choose(JsonElement unit)
+ {
+  unitId = Field(unit, "id");
+  label = Field(unit, "title");
+  targets = Source.ResolveUnitProviders(Catalog.Type, unit, Providers).ToList();
  }
  public void Dispose()
  {
