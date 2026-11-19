@@ -13,7 +13,7 @@
  <p>@EpisodeLabel</p>
 </header>
 
-<video @ref="video" class="episode-video" controls playsinline preload="metadata" aria-label="@Title"></video>
+<video @ref="video" class="@($"episode-video subtitle-{subtitleSize} subtitle-{subtitleBackground}")" controls playsinline preload="metadata" aria-label="@Title"></video>
 <div class="reader-controls">
  <label>Playback speed
   <select value="@speed.ToString(CultureInfo.InvariantCulture)" @onchange="ChangeSpeed">
@@ -84,6 +84,7 @@
  bool subtitleError, manualSubtitle;
  int selectedTrack = -1;
  string? preferredLanguage, automaticTrack;
+ string subtitleSize = "normal", subtitleBackground = "dark", subtitlePlacement = "automatic";
  CancellationTokenSource? subtitleRequest;
 
  Task ChangeSubtitle(ChangeEventArgs args)
@@ -106,7 +107,7 @@
    if (index < 0 || index >= Subtitles.Count) return;
    var selected = Subtitles[index];
    var cues = await Addons.GetSubtitleAsync(selected.Url, token);
-   if (!token.IsCancellationRequested) await player.InvokeVoidAsync("setSubtitle", selected.Language, cues);
+   if (!token.IsCancellationRequested) await player.InvokeVoidAsync("setSubtitle", selected.Language, cues, subtitlePlacement);
   }
   catch { if (!token.IsCancellationRequested) subtitleError = true; }
  }
@@ -140,6 +141,10 @@
    var position = await Store.GetPlaybackPositionAsync(EpisodeKey);
    speed = MediaPreferences.ReadSpeed(await Store.GetSettingAsync(MediaPreferences.SpeedKey));
    preferredLanguage = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey);
+   subtitleSize = (await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey)) switch
+   { "large" => "large", "small" => "small", _ => "normal" };
+   subtitleBackground = await Store.GetSettingAsync(MediaPreferences.SubtitleBackgroundKey) == "transparent" ? "transparent" : "dark";
+   subtitlePlacement = await Store.GetSettingAsync(MediaPreferences.SubtitlePlacementKey) ?? "automatic";
    if (disposed)
     return;
 

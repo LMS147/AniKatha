@@ -5,16 +5,38 @@
  <label>Preferred subtitle language
   <input placeholder="For example, en or ja" maxlength="35" value="@language" @onchange="SaveLanguage" />
  </label>
+ <label>Subtitle size
+  <select value="@size" @onchange='args => SaveChoice(MediaPreferences.SubtitleSizeKey, args, value => size = value)'>
+   <option value="normal">Normal</option><option value="small">Small</option><option value="large">Large</option>
+  </select>
+ </label>
+ <label>Subtitle background
+  <select value="@background" @onchange='args => SaveChoice(MediaPreferences.SubtitleBackgroundKey, args, value => background = value)'>
+   <option value="dark">Dark</option><option value="transparent">Transparent</option>
+  </select>
+ </label>
+ <label>Subtitle placement
+  <select value="@placement" @onchange='args => SaveChoice(MediaPreferences.SubtitlePlacementKey, args, value => placement = value)'>
+   <option value="automatic">From the track</option><option value="top">Top</option><option value="bottom">Bottom</option>
+  </select>
+ </label>
+ <p class="muted">Appearance applies to subtitle tracks in AniKatha’s video player.</p>
  @if (message is not null) { <p role="status">@message</p> }
 </section>
 
 @code {
- string language = "";
+ string language = "", size = "normal", background = "dark", placement = "automatic";
  string? message;
 
  protected override async Task OnInitializedAsync()
  {
-  try { language = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey) ?? ""; }
+  try
+  {
+   language = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey) ?? "";
+   size = await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey) ?? "normal";
+   background = await Store.GetSettingAsync(MediaPreferences.SubtitleBackgroundKey) ?? "dark";
+   placement = await Store.GetSettingAsync(MediaPreferences.SubtitlePlacementKey) ?? "automatic";
+  }
   catch { message = "Could not load playback settings."; }
  }
 
@@ -22,6 +44,13 @@
  {
   language = (args.Value?.ToString() ?? "").Trim();
   return Save(MediaPreferences.SubtitleLanguageKey, language);
+ }
+
+ Task SaveChoice(string key, ChangeEventArgs args, Action<string> assign)
+ {
+  var value = args.Value?.ToString() ?? "";
+  assign(value);
+  return Save(key, value);
  }
 
  async Task Save(string key, string value)

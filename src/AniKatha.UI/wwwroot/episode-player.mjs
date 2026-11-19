@@ -1,3 +1,12 @@
+export function placeSubtitles(cues, placement) {
+  if (placement !== 'top' && placement !== 'bottom') return cues;
+  const line = placement === 'top' ? '10%' : '90%';
+  return cues.split(/\r?\n/).map(text => {
+    if (!/^\s*(?:\d+:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d+:)?\d{2}:\d{2}\.\d{3}/.test(text)) return text;
+    return text.replace(/\s+line:[^\s]+/g, '') + ' line:' + line;
+  }).join('\n');
+}
+
 export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1) {
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
@@ -63,13 +72,13 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
       speed = value;
       video.playbackRate = value;
     },
-    setSubtitle(language, cues) {
+    setSubtitle(language, cues, placement) {
       clearSubtitle();
       track = document.createElement('track');
       track.kind = 'subtitles';
       track.label = language || 'Subtitles';
       track.srclang = language || 'und';
-      subtitleUrl = URL.createObjectURL(new Blob([cues], {type: 'text/vtt'}));
+      subtitleUrl = URL.createObjectURL(new Blob([placeSubtitles(cues, placement)], {type: 'text/vtt'}));
       track.src = subtitleUrl;
       video.appendChild(track);
       track.track.mode = 'showing';
