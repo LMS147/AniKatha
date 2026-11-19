@@ -7,7 +7,7 @@ export function placeSubtitles(cues, placement) {
   }).join('\n');
 }
 
-export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1) {
+export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1, startPlaying = false) {
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
   let ready = false;
@@ -35,6 +35,10 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
     if (position > 0 && position < video.duration) video.currentTime = position;
     video.playbackRate = speed;
     ready = true;
+    if (startPlaying) {
+      startPlaying = false;
+      video.play()?.catch(() => {});
+    }
   }, options);
   video.addEventListener('timeupdate', () => save(false), options);
   for (const event of ['pause', 'seeked']) {
@@ -67,6 +71,7 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
   }
   return {
     clearSubtitle,
+    checkpoint: () => save(true),
     seek(seconds) {
       if (!ready || !Number.isFinite(seconds) || !Number.isFinite(video.duration)) return;
       video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));

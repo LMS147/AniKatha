@@ -16,6 +16,7 @@ public static class MediaPreferences
     public const string SubtitleBackgroundKey = "player:subtitle-background";
     public const string SubtitlePlacementKey = "player:subtitle-placement";
     public const string SubtitleLanguageKey = "player:subtitle-language";
+    public const string AutoplayKey = "player:autoplay";
     public const string SpeedKey = "player:default-speed";
 
     public static double ReadSpeed(string? value) =>

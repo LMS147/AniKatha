@@ -25,6 +25,7 @@
    }
   </select>
  </label>
+ @if (OnNext.HasDelegate) { <button class="secondary" @onclick="NextEpisode">Next episode →</button> }
  <button class="secondary" @onclick="SetDefaultSpeed">Save as default</button>
 </div>
 @if (speedStatus is not null) { <p role="status">@speedStatus</p> }
@@ -55,6 +56,22 @@
 
 }
 @code {
+ [Parameter] public bool StartPlaying { get; set; }
+ [Parameter] public EventCallback OnNext { get; set; }
+ bool autoplay, advancing;
+
+ async Task NextEpisode()
+ {
+  if (disposed || advancing || !OnNext.HasDelegate) return;
+  advancing = true;
+  try
+  {
+   if (player is not null) await player.InvokeVoidAsync("checkpoint");
+   await OnNext.InvokeAsync();
+  }
+  finally { advancing = false; }
+ }
+
  [Parameter] public EventCallback OnSourceFailed { get; set; }
  [Parameter] public bool TrackCompletion { get; set; }
  [Parameter] public EventCallback OnCompleted { get; set; }
@@ -145,6 +162,7 @@
   {
    var position = await Store.GetPlaybackPositionAsync(EpisodeKey);
    speed = MediaPreferences.ReadSpeed(await Store.GetSettingAsync(MediaPreferences.SpeedKey));
+   autoplay = await Store.GetSettingAsync(MediaPreferences.AutoplayKey) == "true";
    seekSeconds = MediaPreferences.ReadSeekInterval(await Store.GetSettingAsync(MediaPreferences.SeekIntervalKey));
    preferredLanguage = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey);
    subtitleSize = (await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey)) switch
@@ -159,7 +177,7 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed);
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed, StartPlaying);
    if (!disposed) await InvokeAsync(StateHasChanged);
    await ApplyPreferredSubtitle();
   }
@@ -210,7 +228,11 @@
   try
   {
    await Store.CompleteUnitAsync(EpisodeKey);
-   if (!disposed) await InvokeAsync(() => OnCompleted.InvokeAsync());
+   if (!disposed)
+   {
+    await InvokeAsync(() => OnCompleted.InvokeAsync());
+    if (autoplay) await InvokeAsync(NextEpisode);
+   }
    return true;
   }
   catch

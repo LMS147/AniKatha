@@ -27,7 +27,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
 @if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
 </div>
 @if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" Pages="readingPages" Title="@Title" ChapterLabel="@Label" OnCompleted="ProgressChanged"/>}
-@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
+@if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" StartPlaying="AutoOpen" OnNext="NextEpisode" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
 
 @code {
  [CascadingParameter] public SourceResultCache? Cache { get; set; }
@@ -38,6 +38,8 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  [Parameter] public string Type {get;set;}="";
  [Parameter] public string Label {get;set;}="";
  [Parameter] public string Title {get;set;}="";
+ [Parameter] public bool AutoOpen { get; set; }
+ [Parameter] public EventCallback NextEpisode { get; set; }
  [Parameter] public bool Preferred { get; set; }
  [Parameter] public EventCallback ProgressChanged { get; set; }
  readonly CancellationTokenSource stop=new();
@@ -58,7 +60,12 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  List<JsonElement> streams=[];
  string Key=>ResumeEntry.Key(Origin,Type,TitleId,UnitId,Source.ProviderKey);
  static string StreamName(JsonElement stream)=>Field(stream,"name") is { Length:>0 } name?name:"Play";
- protected override Task OnInitializedAsync()=>Load();
+ protected override async Task OnInitializedAsync()
+ {
+  await Load();
+  if (AutoOpen && !disposed && streams.Count > 0)
+   await Play(streams[0]);
+ }
  void Invalidate() => Cache?.Invalidate(Key);
 
  Task Refresh()

@@ -26,11 +26,13 @@
    @foreach (var interval in MediaPreferences.SeekIntervals) { <option value="@interval">@interval seconds</option> }
   </select>
  </label>
+ <label><input type="checkbox" checked="@autoplay" @onchange="SaveAutoplay" /> Autoplay next episode</label>
  @if (message is not null) { <p role="status">@message</p> }
 </section>
 
 @code {
  string language = "", size = "normal", background = "dark", placement = "automatic";
+ bool autoplay;
  int seekSeconds = 10;
  string? message;
 
@@ -42,6 +44,7 @@
    size = await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey) ?? "normal";
    background = await Store.GetSettingAsync(MediaPreferences.SubtitleBackgroundKey) ?? "dark";
    placement = await Store.GetSettingAsync(MediaPreferences.SubtitlePlacementKey) ?? "automatic";
+   autoplay = await Store.GetSettingAsync(MediaPreferences.AutoplayKey) == "true";
    seekSeconds = MediaPreferences.ReadSeekInterval(await Store.GetSettingAsync(MediaPreferences.SeekIntervalKey));
   }
   catch { message = "Could not load playback settings."; }
@@ -51,6 +54,12 @@
  {
   language = (args.Value?.ToString() ?? "").Trim();
   return Save(MediaPreferences.SubtitleLanguageKey, language);
+ }
+
+ Task SaveAutoplay(ChangeEventArgs args)
+ {
+  autoplay = args.Value is true;
+  return Save(MediaPreferences.AutoplayKey, autoplay ? "true" : "false");
  }
 
  Task SaveChoice(string key, ChangeEventArgs args, Action<string> assign)

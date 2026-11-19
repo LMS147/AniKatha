@@ -72,7 +72,7 @@
    @if (preferenceError) { <p role="alert">Could not save the preferred source.</p> }
   }
   @foreach(var target in targets.OrderByDescending(target => target.Provider.ProviderKey == preferredSource)){
-   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" ProgressChanged="RefreshProgress"/>
+   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" ProgressChanged="RefreshProgress"/>
   }
  }
 </section>
@@ -126,6 +126,20 @@
  CancellationTokenSource? active;
  bool saved, disposed;
  long progressRequest;
+ string? autoOpenSource;
+ bool CanMove(int direction)
+ {
+  var index = units.FindIndex(unit => Field(unit, "id") == unitId);
+  return index >= 0 && index + direction >= 0 && index + direction < units.Count;
+ }
+
+ void MoveUnit(int direction, string providerKey)
+ {
+  if (!CanMove(direction)) return;
+  var index = units.FindIndex(unit => Field(unit, "id") == unitId);
+  Choose(units[index + direction], providerKey);
+ }
+
  string preferredSource = "";
  bool preferenceError;
  string PreferenceKey => $"preferred-source:{Source.ProviderKey}/{Catalog.Type}/{Uri.EscapeDataString(titleId)}";
@@ -250,8 +264,9 @@
   progress = current;
   continueLink = entries.FirstOrDefault(entry => unfinished.Contains(entry.Id))?.Id;
  }
- void Choose(JsonElement unit)
+ void Choose(JsonElement unit, string? autoOpen = null)
  {
+  autoOpenSource = autoOpen;
   unitId = Field(unit, "id");
   label = Field(unit, "title");
   targets = Source.ResolveUnitProviders(Catalog.Type, unit, Providers).ToList();
