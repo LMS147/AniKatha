@@ -67,6 +67,10 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
   }
   return {
     clearSubtitle,
+    seek(seconds) {
+      if (!ready || !Number.isFinite(seconds) || !Number.isFinite(video.duration)) return;
+      video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+    },
     setSpeed(value) {
       if (!Number.isFinite(value) || value < 0.5 || value > 2) return;
       speed = value;

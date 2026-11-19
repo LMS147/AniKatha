@@ -15,6 +15,8 @@
 
 <video @ref="video" class="@($"episode-video subtitle-{subtitleSize} subtitle-{subtitleBackground}")" controls playsinline preload="metadata" aria-label="@Title"></video>
 <div class="reader-controls">
+ <button class="secondary" @onclick="() => Seek(-seekSeconds)">−@seekSeconds s</button>
+ <button class="secondary" @onclick="() => Seek(seekSeconds)">+@seekSeconds s</button>
  <label>Playback speed
   <select value="@speed.ToString(CultureInfo.InvariantCulture)" @onchange="ChangeSpeed">
    @foreach (var rate in MediaPreferences.PlaybackSpeeds)
@@ -61,6 +63,9 @@
  [Parameter] public string Title {get;set;} = "Big Buck Bunny";
  [Parameter] public string EpisodeLabel {get;set;} = "Episode 1 · Sample trailer";
  [Parameter] public IReadOnlyList<EpisodeSubtitle> Subtitles {get;set;}=[];
+ int seekSeconds = 10;
+ Task Seek(int seconds) => player?.InvokeVoidAsync("seek", seconds).AsTask() ?? Task.CompletedTask;
+
  double speed = 1;
  string? speedStatus;
 
@@ -140,6 +145,7 @@
   {
    var position = await Store.GetPlaybackPositionAsync(EpisodeKey);
    speed = MediaPreferences.ReadSpeed(await Store.GetSettingAsync(MediaPreferences.SpeedKey));
+   seekSeconds = MediaPreferences.ReadSeekInterval(await Store.GetSettingAsync(MediaPreferences.SeekIntervalKey));
    preferredLanguage = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey);
    subtitleSize = (await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey)) switch
    { "large" => "large", "small" => "small", _ => "normal" };
