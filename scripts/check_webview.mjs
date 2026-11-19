@@ -430,7 +430,11 @@ async function verifyProfileScene(scene) {
     await activate('Story explorer');
     await wait(() => document.querySelector('.app-shell')?.dataset.theme === 'system', 'Original theme');
     await open('/profile/sources');
-    await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler', 'Restored original sources');
+    const row = await wait(() => {
+      const card = document.querySelector('.source-card');
+      return card?.querySelector('strong')?.textContent === 'AniKatha Story Sampler' && card;
+    }, 'Restored original sources');
+    row.scrollIntoView({ block: 'center' });
   }
   return true;
 }
