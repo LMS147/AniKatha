@@ -37,12 +37,12 @@ Baseline: node --test scripts/*.test.mjs passed 6/6; python scripts/test_startup
 | 29 | Jump to page | Verified | Valid page jumps persist. Invalid input gets a range message. | ReadMangaPreview | Reject out-of-range page |
 | 30 | Chapter navigation | Verified | Chapter navigation respects provider order and restores the previous page. | ManifestCatalog | Navigate decimal chapters in source order |
 | 31 | Reader preferences | Verified | Global defaults and per-title overrides persist in existing settings. | ReadMangaPreview, LocalStore | Clear override |
-| 32 | Chapter downloads | Pending | Bundled sample exists; provider download pending | ReadMangaPreview | Interrupt and verify incomplete state |
-| 33 | Video downloads | Pending | Stream selection exists; downloadable-file capability pending | ManifestSources | Play local file offline |
-| 34 | Download queue | Pending | Persistent queue pending | LocalStore | Restart and cancel |
-| 35 | Offline library | Pending | Local library exists; downloaded-item launch pending | Library | Open both types without network |
-| 36 | Storage management | Pending | Downloaded-file accounting pending | Library | Remove file and retain progress |
-| 37 | Plug-in design | Optional and pending | Separate runtime in reference; design-only chosen to preserve HTTP architecture | PluginRepository.kt (reference) | Review package lifecycle and isolation design |
+| 32 | Chapter downloads | Verified | Ordered chapter files commit together after all pages succeed. | ReadMangaPreview | Interrupt and verify incomplete state |
+| 33 | Video downloads | Verified | Explicit downloadable MP4 sources resolve by stable stream ID. Native playback is an emulator check. | ManifestSources | Play local file offline |
+| 34 | Download queue | Verified | Queue resumes interrupted jobs on reopen and supports failure, cancellation and retries. | LocalStore | Restart and cancel |
+| 35 | Offline library | Verified | Both types open from Library against local files and preserve the provider progress key. | Library | Open both types without network |
+| 36 | Storage management | Verified | File accounting, path validation and deletion preserve titles and precise progress. | Library | Remove file and retain progress |
+| 37 | Plug-in design | Design delivered | Reference package and lifecycle reviewed. A scoped runtime design is documented separately. | PluginRepository.kt (reference) | Review package lifecycle and isolation design |
 
 ## Phase 1 gate
 
@@ -63,3 +63,9 @@ Live authorization and mutations require a registered public AniList client ID, 
 ## Phase 4 gate
 
 The Release UI check built with zero warnings and errors. Rendered fixtures exercised autoplay transition to the next episode, last-unit boundaries, decimal chapter order, exact resume, reader jumps, fit and zoom, RTL, vertical page callbacks, reopened title preferences, and clearing an override. JavaScript tests covered speed, bounds, position saves, cue placement, and a duplicate completion event. The app uses the existing settings table and progress keys. Device verification of native HTML video, rendered subtitle appearance, preferred language selection and vertical scrolling remains open. YouTube embeds retain provider-controlled playback and subtitle settings.
+
+## Phase 5 gate
+
+The rendered .NET fixture exercised cancelled and damaged jobs, recovery from an interrupted SQLite queue, duplicate handling, ordered chapter files, native-independent local asset paths, no provider requests when opening offline items, and preserved library records and exact positions after file removal. It simulated lost connectivity with a fixture.
+
+The Android workflow now makes a fresh install, tests the download sampler online, enters airplane mode to load the saved manga page and seek the downloaded video, reinstalls the pre-roadmap APK to seed data, then upgrades in place without clearing that seeded data. The workflow records device and upgrade outcomes when run. The downloads, queue, and preferences use the existing AppSetting table and app-private files. No schema migration. Download availability fields are documented in HTTP-ADDONS.md. Plug-in design is in PROVIDER-PLUGINS-DESIGN.md.
