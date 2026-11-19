@@ -9,6 +9,12 @@
   <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   <RuntimeIdentifiers>android-arm;android-arm64;android-x64</RuntimeIdentifiers>
  </PropertyGroup>
+ <ItemGroup Condition="'$(AniListClientId)' != ''">
+  <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+   <_Parameter1>AniListClientId</_Parameter1>
+   <_Parameter2>$(AniListClientId)</_Parameter2>
+  </AssemblyAttribute>
+ </ItemGroup>
  <ItemGroup>
   <MauiIcon Include="Resources/AppIcon/appicon.svg" Color="#171021" />
   <MauiSplashScreen Include="Resources/Splash/splash.svg" Color="#0b0b10" BaseSize="128,128" />

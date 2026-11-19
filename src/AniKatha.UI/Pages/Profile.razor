@@ -4,7 +4,7 @@
 <header class="page-header"><span class="eyebrow">MAKE IT YOURS</span><h1>Profile</h1><p>Your stories. Your space.</p></header>
 <section class="profile-card"><div class="avatar large">A</div><div><h2>Story explorer</h2><p class="muted">Local profile · No account required</p></div><span class="pill">ON DEVICE</span></section>
 @if(message is not null){<div class="notice" role="status">@message</div>}
-<h2>Tracking</h2><section class="settings-card anilist-card"><span class="eyebrow">ANILIST</span><h3>Bring your lists together</h3><p>Browse AniList now. Account login and two-way progress sync are planned for the next stage.</p><span class="pill">Not connected</span></section>
+<AniListProfile/>
 <h2>Appearance</h2><section class="settings-card"><h3>Accent colour</h3><p class="muted">Choose a colour, then reload or reopen the app to apply it.</p><div class="swatches">@foreach(var colour in colours){<button style="background:@colour.Value" aria-label="@colour.Key" aria-pressed="@(accent==colour.Value)" @onclick="()=>SetAccent(colour.Value)">@(accent==colour.Value?"✓":"")</button>}</div></section>
 <h2>Content & discovery</h2><section class="settings-card"><h3>Manage add-ons</h3><p class="muted">Install a public manifest to add a source. Catalogues appear under Source. YouTube episodes appear under Episodes from add-ons in Anime.</p>
 <form @onsubmit="Install" @onsubmit:preventDefault><label>Manifest URL<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" @bind="url" @bind:event="oninput" placeholder="https://provider.example/manifest.json" required /></label><button class="primary" type="submit" disabled="@installing">@(installing?"Checking manifest…":"Add source")</button></form>

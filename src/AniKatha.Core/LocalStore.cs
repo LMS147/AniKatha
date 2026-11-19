@@ -1,7 +1,7 @@
 using System.Globalization;
 using SQLite;
 namespace AniKatha.Core;
-public sealed class LocalStore
+public sealed partial class LocalStore
 {
  readonly SQLiteAsyncConnection db;
  readonly Lazy<Task> initialized;
