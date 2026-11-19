@@ -1,5 +1,5 @@
 @page "/library/title/{Id:int}"
-@inject LocalStore Store
+@inherits ProfileComponent
 <a class="text-link" href="/library">← Library</a>
 @if(title!=null && source!=null)
 {

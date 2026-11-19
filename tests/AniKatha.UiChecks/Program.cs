@@ -21,10 +21,13 @@ context.Services.AddSingleton(client);
 context.Services.AddSingleton(new AniListAccount(trackingHttp, tracking));
 context.JSInterop.Mode = JSRuntimeMode.Loose;
 
-var profile = context.Render<Profile>();
-void Click(Bunit.IRenderedComponent<Profile> view, string label) => view.FindAll("button").Single(x=>x.TextContent.Trim()==label).Click();
+var profile = context.Render<Sources>();
+void Click(Bunit.IRenderedComponent<Sources> view, string label) => view.FindAll("button").Single(x=>x.TextContent.Trim()==label).Click();
 await profile.InvokeAsync(()=>profile.Find("input[inputmode=url]").Input("https://fiction.example/books?config=test"));
 await profile.InvokeAsync(()=>profile.Find("form").SubmitAsync());
+profile.WaitForAssertion(() => Check(profile.Find("[aria-label='Source preview']").TextContent.Contains("Chapter pages"), "Preview real capabilities"));
+Check((await store.GetAddonsAsync()).Count == 0, "Preview does not install");
+await ClickAsync(profile, "Add source");
 profile.WaitForAssertion(()=>Check(profile.Find(".addon-row strong").TextContent=="Fixture","Install source"));
 var sources=(await new LocalStore(database).GetAddonsAsync()).Select(x=>new AddonResources(x)).ToList();
 var provider=sources.Single();
@@ -157,11 +160,12 @@ Console.WriteLine("PASS: imported Library source matching, discovery playback, o
 
 
 Console.WriteLine("PASS: phase 2 fixture covered metadata, explicit unit mapping, source fallback and preference, cache refresh and chapter completion.");
-Console.WriteLine("PASS: install via Profile, type routing, pagination, repeat-page stop, chapter reading, page resume, enable/disable, episode source → player.");
+Console.WriteLine("PASS: install via Sources, type routing, pagination, repeat-page stop, chapter reading, page resume, enable/disable, episode source → player.");
 
 await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"anikatha-catalog-{Guid.NewGuid()}.db3")));
 await DownloadChecks.RunAsync();
 await PlayerChecks.RunAsync();
+await ProfileUiChecks.RunAsync();
 
 static async Task ClickAsync<T>(IRenderedComponent<T> view, string label) where T : IComponent
 {

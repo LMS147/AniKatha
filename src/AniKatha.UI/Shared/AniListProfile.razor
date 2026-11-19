@@ -1,6 +1,5 @@
 @implements IDisposable
-@inject IServiceProvider Services
-@inject LocalStore Store
+@inherits ProfileComponent
 
 <h2>Tracking</h2>
 <section class="settings-card anilist-card">
@@ -44,7 +43,7 @@
 
  protected override async Task OnInitializedAsync()
  {
-  account = (AniListAccount?)Services.GetService(typeof(AniListAccount));
+  account = ProfileAniList;
   if (account is null) return;
   try { automatic = await Store.GetSettingAsync(LocalStore.AutomaticAniListKey) != "false"; viewer = await account.StoredViewerAsync(); viewer = await account.CurrentAsync(lifetime.Token); }
   catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }

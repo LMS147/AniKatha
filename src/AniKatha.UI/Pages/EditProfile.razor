@@ -1,0 +1,56 @@
+@page "/profile/profiles/new"
+@page "/profile/profiles/edit/{Id}"
+@inject LocalProfiles Profiles
+@inject NavigationManager Navigation
+<a class="text-link" href="/profile/profiles/manage">← Manage profiles</a>
+<section class="settings-screen">
+ <header class="page-header"><h1>@(Id is null ? "Add profile" : "Edit profile")</h1></header>
+ @if (unavailable) { <p role="alert">Switch to and unlock this profile before editing it.</p> }
+ else
+ {
+  <section class="settings-card">
+   <div class="profile-identity"><ProfileAvatar Name="@name" Avatar="@avatar" Size="large" /><h2>@(string.IsNullOrWhiteSpace(name) ? "New profile" : name)</h2></div>
+   <form @onsubmit="Save" @onsubmit:preventDefault>
+    <label>Profile name<input maxlength="32" @bind="name" @bind:event="oninput" aria-describedby="profile-name-error" /></label>
+    @if (error is not null) { <p id="profile-name-error" role="alert">@error</p> }
+    <fieldset class="choice-field"><legend>Avatar</legend>
+     <div class="avatar-options">
+      @foreach (var option in Avatars)
+      {
+       <button type="button" class="secondary avatar-option" aria-label="@option.Name" aria-pressed="@(avatar == option.Id)" @onclick="() => avatar = option.Id">
+        <ProfileAvatar Name="@name" Avatar="@option.Id" />@option.Name
+       </button>
+      }
+     </div>
+    </fieldset>
+    <div class="settings-actions"><button class="primary" type="submit" disabled="@busy">Save profile</button>
+     <a class="secondary" href="/profile/profiles/manage">Cancel</a></div>
+   </form>
+  </section>
+ }
+</section>
+@code {
+ [Parameter] public string? Id { get; set; }
+ static readonly (string Id, string Name)[] Avatars = [("", "Initials"), ("star", "Star"), ("moon", "Moon"), ("flower", "Flower"), ("bolt", "Bolt")];
+ string name = "", avatar = "";
+ string? error;
+ bool unavailable, busy;
+
+ protected override void OnParametersSet()
+ {
+  var existing = Profiles.All.FirstOrDefault(item => item.Id == Id);
+  unavailable = Id is not null && (existing is null || existing.Locked && Profiles.Active.Id != Id);
+  name = existing?.Name ?? "";
+  avatar = existing?.Avatar ?? "";
+  error = null;
+ }
+ async Task Save()
+ {
+  if (unavailable || busy) return;
+  busy = true;
+  try { await Profiles.SaveAsync(Id, name, avatar); Navigation.NavigateTo("/profile/profiles"); }
+  catch (InvalidOperationException ex) { error = ex.Message; }
+  catch { error = "Could not save this profile. Try again."; }
+  finally { busy = false; }
+ }
+}

@@ -3,8 +3,7 @@
 @using AniKatha.UI.Pages
 @implements IDisposable
 @inject AddonClient Client
-@inject LocalStore Store
-@inject IServiceProvider Services
+@inherits ProfileComponent
 <div class="notice"><strong>@Source.Addon.Name</strong> @if (Preferred) { <small>Preferred</small> }
 @if(loading){<p>Loading sources…</p>}
 else if(error){<p>Source request failed. <button @onclick="Load">Retry</button></p>}
@@ -36,7 +35,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
 @if(video!=null){<WatchPreview @key="videoVersion" @ref="videoPlayer" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" StartPlaying="playImmediately" RefreshSource="RefreshPlayingStream" OnNext="NextEpisode" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
 
 @code {
- OfflineDownloads? Downloads => (OfflineDownloads?)Services.GetService(typeof(OfflineDownloads));
+ OfflineDownloads? Downloads => ProfileDownloads;
  string? downloadStatus;
 
  async Task Download(string? streamId)

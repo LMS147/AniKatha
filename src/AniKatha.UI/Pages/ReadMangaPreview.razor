@@ -1,6 +1,5 @@
 @page "/manga/preview/chapter-1"
-@inject LocalStore Store
-@inject IServiceProvider Services
+@inherits ProfileComponent
 @inject IJSRuntime JS
 @using Microsoft.JSInterop
 @using System.Globalization
@@ -277,7 +276,7 @@ else
   try
   {
    await Store.SaveReadingPageAsync(ChapterKey, currentPage);
-   var receipt = await AddonCompletion.SaveAsync(Store, Services, ChapterKey);
+   var receipt = await AddonCompletion.SaveAsync(Store, ProfileAniList, ChapterKey);
    completionMessage = receipt.Message;
    if (receipt.Sync is not null) _ = ShowSyncResult(receipt.Sync);
    completed = true;

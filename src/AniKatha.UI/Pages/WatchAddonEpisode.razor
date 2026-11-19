@@ -1,6 +1,5 @@
 @page "/anime/addon/{MediaId:int}/{EpisodeNumber:int}/{VideoId}"
-@inject LocalStore Store
-@inject IServiceProvider Services
+@inherits ProfileComponent
 
 <PageTitle>Watch episode · AniKatha</PageTitle>
 <header class="page-header">
@@ -37,7 +36,7 @@ else
  string? error;
  bool loading;
  bool opening;
- IYouTubePlayer? Player => Services.GetService(typeof(IYouTubePlayer)) as IYouTubePlayer;
+ IYouTubePlayer? Player => ProfileYouTube;
 
  protected override async Task OnParametersSetAsync()
  {

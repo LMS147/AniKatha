@@ -1,0 +1,12 @@
+<span class="local-avatar @Size" data-avatar="@Avatar" aria-hidden="true">@Glyph(Name, Avatar)</span>
+@code {
+ [Parameter] public string Name { get; set; } = "";
+ [Parameter] public string Avatar { get; set; } = "";
+ [Parameter] public string Size { get; set; } = "";
+ public static string Glyph(string name, string avatar) => avatar switch
+ {
+  "star" => "✦", "moon" => "☾", "flower" => "✿", "bolt" => "ϟ",
+  _ => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2)
+      .Select(word => System.Globalization.StringInfo.GetNextTextElement(word).ToUpperInvariant())) is { Length: > 0 } letters ? letters : "A"
+ };
+}

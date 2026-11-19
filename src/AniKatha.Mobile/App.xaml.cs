@@ -4,35 +4,45 @@ namespace AniKatha.Mobile;
 public partial class App : Application
 {
  readonly IServiceProvider services;
+ readonly LocalProfiles profiles;
+
  public App(IServiceProvider services)
  {
   InitializeComponent();
   this.services = services;
-  _ = StartDownloadsAsync();
+  profiles = services.GetRequiredService<LocalProfiles>();
+  profiles.Changed += OnProfileChanged;
   Connectivity.Current.ConnectivityChanged += OnConnectivityChanged;
-  if (Connectivity.Current.NetworkAccess == NetworkAccess.Internet) _ = SyncAniListAsync();
+  _ = InitializeProfilesAsync();
  }
- async Task StartDownloadsAsync()
+
+ async Task InitializeProfilesAsync()
  {
-  try { await services.GetRequiredService<OfflineDownloads>().StartAsync(); }
-  catch { /* Library exposes the local queue status. */ }
+  try { await profiles.InitializeAsync(); }
+  catch { /* The app displays a retry action at startup. */ }
  }
 
  void OnConnectivityChanged(object? sender, ConnectivityChangedEventArgs args)
  {
-  if (args.NetworkAccess == NetworkAccess.Internet) _ = SyncAniListAsync();
+  if (args.NetworkAccess == NetworkAccess.Internet && profiles.Session is { } session)
+   _ = SyncAniListAsync(session);
  }
 
- async Task SyncAniListAsync()
+ void OnProfileChanged()
+ {
+  if (Connectivity.Current.NetworkAccess == NetworkAccess.Internet && profiles.Session is { } session)
+   _ = SyncAniListAsync(session);
+ }
+
+ static async Task SyncAniListAsync(ProfileSession session)
  {
   try
   {
-   await services.GetRequiredService<AniListAccount>().SyncPendingAsync(services.GetRequiredService<LocalStore>());
+   if (session.AniList is { } account) await account.SyncPendingAsync(session.Store);
   }
-  catch { /* The persisted queue is available to retry from Profile. */ }
+  catch { /* The profile's persisted queue is available to retry. */ }
  }
 
- // Construct the page after Application resources and the window lifecycle exist.
  protected override Window CreateWindow(IActivationState? activationState) =>
   new(services.GetRequiredService<MainPage>());
 }

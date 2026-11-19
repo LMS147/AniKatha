@@ -1,6 +1,5 @@
 @page "/resume/{Id}"
-@inject LocalStore Store
-@inject IServiceProvider Services
+@inherits ProfileComponent
 <a class="text-link" href="/library">← Library</a>
 @if(entry!=null)
 {
@@ -28,7 +27,7 @@ else if(loaded){<p>This history entry is unavailable.</p>}
   if(id!=Id)return;
   entry=item;
   downloadId = null;
-  if (item is not null && Services.GetService(typeof(OfflineDownloads)) is OfflineDownloads downloads)
+  if (item is not null && ProfileDownloads is OfflineDownloads downloads)
   {
    var key = ResumeEntry.Key(item.Origin, item.Type, item.TitleId, item.UnitId, item.Source);
    var local = (await downloads.ListAsync()).FirstOrDefault(job => job.State == DownloadState.Complete && job.Selection.ProgressKey == key);

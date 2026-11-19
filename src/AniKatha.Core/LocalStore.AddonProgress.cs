@@ -24,7 +24,7 @@ public sealed partial class LocalStore
 
     public async Task<bool> CompleteAddonUnitAsync(string unitKey, int? viewerId, AddonAniListProgress? expectedMapping = null)
     {
-        await initialized.Value;
+        await ReadyAsync();
         var queued = false;
         await db.RunInTransactionAsync(connection =>
         {

@@ -1,69 +1,38 @@
 @page "/profile"
-@inject LocalStore Store
-@inject AddonClient Addons
-<header class="page-header"><span class="eyebrow">MAKE IT YOURS</span><h1>Profile</h1><p>Your stories. Your space.</p></header>
-<section class="profile-card"><div class="avatar large">A</div><div><h2>Story explorer</h2><p class="muted">Local profile · No account required</p></div><span class="pill">ON DEVICE</span></section>
-@if(message is not null){<div class="notice" role="status">@message</div>}
-<AniListProfile/>
-<h2>Appearance</h2><section class="settings-card"><h3>Accent colour</h3><p class="muted">Choose a colour, then reload or reopen the app to apply it.</p><div class="swatches">@foreach(var colour in colours){<button style="background:@colour.Value" aria-label="@colour.Key" aria-pressed="@(accent==colour.Value)" @onclick="()=>SetAccent(colour.Value)">@(accent==colour.Value?"✓":"")</button>}</div></section>
-<h2>Content & discovery</h2><section class="settings-card"><h3>Manage add-ons</h3><p class="muted">Install a public manifest to add a source. Catalogues appear under Source. YouTube episodes appear under Episodes from add-ons in Anime.</p>
-<form @onsubmit="Install" @onsubmit:preventDefault><label>Manifest URL<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" @bind="url" @bind:event="oninput" placeholder="https://provider.example/manifest.json" required /></label><button class="primary" type="submit" disabled="@installing">@(installing?"Checking manifest…":"Add source")</button></form>
-@if(addonMessage is not null){<div class="notice" role="@(addonError ? "alert" : "status")">@addonMessage</div>}
-@foreach(var addon in installed){<div class="addon-row"><div><strong>@addon.Name</strong><small>v@addon.Version · @(addon.CatalogueProvider == JikanCatalogue.Provider ? "Catalogue available" : addon.YouTubeEpisodesJson is not null ? "YouTube episodes available" : "Manifest saved")</small><small>@addon.CapabilitySummary()</small><p>@addon.Description</p></div><div class="addon-actions">
-<button disabled="@installing" @onclick="()=>Manage(() => Store.SetAddonDisabledAsync(addon.Url,!addon.Disabled))">@(addon.Disabled?"Enable":"Disable")</button>
-<button disabled="@installing" @onclick="()=>Manage(async () => await Store.RefreshAddonAsync(await Addons.InspectAsync(addon.Url)))">Refresh</button>
-<button disabled="@(installing || addon == installed.First())" @onclick="()=>Manage(() => Store.MoveAddonAsync(addon.Url,-1))">Move up</button>
-<button disabled="@(installing || addon == installed.Last())" @onclick="()=>Manage(() => Store.MoveAddonAsync(addon.Url,1))">Move down</button>
-<button disabled="@installing" @onclick="()=>Manage(() => Store.RemoveAddonAsync(addon.Url))">Remove</button>
-</div></div>}
-@if(installed.Count==0){<p class="source-note">No add-ons installed.</p>}</section>
-<PlaybackSettings/>
-<section class="settings-card"><h3>About AniKatha</h3><p>Anime and manga, one story at a time.</p><small class="muted">Foundation 0.1.0 · .NET MAUI Blazor Hybrid</small></section>
+@inherits ProfileComponent
+@inject IServiceProvider Services
+
+<section class="settings-screen profile-hub">
+ <header class="page-header"><h1>Profile</h1></header>
+ <section class="profile-card">
+  <div class="profile-identity">
+   <ProfileAvatar Name="@Active.Name" Avatar="@Active.Avatar" Size="large" />
+   <div><h2>@Active.Name</h2><p>@(Active.Locked ? "PIN protected · On this device" : "On this device")</p></div>
+  </div>
+  <a class="secondary" href="/profile/profiles">Switch profile</a>
+ </section>
+ <div class="settings-list">
+  <a class="settings-row" href="/profile/appearance"><span class="settings-icon" aria-hidden="true">✦</span>
+   <span><strong>Appearance</strong><small>Theme, accent colour, and poster density</small></span><span aria-hidden="true">›</span></a>
+  <a class="settings-row" href="/profile/sources"><span class="settings-icon" aria-hidden="true">⊕</span>
+   <span><strong>Sources</strong><small>Install and manage add-ons</small></span><span aria-hidden="true">›</span></a>
+  <a class="settings-row" href="/profile/anilist"><span class="settings-icon" aria-hidden="true">◎</span>
+   <span><strong>AniList</strong><small>@accountStatus</small></span><span aria-hidden="true">›</span></a>
+  <a class="settings-row" href="/profile/playback"><span class="settings-icon" aria-hidden="true">▷</span>
+   <span><strong>Playback &amp; reader</strong><small>Player, subtitles, and reading defaults</small></span><span aria-hidden="true">›</span></a>
+ </div>
+</section>
+
 @code {
- string url="",accent="#b5a0ff";string? message,addonMessage;bool installing,addonError;List<InstalledAddon> installed=[];
- Dictionary<string,string> colours=new(){["Violet"]="#b5a0ff",["Ocean"]="#83c8ff",["Rose"]="#ffa3c7",["Emerald"]="#8cdeb7",["Amber"]="#ffd28a",["White"]="#f4f4fa"};
- protected override async Task OnInitializedAsync(){try{installed=await Store.GetAddonsAsync(true);accent=await Store.GetSettingAsync("accent")??accent;}catch{message="Could not load settings.";}}
- async Task SetAccent(string value){try{await Store.SetSettingAsync("accent",value);accent=value;message="Colour saved. Reload or reopen the app to apply it.";}catch{message="Could not save appearance.";}}
- async Task Install()
+ LocalProfile Active => (Services.GetService(typeof(LocalProfiles)) as LocalProfiles)?.Active ?? LocalProfile.Default;
+ string accountStatus = "Not connected";
+ protected override async Task OnInitializedAsync()
  {
-  if (installing) return;
-  installing = true;
-  addonMessage = null;
-  addonError = false;
   try
   {
-   InstalledAddon addon;
-   try { addon = await Addons.InspectAsync(url); }
-   catch (InvalidOperationException ex) { addonError = true; addonMessage = ex.Message; return; }
-   catch { addonError = true; addonMessage = "Could not download the manifest. Check the URL and connection."; return; }
-
-   try
-   {
-    await Store.SaveAddonAsync(addon);
-    installed.RemoveAll(item => item.Url == addon.Url);
-    installed.Add(addon);
-    url = "";
-    addonMessage = addon.CatalogueProvider == JikanCatalogue.Provider
-     ? $"Added {addon.Name}. Open Anime or Manga and choose it under Source."
-     : addon.YouTubeEpisodesJson is not null
-      ? $"Added {addon.Name}. Open Anime and look under Episodes from add-ons."
-      : $"Added {addon.Name}.";
-   }
-   catch (InvalidOperationException ex) { addonError=true; addonMessage=ex.Message; }
-   catch { addonError = true; addonMessage = "The manifest was downloaded, but could not be saved on this device."; }
+   if (ProfileAniList is { } account && await account.StoredViewerAsync() is { } viewer)
+    accountStatus = $"Connected as {viewer.Name}";
   }
-  finally { installing = false; }
- }
-
- async Task Manage(Func<Task> operation)
- {
-  if (installing) return;
-  installing=true;
-  addonError=false;
-  addonMessage=null;
-  try { await operation(); installed=await Store.GetAddonsAsync(true); }
-  catch (InvalidOperationException ex) { addonError=true; addonMessage=ex.Message; }
-  catch { addonError=true; addonMessage="Could not update this source. Please retry."; }
-  finally { installing=false; }
+  catch { accountStatus = "Could not check account"; }
  }
 }

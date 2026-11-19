@@ -3,7 +3,7 @@
 @using System.Globalization
 @implements IAsyncDisposable
 @inject IJSRuntime JS
-@inject LocalStore Store
+@inherits ProfileComponent
 @inject IServiceProvider Services
 @inject AddonClient Addons
 
@@ -290,7 +290,7 @@
   try
   {
    if (!advance && !await PauseAndCheckpointAsync()) return false;
-   var receipt = await AddonCompletion.SaveAsync(Store, Services, EpisodeKey);
+   var receipt = await AddonCompletion.SaveAsync(Store, ProfileAniList, EpisodeKey);
    completed = true;
    completionMessage = receipt.Message;
    if (receipt.Sync is not null) _ = ShowSyncResult(receipt.Sync);

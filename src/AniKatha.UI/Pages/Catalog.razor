@@ -3,7 +3,7 @@
 @inject IJSRuntime JS
 @inject AniListClient Api
 @inject JikanCatalogue Jikan
-@inject LocalStore Store
+@inherits ProfileComponent
 <header class="page-header" @ref="heading"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
 @if (appliedSearch.Length == 0 && source.Length == 0) { @Featured }
 <form @onsubmit="Search" @onsubmit:preventDefault>

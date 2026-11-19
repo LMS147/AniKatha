@@ -1,6 +1,5 @@
 @page "/library"
-@inject LocalStore Store
-@inject IServiceProvider Services
+@inherits ProfileComponent
 @using System.Globalization
 <header class="page-header"><span class="eyebrow">STORIES YOU KEEP</span><h1>Library</h1><p>Your collection, always close.</p></header>
 <div class="tabs" role="group" aria-label="Library format">@foreach(var tab in new[]{"All","Anime","Manga","Favourites","Downloads"}){<button class="@(filter==tab?"selected":"")" @onclick="()=>filter=tab">@tab</button>}</div>
@@ -50,7 +49,7 @@ else{<div class="library-list">@foreach(var item in Visible){<article class="lib
   try
   {
    items = await Store.GetLibraryAsync();
-   tracking = (AniListAccount?)Services.GetService(typeof(AniListAccount));
+   tracking = ProfileAniList;
    viewer = tracking is null ? null : await tracking.StoredViewerAsync();
    if (viewer is not null)
    {

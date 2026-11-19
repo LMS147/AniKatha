@@ -36,5 +36,7 @@ public sealed class SourceResultCache
         entries[key] = new(manifest, data, expiry);
     }
 
+    internal void Clear() => entries.Clear();
+
     internal void Invalidate(string key) => entries.Remove(key);
 }

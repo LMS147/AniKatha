@@ -5,9 +5,10 @@ using Microsoft.Maui.Authentication;
 
 namespace AniKatha.Mobile;
 
-internal sealed class AniListAuthorization : IAniListAuthorization
+internal sealed class AniListAuthorization(string profileId) : IAniListAuthorization
 {
-    private const string StorageKey = "anilist-credential";
+    private string StorageKey => profileId == LocalProfile.DefaultId
+        ? "anilist-credential" : "anilist-credential-" + profileId;
     public string? ClientId { get; } = typeof(AniListAuthorization).Assembly
         .GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(item => item.Key == "AniListClientId")?.Value;
     public Uri Callback { get; } = new("co.zyma.anikatha://anilist/callback");

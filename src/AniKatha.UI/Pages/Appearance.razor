@@ -1,0 +1,67 @@
+@page "/profile/appearance"
+@inherits ProfileComponent
+<a class="text-link" href="/profile">← Profile</a>
+<section class="settings-screen">
+ <header class="page-header"><h1>Appearance</h1><p>Choose how AniKatha looks for this profile.</p></header>
+ <div class="appearance-preview" data-theme="@draft.Mode" data-density="@draft.Density" style="@draft.Css" aria-label="Appearance preview">
+  <div class="preview-poster" aria-hidden="true"><span>☾</span></div>
+  <div><small>Live preview</small><h2>The Midnight Lighthouse</h2><p>Manga · Continue at page 4</p>
+   <div class="preview-controls"><span class="preview-tab">Manga</span><span class="primary">Continue reading</span></div>
+  </div>
+ </div>
+ <section class="settings-card appearance-options">
+  <fieldset class="choice-field"><legend>Theme</legend>
+   <div class="settings-actions">
+    @foreach (var mode in new[] { "system", "light", "dark" })
+    {
+     <button type="button" class="secondary" aria-pressed="@(draft.Mode == mode)"
+      @onclick="() => Edit(draft with { Mode = mode })">@(draft.Mode == mode ? "✓ " : "")@System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(mode)</button>
+    }
+   </div>
+  </fieldset>
+  <fieldset class="choice-field"><legend>Accent colour</legend>
+   <div class="avatar-options">
+    @foreach (var preset in AppearanceSettings.Presets)
+    {
+     <button type="button" class="secondary preset" aria-pressed="@(draft.Accent == preset.Name)"
+       @onclick="() => Edit(draft with { Accent = preset.Name })"><span style="background:@preset.Dark" aria-hidden="true"></span>@preset.Name</button>
+    }
+   </div>
+  </fieldset>
+  <fieldset class="choice-field"><legend>Poster density</legend>
+   <div class="settings-actions">
+    <button class="secondary" aria-pressed="@(draft.Density == "comfortable")" @onclick='() => Edit(draft with { Density = "comfortable" })'>Comfortable</button>
+    <button class="secondary" aria-pressed="@(draft.Density == "compact")" @onclick='() => Edit(draft with { Density = "compact" })'>Compact</button>
+   </div>
+  </fieldset>
+  @if (message is not null) { <p role="status">@message</p> }
+  <div class="settings-actions">
+   <button class="primary" disabled="@(saving || draft == saved)" @onclick="Save">Save appearance</button>
+   <button class="secondary" disabled="@(saving || draft == saved)" @onclick="() => Edit(saved)">Cancel preview</button>
+   <button class="text-link" disabled="@saving" @onclick="() => Edit(new())">Reset to defaults</button>
+  </div>
+ </section>
+</section>
+@code {
+ [CascadingParameter(Name = "CurrentAppearance")] public AppearanceSettings? Current { get; set; }
+ [CascadingParameter] public Func<AppearanceSettings, Task>? Apply { get; set; }
+ AppearanceSettings draft = new(), saved = new();
+ string? message;
+ bool saving;
+ protected override async Task OnInitializedAsync() => draft = saved = Current ?? await AppearanceSettings.LoadAsync(Store);
+ void Edit(AppearanceSettings value) { draft = value; message = null; }
+ async Task Save()
+ {
+  if (saving || draft == saved) return;
+  saving = true;
+  try
+  {
+   await draft.SaveAsync(Store);
+   saved = draft;
+   if (Apply is not null) await Apply(saved);
+   message = "Appearance saved.";
+  }
+  catch { message = "Could not apply appearance. Your selection is still here."; }
+  finally { saving = false; }
+ }
+}

@@ -1,0 +1,57 @@
+@page "/profile/profiles/manage"
+@inject LocalProfiles Profiles
+<a class="text-link" href="/profile/profiles">← Switch profile</a>
+<section class="settings-screen">
+ <header class="page-header"><h1>Manage profiles</h1></header>
+ @foreach (var profile in Profiles.All)
+ {
+  <section class="settings-card" @key="profile.Id">
+   <div class="profile-identity"><ProfileAvatar Name="@profile.Name" Avatar="@profile.Avatar" /><h2>@profile.Name</h2></div>
+   <div class="settings-actions">
+    @if (!profile.Locked || profile.Id == Profiles.Active.Id)
+    {
+     <a class="secondary" href="@($"/profile/profiles/edit/{profile.Id}")">Edit profile</a>
+    }
+    @if (Profiles.SupportsPin && profile.Id == Profiles.Active.Id)
+    {
+     <a class="secondary" href="/profile/profiles/pin">@(profile.Locked ? "Change or remove PIN" : "Set a PIN")</a>
+    }
+    @if (profile.Id != Profiles.Active.Id && Profiles.All.Count > 1 && !profile.Locked)
+    {
+     <button class="secondary danger-action" @onclick="() => pending = profile">Remove</button>
+    }
+   </div>
+   @if (profile.Locked && profile.Id != Profiles.Active.Id) { <small>Switch to this profile to edit its name, avatar, or PIN.</small> }
+  </section>
+ }
+ @if (pending is { } target)
+ {
+  <section class="settings-card danger-panel" role="alert">
+   <h2>Remove @target.Name?</h2>
+   <p>This deletes the profile’s local Library, history, progress, settings, installed sources, pending sync updates, and downloaded files. Its remote AniList account stays available.</p>
+   <div class="settings-actions"><button class="secondary" disabled="@busy" @onclick="() => pending = null">Cancel</button>
+    <button class="primary danger-action" disabled="@busy" @onclick="Remove">Remove profile</button></div>
+  </section>
+ }
+ @if (message is not null) { <p role="status">@message</p> }
+ <a class="primary" href="/profile/profiles/new">Add profile</a>
+</section>
+@code {
+ LocalProfile? pending;
+ string? message;
+ bool busy;
+
+ async Task Remove()
+ {
+  if (pending is not { } target || busy) return;
+  busy = true;
+  try
+  {
+   var filesRemoved = await Profiles.RemoveAsync(target.Id);
+   pending = null;
+   message = filesRemoved ? "Profile removed." : "Profile removed. AniKatha will retry clearing its files next time it opens.";
+  }
+  catch { message = "Could not finish removing the profile. Check available storage and try again."; }
+  finally { busy = false; }
+ }
+}

@@ -1,0 +1,79 @@
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
+<section class="settings-screen profile-switcher">
+ <header class="page-header"><h1>@(lockedTarget is null ? "Switch profile" : "Unlock profile")</h1></header>
+ @if (lockedTarget is { } target)
+ {
+  <section class="settings-card">
+   <div class="profile-identity"><ProfileAvatar Name="@target.Name" Avatar="@target.Avatar" /><h2>@target.Name</h2></div>
+   <form @onsubmit="Unlock" @onsubmit:preventDefault>
+    <label>@(recovery ? "Recovery code" : "Profile PIN")
+     <input type="password" inputmode="@(recovery ? "text" : "numeric")" maxlength="@(recovery ? 64 : 8)" @bind="pin" autocomplete="off" />
+    </label>
+    @if (message is not null) { <p role="alert">@message</p> }
+    <div class="settings-actions"><button class="primary" disabled="@busy">Unlock</button>
+     <button type="button" class="secondary" @onclick="Cancel">Cancel</button></div>
+   </form>
+   <button class="text-link" @onclick="ToggleRecovery">@(recovery ? "Use PIN" : "Use recovery code")</button>
+  </section>
+ }
+ else if (Profiles is { } profiles)
+ {
+  @if (profiles.Session is null) { <p>Choose a profile to continue.</p> }
+  <div class="settings-list">
+   @foreach (var profile in profiles.All)
+   {
+    <button type="button" class="settings-row" @key="profile.Id" disabled="@busy" @onclick="() => Select(profile)">
+     <ProfileAvatar Name="@profile.Name" Avatar="@profile.Avatar" />
+     <span><strong>@profile.Name</strong><small>@(profile.Locked ? "PIN protected" : "Local profile")</small></span>
+     @if (profile.Id == profiles.Active.Id && profiles.Session is not null) { <span class="selection-label">✓ Active</span> }
+     else { <span aria-hidden="true">›</span> }
+    </button>
+   }
+  </div>
+  @if (message is not null) { <p role="alert">@message</p> }
+  @if (profiles.Session is not null)
+  {
+   <div class="settings-actions">
+    <a class="primary" href="/profile/profiles/new">Add profile</a>
+    <a class="secondary" href="/profile/profiles/manage">Manage profiles</a>
+   </div>
+  }
+ }
+</section>
+
+@code {
+ LocalProfiles? Profiles => Services.GetService(typeof(LocalProfiles)) as LocalProfiles;
+ LocalProfile? lockedTarget;
+ bool busy, recovery;
+ string pin = "";
+ string? message;
+
+ async Task Select(LocalProfile profile)
+ {
+  message = null;
+  if (profile.Locked && !(Profiles?.Active.Id == profile.Id && Profiles.Session is not null))
+  {
+   lockedTarget = profile;
+   return;
+  }
+  await Activate(profile, null);
+ }
+ Task Unlock() => lockedTarget is { } profile ? Activate(profile, pin) : Task.CompletedTask;
+ async Task Activate(LocalProfile profile, string? value)
+ {
+  if (Profiles is not { } profiles || busy) return;
+  busy = true;
+  try
+  {
+   await profiles.ActivateAsync(profile.Id, value, recovery);
+   Cancel();
+   Navigation.NavigateTo("/profile");
+  }
+  catch (InvalidOperationException ex) { message = ex.Message; }
+  catch { message = "Could not open the profile. Try again."; }
+  finally { busy = false; }
+ }
+ void ToggleRecovery() { recovery = !recovery; pin = ""; message = null; }
+ void Cancel() { lockedTarget = null; pin = ""; message = null; recovery = false; }
+}
