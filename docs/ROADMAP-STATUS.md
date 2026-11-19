@@ -26,7 +26,7 @@ Baseline: node --test scripts/*.test.mjs passed 6/6; python scripts/test_startup
 | 18 | Offline queue | Pending | Durable account queue pending | LocalStore | Restart and replay newest edit |
 | 19 | Sync conflicts | Pending | Conflict handling pending | LocalStore | Test reset and independent edits |
 | 20 | Cross-device resume | Pending | Local resume exists; authorized backend must be established | Resume, LocalStore | Restore between two devices |
-| 21 | Settings sync | Optional and pending | Optional; disabled because no selection was made | Profile | Requires explicit enablement and authorized backend |
+| 21 | Settings sync | Optional and pending | Disabled for this run because the session switch was unspecified | Profile | Requires explicit enablement and authorized backend |
 | 22 | Playback speed | Pending | Persistent speed control pending | WatchPreview | Restart restores default |
 | 23 | Subtitle language | Pending | Manual tracks exist; preferred language pending | WatchPreview | Absent language and override |
 | 24 | Subtitle appearance | Pending | Track styling pending | WatchPreview, episode-player.mjs | Check native and embedded support |
