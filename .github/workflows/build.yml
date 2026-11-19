@@ -29,6 +29,8 @@ jobs:
   android:
     name: Android debug APK
     runs-on: windows-latest
+    outputs:
+      anilist-configured: ${{ steps.android-build.outputs.anilist-configured }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -39,7 +41,26 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: dotnet workload install maui-android
-      - run: dotnet build src/AniKatha.Mobile/AniKatha.Mobile.csproj -c Debug -f net10.0-android
+      - name: Build Android APK
+        id: android-build
+        shell: pwsh
+        env:
+          ANILIST_CLIENT_ID: ${{ vars.ANILIST_CLIENT_ID }}
+        run: |
+          $clientId = "$env:ANILIST_CLIENT_ID".Trim()
+          $buildArgs = @('build', 'src/AniKatha.Mobile/AniKatha.Mobile.csproj', '-c', 'Debug', '-f', 'net10.0-android')
+          $configured = 'false'
+          if ($clientId) {
+            $parsedId = 0
+            if ($clientId -cnotmatch '^[0-9]+$' -or -not [int]::TryParse($clientId, [ref]$parsedId) -or $parsedId -le 0) {
+              throw 'ANILIST_CLIENT_ID must be a positive integer from AniList developer settings.'
+            }
+            $buildArgs += "-p:AniListClientId=$clientId"
+            $configured = 'true'
+          }
+          dotnet @buildArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "anilist-configured=$configured" >> $env:GITHUB_OUTPUT
       - name: Check standalone APK contents
         shell: pwsh
         run: |
@@ -96,6 +117,7 @@ jobs:
       - name: Install and launch the downloadable APK
         env:
           ANIKATHA_STARTUP_MODE: ${{ matrix.mode }}
+          ANIKATHA_TEST_ANILIST_CONFIGURED: ${{ needs.android.outputs.anilist-configured }}
           ANIKATHA_TEST_FIXTURE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         uses: reactivecircus/android-emulator-runner@v2
         with:

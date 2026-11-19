@@ -9,6 +9,7 @@ export function hasNavigation(snapshot) {
 
 export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
   const mode = process.argv[2] ?? 'fresh';
+  const aniListConfigured = process.env.ANIKATHA_TEST_ANILIST_CONFIGURED;
   const fixtureRef = process.env.ANIKATHA_TEST_FIXTURE_REF;
   const fixture = 'https://raw.githubusercontent.com/LMS147/AniKatha/' +
     (fixtureRef ?? '118ce2c1895db30ec2ef2dd7db50e952c4de1bff') + '/examples/addons/story-sampler/manifest.json';
@@ -207,6 +208,13 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         const click = async name => (await wait(() => button(name), name)).click();
         const tab = name => document.querySelector('.bottom-nav a[href="/' + name + '"]').click();
         tab('profile');
+        const expectedAniList = ${JSON.stringify(mode === 'fresh' ? aniListConfigured ?? '' : '')};
+        if (expectedAniList === 'true') {
+          await wait(() => button('Connect AniList'), 'AniList sign-in in the configured APK');
+        } else if (expectedAniList === 'false') {
+          await wait(() => document.querySelector('.anilist-card')?.textContent.includes('AniList sign-in is unavailable for this build.'),
+            'AniList availability notice in the unconfigured APK');
+        }
         const input = await wait(() => document.querySelector('input[inputmode="url"]'), 'manifest input');
         input.value = ${JSON.stringify(fixture)};
         input.dispatchEvent(new Event('input', {bubbles:true}));
@@ -255,6 +263,9 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     if (httpAddon.result?.value !== true)
       throw new Error(httpAddon.exceptionDetails?.exception?.description ?? 'Installed HTTP add-on workflow failed.');
     console.log('PASS: installed HTTP add-on supplies anime and manga resources and preserves reading progress across disable/enable.');
+    if (mode === 'fresh' && aniListConfigured) {
+      console.log('PASS: Profile shows the AniList sign-in state expected for this APK.');
+    }
     if (testDownloads) {
       const adb = (...args) => execFileSync('adb', ['shell', ...args], { encoding: 'utf8' }).trim();
       adb('cmd', 'connectivity', 'airplane-mode', 'enable');
