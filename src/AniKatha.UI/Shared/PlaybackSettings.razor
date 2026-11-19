@@ -1,0 +1,102 @@
+@inject LocalStore Store
+
+<section class="settings-card">
+ <h3>Playback &amp; reader</h3>
+ <label>Preferred subtitle language
+  <input placeholder="For example, en or ja" maxlength="35" value="@language" @onchange="SaveLanguage" />
+ </label>
+ <label>Subtitle size
+  <select value="@size" @onchange='args => SaveChoice(MediaPreferences.SubtitleSizeKey, args, value => size = value)'>
+   <option value="normal">Normal</option><option value="small">Small</option><option value="large">Large</option>
+  </select>
+ </label>
+ <label>Subtitle background
+  <select value="@background" @onchange='args => SaveChoice(MediaPreferences.SubtitleBackgroundKey, args, value => background = value)'>
+   <option value="dark">Dark</option><option value="transparent">Transparent</option>
+  </select>
+ </label>
+ <label>Subtitle placement
+  <select value="@placement" @onchange='args => SaveChoice(MediaPreferences.SubtitlePlacementKey, args, value => placement = value)'>
+   <option value="automatic">From the track</option><option value="top">Top</option><option value="bottom">Bottom</option>
+  </select>
+ </label>
+ <p class="muted">Appearance applies to subtitle tracks in AniKatha’s video player.</p>
+ <label>Skip forward and rewind interval
+  <select value="@seekSeconds" @onchange='args => SaveChoice(MediaPreferences.SeekIntervalKey, args, value => seekSeconds = MediaPreferences.ReadSeekInterval(value))'>
+   @foreach (var interval in MediaPreferences.SeekIntervals) { <option value="@interval">@interval seconds</option> }
+  </select>
+ </label>
+ <label><input type="checkbox" checked="@autoplay" @onchange="SaveAutoplay" /> Autoplay next episode</label>
+ <h3>Reader defaults</h3>
+ <label>Default reading mode
+  <select value="@reader.Mode" @onchange='args => SaveReader(reader with { Mode = ReaderPreferences.SafeMode(args.Value?.ToString()) })'>
+   <option value="ltr">Left to right</option><option value="rtl">Right to left</option><option value="vertical">Vertical scrolling</option>
+  </select>
+ </label>
+ <label>Default page fit
+  <select value="@reader.Fit" @onchange='args => SaveReader(reader with { Fit = ReaderPreferences.SafeFit(args.Value?.ToString()) })'>
+   <option value="width">Fit to width</option><option value="page">Fit to page</option>
+  </select>
+ </label>
+ <label>Default zoom
+  <select value="@reader.Zoom" @onchange='args => SaveReader(reader with { Zoom = ReaderPreferences.SafeZoom(args.Value?.ToString()) })'>
+   @foreach (var level in ReaderPreferences.ZoomLevels) { <option value="@level">@level%</option> }
+  </select>
+ </label>
+ @if (message is not null) { <p role="status">@message</p> }
+</section>
+
+@code {
+ string language = "", size = "normal", background = "dark", placement = "automatic";
+ ReaderPreferences reader = new();
+ bool autoplay;
+ int seekSeconds = 10;
+ string? message;
+
+ protected override async Task OnInitializedAsync()
+ {
+  try
+  {
+   reader = await ReaderPreferences.LoadAsync(Store, ReaderPreferences.GlobalKey);
+   language = await Store.GetSettingAsync(MediaPreferences.SubtitleLanguageKey) ?? "";
+   size = await Store.GetSettingAsync(MediaPreferences.SubtitleSizeKey) ?? "normal";
+   background = await Store.GetSettingAsync(MediaPreferences.SubtitleBackgroundKey) ?? "dark";
+   placement = await Store.GetSettingAsync(MediaPreferences.SubtitlePlacementKey) ?? "automatic";
+   autoplay = await Store.GetSettingAsync(MediaPreferences.AutoplayKey) == "true";
+   seekSeconds = MediaPreferences.ReadSeekInterval(await Store.GetSettingAsync(MediaPreferences.SeekIntervalKey));
+  }
+  catch { message = "Could not load playback settings."; }
+ }
+
+ Task SaveLanguage(ChangeEventArgs args)
+ {
+  language = (args.Value?.ToString() ?? "").Trim();
+  return Save(MediaPreferences.SubtitleLanguageKey, language);
+ }
+
+ async Task SaveReader(ReaderPreferences value)
+ {
+  reader = value;
+  try { await value.SaveAsync(Store, ReaderPreferences.GlobalKey); message = "Reader defaults saved."; }
+  catch { message = "Could not save reader defaults."; }
+ }
+
+ Task SaveAutoplay(ChangeEventArgs args)
+ {
+  autoplay = args.Value is true;
+  return Save(MediaPreferences.AutoplayKey, autoplay ? "true" : "false");
+ }
+
+ Task SaveChoice(string key, ChangeEventArgs args, Action<string> assign)
+ {
+  var value = args.Value?.ToString() ?? "";
+  assign(value);
+  return Save(key, value);
+ }
+
+ async Task Save(string key, string value)
+ {
+  try { await Store.SetSettingAsync(key, value); message = "Preference saved."; }
+  catch { message = "Could not save this preference."; }
+ }
+}

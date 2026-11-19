@@ -62,3 +62,18 @@
 
 .provider-detail-poster { width: min(100%, 150px); aspect-ratio: 2 / 3; object-fit: cover; border-radius: 15px; margin-bottom: 12px; }
 .catalog-search-fields { padding: 0; margin: 0; border: 0; min-inline-size: 0; }
+
+.episode-video.subtitle-small::cue { font-size: 0.85em; }
+.episode-video.subtitle-large::cue { font-size: 1.25em; }
+.episode-video.subtitle-dark::cue { background-color: rgba(0, 0, 0, 0.8); }
+.episode-video.subtitle-transparent::cue { background-color: transparent; text-shadow: 0 1px 3px black; }
+
+.reader-controls.reader-rtl { flex-direction: row-reverse; }
+.reader-stack .reader-page { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; margin: 0 auto 8px; scroll-margin-top: 16px; }
+
+.reader-display { margin-block: 8px; }
+.reader-viewport { max-width: 100%; overflow-x: auto; }
+.reader-viewport.fit-page .reader-page { max-height: 75dvh; width: auto; object-fit: contain; }
+.reader-viewport.zoomed .reader-page { width: var(--reader-zoom); max-width: none; }
+
+.reader-jump { display: flex; align-items: end; gap: 8px; margin-bottom: 12px; }

@@ -1,4 +1,13 @@
-export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false) {
+export function placeSubtitles(cues, placement) {
+  if (placement !== 'top' && placement !== 'bottom') return cues;
+  const line = placement === 'top' ? '10%' : '90%';
+  return cues.split(/\r?\n/).map(text => {
+    if (!/^\s*(?:\d+:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d+:)?\d{2}:\d{2}\.\d{3}/.test(text)) return text;
+    return text.replace(/\s+line:[^\s]+/g, '') + ' line:' + line;
+  }).join('\n');
+}
+
+export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1, startPlaying = false) {
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
   let ready = false;
@@ -24,7 +33,12 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
 
   video.addEventListener('loadedmetadata', () => {
     if (position > 0 && position < video.duration) video.currentTime = position;
+    video.playbackRate = speed;
     ready = true;
+    if (startPlaying) {
+      startPlaying = false;
+      video.play()?.catch(() => {});
+    }
   }, options);
   video.addEventListener('timeupdate', () => save(false), options);
   for (const event of ['pause', 'seeked']) {
@@ -57,13 +71,23 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
   }
   return {
     clearSubtitle,
-    setSubtitle(language, cues) {
+    checkpoint: () => save(true),
+    seek(seconds) {
+      if (!ready || !Number.isFinite(seconds) || !Number.isFinite(video.duration)) return;
+      video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+    },
+    setSpeed(value) {
+      if (!Number.isFinite(value) || value < 0.5 || value > 2) return;
+      speed = value;
+      video.playbackRate = value;
+    },
+    setSubtitle(language, cues, placement) {
       clearSubtitle();
       track = document.createElement('track');
       track.kind = 'subtitles';
       track.label = language || 'Subtitles';
       track.srclang = language || 'und';
-      subtitleUrl = URL.createObjectURL(new Blob([cues], {type: 'text/vtt'}));
+      subtitleUrl = URL.createObjectURL(new Blob([placeSubtitles(cues, placement)], {type: 'text/vtt'}));
       track.src = subtitleUrl;
       video.appendChild(track);
       track.track.mode = 'showing';

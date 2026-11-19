@@ -133,7 +133,8 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await waitFor(() => loadedPage(2), 'resumed page 2');
         (await waitFor(() => find('.reader-controls button.primary:not(:disabled)'), 'Next page from page 2')).click();
         await waitFor(() => loadedPage(3) && find('.reader-controls button.secondary:not(:disabled)'), 'last bundled page');
-        find('.reader-controls button.secondary').click();
+        (await waitFor(() => [...document.querySelectorAll('.reader-controls button.secondary:not(:disabled)')]
+          .find(button => button.textContent.trim() === '← Previous'), 'previous-page control')).click();
         await waitFor(() => loadedPage(2), 'Previous page');
         return true;
       })()`,
