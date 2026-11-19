@@ -290,7 +290,7 @@ main#main-content:has(> .home-landing) { padding: 0; }
  --home-action: #1763c6; --home-text: #f3f7ff; --home-muted: #a9b8cd; --home-border: #26354b;
  display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100dvh;
  color: var(--home-text); background: var(--home-canvas); color-scheme: dark;
- padding-top: env(safe-area-inset-top);
+ padding-top: max(18px, env(safe-area-inset-top));
 }
 .home-landing p, .home-landing small { color: var(--home-muted); }
 .home-header {
@@ -316,7 +316,7 @@ main#main-content:has(> .home-landing) { padding: 0; }
 .home-inline { width: max-content; max-width: 100%; margin-bottom: 10px; }
 .home-viewports { position: relative; min-height: 0; }
 .home-view {
- position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain;
+ position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none;
  padding: 4px max(16px, env(safe-area-inset-right)) calc(106px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
 .home-view[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
@@ -359,6 +359,7 @@ main#main-content:has(> .home-landing) { padding: 0; }
 .home-card-copy small:first-child { background: var(--home-raised); padding: 3px 6px; margin: -5px -2px 0; border-radius: 0 0 6px 6px; }
 .home-panel { padding: 12px; background: var(--home-panel); border: 1px solid var(--home-border); border-radius: 15px; }
 .home-release-switch { margin-bottom: 12px; }
+.home-release-switch button { font-size: .77rem; padding-inline: 3px; overflow-wrap: break-word; }
 .home-rows { display: grid; gap: 6px; }
 .home-rows .home-card-target {
  display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 8px;

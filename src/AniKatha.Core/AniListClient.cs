@@ -39,11 +39,11 @@ public sealed partial class AniListClient(HttpClient http)
   m.GetProperty("id").GetInt32(), Text(m,"type")!, Text(m.GetProperty("title"),"userPreferred")!,
   Text(m.GetProperty("coverImage"),"large"), Text(m,"bannerImage"), Clean(Text(m,"description")),
   Number(m.GetProperty("startDate"),"year"), Text(m,"format"), Number(m,"averageScore"),
-  Number(m,"episodes"), Number(m,"chapters"), m.GetProperty("genres").EnumerateArray().Select(x=>x.GetString()!).ToArray()
+  Number(m,"episodes"), Number(m,"chapters"), AddonResources.Items(m,"genres").Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray()
  );
  static string? Empty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
- static string? Text(JsonElement value, string key) => value.TryGetProperty(key,out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
- static int? Number(JsonElement value, string key) => value.TryGetProperty(key,out var p) && p.TryGetInt32Safe(out var n) ? n : null;
+ static string? Text(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key,out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+ static int? Number(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key,out var p) && p.TryGetInt32Safe(out var n) ? n : null;
  static string? Clean(string? value) => value is null ? null : WebUtility.HtmlDecode(Regex.Replace(value,"<[^>]+>"," "));
 }
 internal static class JsonNumbers

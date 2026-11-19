@@ -43,7 +43,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
   });
   try {
     await connected;
-    const reply = await command('Runtime.evaluate', {
+    const probeHome = () => command('Runtime.evaluate', {
       awaitPromise: true,
       returnByValue: true,
       expression: `(async () => {
@@ -61,6 +61,16 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         return snapshot;
       })()`,
     }, 20000);
+    let reply;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        reply = await probeHome();
+        break;
+      } catch (error) {
+        if (!/Execution context was destroyed|Cannot find default execution context/.test(error.message) || attempt === 4) throw error;
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
+    }
     if (reply.exceptionDetails) throw new Error('WebView DOM inspection failed.');
     const snapshot = reply.result?.value;
     if (!snapshot) throw new Error('WebView returned no DOM snapshot.');
@@ -644,7 +654,8 @@ async function checkHomeAnimeResume(command, expected) {
 
 async function checkHomeViews(command) {
   for (const [action, name] of [
-    ['anime top', 'home-anime-top'], ['anime below', 'home-anime-releases-schedule'],
+    ['anime top', 'home-anime-top'], ['anime latest', 'home-anime-latest'],
+    ['anime upcoming', 'home-anime-upcoming'], ['anime below', 'home-anime-releases-schedule'],
     ['manga top', 'home-manga-history'], ['manga below', 'home-manga-discovery'],
     ['manga updates', 'home-manga-updates']
   ]) {
@@ -707,13 +718,19 @@ async function exerciseHome(action, expected) {
     const grid = find('#home-anime .home-grid');
     if (getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 2) throw new Error('Phone Home should show two poster columns');
     active('anime').scrollTop = 0;
+  } else if (action === 'anime latest' || action === 'anime upcoming') {
+    await settle('#home-anime');
+    scroll(action === 'anime latest' ? '[aria-labelledby="home-latest-title"]' : '[aria-labelledby="home-upcoming-title"]');
   } else if (action === 'anime below') {
     selectButton('#home-anime button', 'Trending').click();
     await wait(() => selectButton('#home-anime button', 'Trending').getAttribute('aria-pressed') === 'true', 'Trending filter');
     selectButton('#home-anime button', 'Just Completed').click();
     await wait(() => selectButton('#home-anime button', 'Just Completed').getAttribute('aria-pressed') === 'true', 'completion filter');
+    const selectedDay = () => find('#home-anime .home-day[aria-pressed="true"]')?.textContent;
+    const previousDay = selectedDay();
     find('#home-anime [aria-label="Next day"]').click();
-    await settle('#home-anime .home-section:last-child');
+    await wait(() => selectedDay() && selectedDay() !== previousDay, 'new schedule day is selected');
+    await settle('#home-anime');
     scroll('#home-anime .home-section:nth-child(4)');
     window.aniKathaHome = { anime: active('anime').scrollTop,
       date: find('#home-anime .home-day[aria-pressed="true"]').textContent };
@@ -726,17 +743,20 @@ async function exerciseHome(action, expected) {
     await settle('#home-manga .home-section:nth-child(3)');
     scroll('#home-manga .home-section:nth-child(3)');
   } else if (action === 'manga updates') {
-    await settle('#home-manga .home-section:nth-child(5)');
+    await settle('#home-manga');
     scroll('#home-manga .home-section:last-child');
     window.aniKathaHome.manga = active('manga').scrollTop;
   } else if (action === 'verify memory') {
     await format('anime');
     const memory = window.aniKathaHome;
-    if (Math.abs(active('anime').scrollTop - memory.anime) > 5 ||
-        find('#home-anime .home-day[aria-pressed="true"]')?.textContent !== memory.date ||
-        selectButton('#home-anime button', 'Trending').getAttribute('aria-pressed') !== 'true' ||
-        selectButton('#home-anime button', 'Just Completed').getAttribute('aria-pressed') !== 'true')
-      throw new Error('Anime position or filters were lost');
+    if (Math.abs(active('anime').scrollTop - memory.anime) > 5)
+      throw new Error('Anime scroll changed from ' + memory.anime + ' to ' + active('anime').scrollTop);
+    if (find('#home-anime .home-day[aria-pressed="true"]')?.textContent !== memory.date)
+      throw new Error('Anime schedule day was not restored');
+    for (const label of ['Trending', 'Just Completed']) {
+      if (selectButton('#home-anime button', label).getAttribute('aria-pressed') !== 'true')
+        throw new Error(label + ' filter was not restored');
+    }
     await format('manga');
     if (Math.abs(active('manga').scrollTop - memory.manga) > 5) throw new Error('Manga position was lost');
   } else if (action === 'resume manga') {
