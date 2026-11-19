@@ -8,9 +8,16 @@ public partial class App : Application
  {
   InitializeComponent();
   this.services = services;
+  _ = StartDownloadsAsync();
   Connectivity.Current.ConnectivityChanged += OnConnectivityChanged;
   if (Connectivity.Current.NetworkAccess == NetworkAccess.Internet) _ = SyncAniListAsync();
  }
+ async Task StartDownloadsAsync()
+ {
+  try { await services.GetRequiredService<OfflineDownloads>().StartAsync(); }
+  catch { /* Library exposes the local queue status. */ }
+ }
+
  void OnConnectivityChanged(object? sender, ConnectivityChangedEventArgs args)
  {
   if (args.NetworkAccess == NetworkAccess.Internet) _ = SyncAniListAsync();

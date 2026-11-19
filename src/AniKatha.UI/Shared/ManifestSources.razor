@@ -4,12 +4,14 @@
 @implements IDisposable
 @inject AddonClient Client
 @inject LocalStore Store
+@inject IServiceProvider Services
 <div class="notice"><strong>@Source.Addon.Name</strong> @if (Preferred) { <small>Preferred</small> }
 @if(loading){<p>Loading sources…</p>}
 else if(error){<p>Source request failed. <button @onclick="Load">Retry</button></p>}
 else if (Type == "manga" && pages.Count > 0)
 {
  <button @onclick="Read">Read @Label</button>
+ @if (Downloads is not null) { <button @onclick="() => Download(null)">Download chapter</button> }
  @if (translation.Length > 0) { <small>Translation · @translation</small> }
 }
 else if (streams.Count > 0)
@@ -18,18 +20,35 @@ else if (streams.Count > 0)
  {
   <div>
    <button @onclick="() => Play(stream)">@StreamName(stream)</button>
+   @if (Downloads is not null && OfflineDownloads.DownloadableStreamId(stream) is string streamId)
+   { <button @onclick="() => Download(streamId)">Download @StreamName(stream)</button> }
    @if (StreamDetails(stream) is { Length: > 0 } description) { <small>@description</small> }
   </div>
  }
 }
 else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provider.</p> }
 @if (!loading && !error) { <button type="button" @onclick="Refresh">Refresh sources</button> }
+@if (downloadStatus is not null) { <p role="status">@downloadStatus</p> }
 @if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
 </div>
 @if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" TitleSettingsKey="@ReaderTitleKey" Pages="readingPages" Title="@Title" ChapterLabel="@Label" PreviousChapter="PreviousChapter" NextChapter="NextChapter" OnCompleted="ProgressChanged"/>}
 @if(video!=null){<WatchPreview @key="video" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" StartPlaying="AutoOpen" OnNext="NextEpisode" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate"/>}
 
 @code {
+ OfflineDownloads? Downloads => (OfflineDownloads?)Services.GetService(typeof(OfflineDownloads));
+ string? downloadStatus;
+
+ async Task Download(string? streamId)
+ {
+  if (Downloads is not { } downloads) return;
+  try
+  {
+   await downloads.QueueAsync(new(Origin, Type, TitleId, UnitId, Source.ProviderKey, Title, Label, streamId));
+   downloadStatus = "Added to Downloads in Library.";
+  }
+  catch { downloadStatus = "This download could not be queued."; }
+ }
+
  [CascadingParameter] public SourceResultCache? Cache { get; set; }
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
  [Parameter] public string Origin {get;set;}="";

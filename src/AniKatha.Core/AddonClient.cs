@@ -5,7 +5,7 @@ using System.Text.Json;
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AniKatha.UiChecks")]
 namespace AniKatha.Core;
 // Manifest inspection and validation before installation.
-public sealed class AddonClient
+public sealed partial class AddonClient
 {
  readonly HttpClient http;
  readonly Func<string,CancellationToken,Task<IPAddress[]>> resolve;

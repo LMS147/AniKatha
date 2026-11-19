@@ -11,6 +11,35 @@ capture() {
 trap capture EXIT
 apk=$(find artifacts/apk -name '*-Signed.apk' -print -quit)
 test -n "$apk"
+probe() {
+  local mode=$1
+  adb shell am force-stop "$package"
+  adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
+  adb forward --remove tcp:9222 || true
+  for check in $(seq 1 25); do
+    local current_pid
+    current_pid=$(adb shell pidof "$package" | tr -d '\r' | awk '{print $1}' || true)
+    if [[ -n "$current_pid" ]]; then
+      adb forward tcp:9222 "localabstract:webview_devtools_remote_$current_pid"
+      if curl --silent --fail --max-time 2 http://127.0.0.1:9222/json/list | grep -q 'webSocketDebuggerUrl'; then
+        node scripts/check_webview.mjs "$mode"
+        return
+      fi
+    fi
+    sleep 2
+  done
+  return 1
+}
+if [[ "${ANIKATHA_STARTUP_MODE:-fresh}" == "upgrade" ]]; then
+  baseline=$(find artifacts/apk-baseline -name '*-Signed.apk' -print -quit)
+  test -n "$baseline"
+  adb install "$baseline"
+  probe seed
+  adb shell am force-stop "$package"
+  adb install -r "$apk"
+  probe upgrade
+  exit 0
+fi
 adb install -r "$apk"
 adb logcat -c
 adb shell am force-stop "$package"
@@ -31,5 +60,5 @@ fi
 # UIAutomator is unnecessary here and can crash during accessibility traversal.
 app_pid=$(adb shell pidof "$package" | tr -d '\r' | awk '{print $1}')
 adb forward tcp:9222 "localabstract:webview_devtools_remote_$app_pid"
-node scripts/check_webview.mjs
+node scripts/check_webview.mjs fresh
 echo 'PASS: APK installed without fast deployment, rendered navigation, and stayed open for 45 seconds.'

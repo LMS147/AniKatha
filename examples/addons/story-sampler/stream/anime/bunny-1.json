@@ -2,7 +2,18 @@
   "streams": [
     {
       "name": "Play trailer",
+      "id": "bunny-trailer",
+      "downloadable": true,
+      "mediaType": "video/mp4",
       "url": "https://media.w3.org/2010/05/bunny/trailer.mp4"
+    },
+    {
+      "name": "Compatibility clip",
+      "id": "bunny-baseline",
+      "downloadable": true,
+      "mediaType": "video/mp4",
+      "quality": "320×180",
+      "url": "https://raw.githubusercontent.com/LMS147/AniKatha/refs/heads/roadmap/phase-5/examples/addons/story-sampler/media/bunny-baseline.mp4"
     }
   ]
 }

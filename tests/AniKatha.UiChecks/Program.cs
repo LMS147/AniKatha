@@ -111,6 +111,7 @@ Console.WriteLine("PASS: phase 2 fixture covered metadata, explicit unit mapping
 Console.WriteLine("PASS: install via Profile, type routing, pagination, repeat-page stop, chapter reading, page resume, enable/disable, episode source → player.");
 
 await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"anikatha-catalog-{Guid.NewGuid()}.db3")));
+await DownloadChecks.RunAsync();
 
 static async Task ClickAsync<T>(IRenderedComponent<T> view, string label) where T : IComponent
 {
