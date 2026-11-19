@@ -12,6 +12,7 @@ export function attachControls(stage, video, seekTo, signal) {
   const toggle = stage.querySelector('[data-player-toggle]');
   const label = stage.querySelector('[data-player-play-label]');
   const slider = stage.querySelector('[data-player-scrubber]');
+  const seekButtons = stage.querySelectorAll('[data-player-seek]');
   const elapsed = stage.querySelector('[data-player-elapsed]');
   const duration = stage.querySelector('[data-player-duration]');
   const options = { signal };
@@ -33,6 +34,7 @@ export function attachControls(stage, video, seekTo, signal) {
   function renderTime() {
     const known = Number.isFinite(video.duration) && video.duration > 0;
     slider.disabled = !known;
+    for (const button of seekButtons) button.disabled = !known;
     duration.hidden = !known;
     if (known) {
       slider.max = video.duration;
@@ -56,6 +58,7 @@ export function attachControls(stage, video, seekTo, signal) {
     started = false;
     stage.dataset.opening = 'true';
     delete stage.dataset.buffering;
+    delete stage.dataset.mediaReady;
     renderTime();
     renderTransport();
   }, options);
@@ -68,6 +71,7 @@ export function attachControls(stage, video, seekTo, signal) {
   for (const event of ['playing', 'canplay', 'pause', 'error']) {
     video.addEventListener(event, () => {
       if (event === 'playing') started = true;
+      if (event === 'canplay' || event === 'playing') stage.dataset.mediaReady = 'true';
       delete stage.dataset.opening;
       delete stage.dataset.buffering;
     }, options);
@@ -115,7 +119,12 @@ export function attachControls(stage, video, seekTo, signal) {
       first.focus();
     }
   }, options);
-  signal.addEventListener('abort', () => clearTimeout(conceal), { once: true });
+  const layout = new MutationObserver(showOverlay);
+  layout.observe(stage, { attributes: true, attributeFilter: ['class', 'data-panel'] });
+  signal.addEventListener('abort', () => {
+    clearTimeout(conceal);
+    layout.disconnect();
+  }, { once: true });
   renderTime();
   renderTransport();
 }

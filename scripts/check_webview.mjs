@@ -524,6 +524,8 @@ async function checkPlayerScreens(command, adb) {
       throw new Error(result.exceptionDetails?.exception?.description ?? 'Player screen check failed: ' + action);
   }
   async function screenshot(name) {
+    // SurfaceFlinger may still display the previous frame after WebView reports the new viewport.
+    await new Promise(resolve => setTimeout(resolve, 750));
     const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
     await writeFile('artifacts/startup/' + name + '.png', image);
   }
@@ -590,7 +592,12 @@ async function exercisePlayerScene(action) {
     await click('.player-heading button:last-child');
     await wait(() => query('.player-fullscreen'), 'fullscreen stage');
   } else if (action === 'landscape') {
-    await wait(() => innerWidth > innerHeight && query('.player-fullscreen'), 'fullscreen in landscape');
+    await wait(() => {
+      const stage = query('.player-fullscreen')?.getBoundingClientRect();
+      const transport = query('.player-transport')?.getBoundingClientRect();
+      return innerWidth > innerHeight && stage?.width >= innerWidth * 0.95 && stage.height >= innerHeight * 0.95 &&
+        transport?.bottom > 0 && transport.bottom < innerHeight;
+    }, 'fullscreen occupies the landscape viewport');
     if (video !== window.playerRotationCheck.video || Math.abs(video.currentTime - window.playerRotationCheck.time) > 0.25)
       throw new Error('Rotation changed the playback session or its checkpoint.');
   } else if (action === 'fullscreen dismissed') {
@@ -599,17 +606,22 @@ async function exercisePlayerScene(action) {
     await wait(() => innerWidth < innerHeight && video?.readyState >= 2, 'return to portrait');
     video.dispatchEvent(new Event('error'));
     const panel = await wait(() => query('.player-recovery'), 'video recovery action');
-    panel.scrollIntoView({block:'end'});
+    panel.scrollIntoView({block:'center', behavior:'instant'});
+    window.playerRotationCheck.source = video.src;
   } else if (action === 'retry') {
     await click('.player-recovery button');
-    await wait(() => !query('.player-recovery') && video.readyState >= 2 && !video.seeking, 'video recovered');
+    await wait(() => !query('.player-recovery') && video.src !== window.playerRotationCheck.source && video.readyState >= 2 && !video.seeking, 'video recovered');
     if (Math.abs(video.currentTime - window.playerRotationCheck.time) > 0.25)
       throw new Error('Retry changed the saved position.');
   } else if (action === 'settings') {
     await click('.bottom-nav a[href="/profile"]');
     await click('a[href="/profile/playback"]');
     const preview = await wait(() => query('.subtitle-preview'), 'subtitle appearance');
-    preview.closest('.playback-settings-subtitles').scrollIntoView({block:'start'});
+    await wait(() => {
+      const box = preview.getBoundingClientRect();
+      if (box.top >= 0 && box.bottom < innerHeight - 80) return true;
+      preview.scrollIntoView({block:'center', behavior:'instant'});
+    }, 'subtitle preview is visible');
   }
   return true;
 }

@@ -169,7 +169,7 @@
 .player-context, .player-footer { padding: 12px 14px; }
 .player-heading { display: flex; align-items: flex-start; gap: 10px; }
 .player-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.player-title h1 { font-size: clamp(1.2rem, 5vw, 1.7rem); letter-spacing: -.04em; line-height: 1.16; margin: 0 0 4px; }
+.player-title h1 { font-size: clamp(1.2rem, 5vw, 1.7rem); letter-spacing: -.04em; line-height: 1.16; margin: 0 0 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .player-title p, .player-source { margin: 0; font-size: .84rem; line-height: 1.4; }
 .player-source { margin-top: 8px; overflow-wrap: anywhere; }
 .player-button {
@@ -191,6 +191,8 @@
 .player-timeline input[type="range"] { min-width: 0; height: 44px; flex: 1; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .player-timeline input:disabled { opacity: .4; }
 .player-actions { justify-content: center; }
+.player-no-subtitles { display: none; margin: 8px 0 0; text-align: center; font-size: .78rem; }
+[data-media-ready] .player-no-subtitles { display: block; }
 .player-extras { margin-top: 12px; }
 .player-extras small { font-size: .8rem; }
 .player-indicators { position: absolute; z-index: 1; top: 10px; left: 12px; pointer-events: none; }

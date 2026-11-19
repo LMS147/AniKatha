@@ -25,9 +25,9 @@
   </header>
 
   <div class="player-transport" role="group" aria-label="Playback controls">
-   <button class="player-button" type="button" aria-label="@($"Rewind {seekSeconds} seconds")" @onclick="() => Seek(-seekSeconds)">↶ @seekSeconds s</button>
+   <button class="player-button" type="button" data-player-seek disabled aria-label="@($"Rewind {seekSeconds} seconds")" @onclick="() => Seek(-seekSeconds)">↶ @seekSeconds s</button>
    <button class="player-button player-play" type="button" data-player-toggle aria-label="Play"><Icon Name="play"/><span data-player-play-label>Play</span></button>
-   <button class="player-button" type="button" aria-label="@($"Forward {seekSeconds} seconds")" @onclick="() => Seek(seekSeconds)">↷ @seekSeconds s</button>
+   <button class="player-button" type="button" data-player-seek disabled aria-label="@($"Forward {seekSeconds} seconds")" @onclick="() => Seek(seekSeconds)">↷ @seekSeconds s</button>
   </div>
   <div class="player-footer">
    <div class="player-timeline">
@@ -44,6 +44,8 @@
     @if (SourcePickerId is not null)
     { <button class="player-button" type="button" @onclick="ShowSources">Change source</button> }
    </div>
+   @if (!SubtitleOptions().Any() && !loadingSubtitle && !subtitleError)
+   { <p class="player-no-subtitles">No subtitles available for this source.</p> }
   </div>
   <div class="player-indicators" role="status">
    <span class="player-opening">Opening episode…</span><span class="player-buffering">Buffering…</span>
