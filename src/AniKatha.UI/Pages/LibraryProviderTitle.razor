@@ -5,6 +5,11 @@
 {
  <ManifestCatalog @key="Id" Source="source" Catalog="catalog!" Providers="providers" InitialTitle="title"/>
 }
+else if(title is { Id: > 0, ProviderKey: null })
+{
+ <header class="page-header"><h1>@title.Title</h1><p>@title.Progress @(title.Kind == "MANGA" ? "chapters" : "episodes") tracked</p></header>
+ <TrackedTitleSources @key="Id" Title="title" />
+}
 else if(loaded)
 {
  <p class="notice">This saved title’s source is unavailable. Enable or reinstall it in Profile.</p>

@@ -19,6 +19,14 @@ The episode and chapter counts in Library correspond to completed units. The Lib
 
 Local edits are queued by account, AniList media ID and field. The latest explicit edit to a field wins when it conflicts with an AniList edit to that field, including a deliberate reset to zero. Import updates fields independently from the last observed AniList state. A pending edit protects its field from being overwritten by imports. Successful requests clear only the revision they acknowledge. Reconnection retries pending changes for the linked account. A score queued in a previous AniList scale needs to be re-entered on the new scale. Local resume records are independent of the list and queue.
 
+## Complete units from an installed add-on
+
+Add-ons supply the video or manga pages. AniList tracks completed episode and chapter counts. Connect AniList and import your lists, then select an imported title in **Library → Find Sources**. AniKatha checks enabled HTTP add-ons for an explicit title match. Select an episode or chapter and open a source. Watching an episode to the end or choosing **Mark chapter read** on the chapter's last page can update the count. Opening, seeking, and saving partial positions only affect local resume.
+
+Use **Profile → Tracking → Automatically sync completed add-on episodes and chapters** to control automatic updates. The switch starts enabled for a linked account. Disabling it stops new automatic updates. Previously queued edits can still sync. AniKatha records an out-of-order mapped completion locally and advances AniList through the highest consecutive completed count once the gap is filled. A manual progress edit takes priority and clears the recorded automatic gap history for that title. Automatic requests send the progress field and preserve the app's explicit status and score editing. The embedded YouTube flow continues to use manual Library progress.
+
+Mapped units opened or queued for download with this version save the mapping locally. Resume and offline playback can use it. Open older history entries through a mapped source to record the mapping for future completions. Timestamps and page positions stay on the device. The queue survives restart and retries through Android reconnect or **Profile → Sync pending changes**. If AniList already has a higher count or a reset below the last known count, AniKatha keeps AniList's count.
+
 ## Cross-device resume and settings
 
 The app has no authorized AniKatha service for exact position or settings sync. AniList completed counts cannot represent a media timestamp or a manga page. Item 20 needs an approved authenticated backend or account service, a per-account store keyed by stable media, title, unit, and provider identities, server-acknowledged record versions, and a two-device test. Sync positions with a versioned conflict policy that retains deliberate seeks or resets. The existing local records remain usable offline.

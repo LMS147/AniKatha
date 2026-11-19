@@ -1,0 +1,108 @@
+@using System.Text.Json
+@using static AniKatha.Core.AddonResources
+@implements IDisposable
+@inject LocalStore Store
+@inject AddonClient Client
+
+<h2>Installed sources</h2>
+@if (loading) { <p role="status">Finding add-on matches…</p> }
+@if (!loading && matches.Count == 0)
+{
+ <p>No enabled add-on confirmed a match. You can still track this title from Library.</p>
+}
+@if (failures > 0) { <p role="status">Some add-ons could not be checked. <button @onclick="Load">Retry search</button></p> }
+@foreach (var match in matches)
+{
+ <details @key="(match.Provider.ProviderKey, match.Type, match.Id)">
+  <summary>@match.Provider.Addon.Name · @match.Name</summary>
+  <ManifestCatalog Source="match.Provider" Catalog="@(new AddonCatalog(match.Type, "", "", false, false))"
+                   Providers="providers" InitialTitle="@Title" InitialProviderId="@match.Id" ExpectedAniListId="@Title.Id" />
+ </details>
+}
+
+@code {
+ [Parameter, EditorRequired] public SavedTitle Title { get; set; } = null!;
+ List<AddonResources> providers = [];
+ readonly List<Match> matches = [];
+ bool loading;
+ int failures;
+ CancellationTokenSource? request;
+ protected override Task OnParametersSetAsync() => Load();
+
+ async Task Load()
+ {
+  request?.Cancel();
+  request?.Dispose();
+  request = new();
+  var token = request.Token;
+  var title = Title;
+  loading = true;
+  matches.Clear();
+  failures = 0;
+  try
+  {
+   var enabled = (await Store.GetAddonsAsync()).Select(addon => new AddonResources(addon)).ToList();
+   if (token.IsCancellationRequested) return;
+   providers = enabled;
+   await Task.WhenAll(enabled.Select(provider => Find(provider, title, token)));
+  }
+  catch (Exception) when (!token.IsCancellationRequested) { failures++; }
+  finally { if (!token.IsCancellationRequested) loading = false; }
+ }
+
+ async Task Find(AddonResources provider, SavedTitle title, CancellationToken token)
+ {
+  var kind = title.Kind;
+  var types = kind == "MANGA" ? new[] { "manga" } : new[] { "anime", "series" };
+  var candidates = new Dictionary<(string Type, string Id), string>();
+  var resource = kind == "MANGA" ? "chapters" : "meta";
+  var canonicalId = $"anilist:{title.Id}";
+  foreach (var type in types)
+   if (provider.HasPrefix(resource, type, canonicalId)) candidates.TryAdd((type, canonicalId), title.Title);
+
+  foreach (var catalog in provider.Catalogs(kind).Where(c => c.Search && !c.Extras.Any(e => e.Required && e.Name != "search")))
+  {
+   try
+   {
+    var root = await Client.FetchJsonAsync(provider.Resource("catalog", catalog.Type, catalog.Id,
+     "search=" + Uri.EscapeDataString(title.Title)), token);
+    foreach (var item in Items(root, "metas"))
+    {
+     var id = Field(item, "id");
+     var declaredType = Field(item, "type");
+     if (id.Length == 0 || (declaredType.Length > 0 && declaredType != catalog.Type) ||
+         !provider.Supports(resource, catalog.Type, id)) continue;
+     var declaredId = AddonAniListProgress.TitleId(item);
+     if (declaredId == title.Id || (declaredId is null &&
+         string.Equals(Field(item, "name").Trim(), title.Title.Trim(), StringComparison.OrdinalIgnoreCase)))
+      candidates.TryAdd((catalog.Type, id), Field(item, "name"));
+    }
+   }
+   catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+   catch { if (!token.IsCancellationRequested) failures++; }
+  }
+
+  foreach (var (identity, name) in candidates)
+  {
+   try
+   {
+    var root = await Client.FetchJsonAsync(provider.Resource(resource, identity.Type, identity.Id), token);
+    if (token.IsCancellationRequested) return;
+    if (!root.TryGetProperty("meta", out var meta) || AddonAniListProgress.TitleId(meta) != title.Id) continue;
+    matches.Add(new(provider, identity.Type, identity.Id, name));
+    StateHasChanged();
+   }
+   catch (AddonResourceNotFoundException) { }
+   catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+   catch { if (!token.IsCancellationRequested) failures++; }
+  }
+ }
+
+ public void Dispose()
+ {
+  request?.Cancel();
+  request?.Dispose();
+ }
+
+ sealed record Match(AddonResources Provider, string Type, string Id, string Name);
+}

@@ -28,8 +28,9 @@ public sealed partial class AniListAccount
                 {
                     if (edit.Field == "score" && edit.ScoreFormat != viewer.ScoreFormat)
                         throw new InvalidOperationException("The score scale changed. Enter the score again.");
-                    await UpdateFieldAsync(viewer.Id, edit.MediaId, edit.Field, edit.Value, token);
-                    await store.FinishAniListEditAsync(viewer.Id, edit, true);
+                    var remoteProgress = await UpdateFieldAsync(viewer.Id, edit.MediaId, edit.Field, edit.Value, edit.ExpectedProgress, token,
+                        () => store.IsCurrentAniListEditAsync(viewer.Id, edit));
+                    await store.FinishAniListEditAsync(viewer.Id, edit, true, remoteProgress);
                     sent++;
                 }
                 catch (OperationCanceledException) { throw; }

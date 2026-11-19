@@ -14,6 +14,7 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
   let position = resumePosition;
   let savedPosition = resumePosition;
   let completed = false;
+  let soughtToEnd = false;
   let checkpoint = Promise.resolve();
 
   function save(force) {
@@ -41,12 +42,15 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
     }
   }, options);
   video.addEventListener('timeupdate', () => save(false), options);
-  for (const event of ['pause', 'seeked']) {
-    video.addEventListener(event, () => save(true), options);
-  }
+  video.addEventListener('pause', () => save(true), options);
+  video.addEventListener('seeked', () => {
+    soughtToEnd = Number.isFinite(video.duration) && video.currentTime >= video.duration;
+    save(true);
+  }, options);
   video.addEventListener('ended', async () => {
+    const eligible = trackCompletion && !video.seeking && !soughtToEnd;
     await save(true);
-    if (!trackCompletion || completed) return;
+    if (!eligible || completed || soughtToEnd) return;
     completed = true;
     try { completed = !!(await callbacks.invokeMethodAsync('CompleteEpisode')); }
     catch { completed = false; }

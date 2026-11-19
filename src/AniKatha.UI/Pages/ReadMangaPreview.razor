@@ -1,5 +1,6 @@
 @page "/manga/preview/chapter-1"
 @inject LocalStore Store
+@inject IServiceProvider Services
 @inject IJSRuntime JS
 @using Microsoft.JSInterop
 @using System.Globalization
@@ -79,6 +80,7 @@
    </div>
   }
  </section>
+@if (completionMessage is not null) { <p role="status">@completionMessage</p> }
  @if (storageError is not null)
  {
   <p class="notice" role="alert">@storageError</p>
@@ -97,6 +99,7 @@ else
  [Parameter] public EventCallback NextChapter { get; set; }
  [Parameter] public EventCallback OnCompleted { get; set; }
  string? storageError;
+ string? completionMessage;
  [Parameter] public string TitleSettingsKey { get; set; } = "reader:title:midnight-lighthouse";
  [Parameter] public string ChapterKey {get;set;} = MangaSample.ChapterKey;
  [Parameter] public string Title {get;set;} = MangaSample.Title;
@@ -257,6 +260,16 @@ else
   finally { saving = false; }
  }
 
+ async Task ShowSyncResult(Task<string> sync)
+ {
+  var message = await sync;
+  if (!disposed) await InvokeAsync(() =>
+  {
+   completionMessage = message;
+   StateHasChanged();
+  });
+ }
+
  async Task Finish()
  {
   if (saving || completed || currentPage != PageCount) return;
@@ -264,7 +277,9 @@ else
   try
   {
    await Store.SaveReadingPageAsync(ChapterKey, currentPage);
-   await Store.CompleteUnitAsync(ChapterKey);
+   var receipt = await AddonCompletion.SaveAsync(Store, Services, ChapterKey);
+   completionMessage = receipt.Message;
+   if (receipt.Sync is not null) _ = ShowSyncResult(receipt.Sync);
    completed = true;
    storageError = null;
    await OnCompleted.InvokeAsync();

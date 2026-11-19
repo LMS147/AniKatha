@@ -30,3 +30,19 @@ Successful unit sources can be reused in memory for up to two minutes. A JSON re
 Anime downloads require an explicit `downloadable: true`, a stable nonempty stream `id`, and a direct HTTPS MP4 file. The app recognizes MP4 through `mediaType: "video/mp4"` or a URL ending in `.mp4` before its query. It verifies the file signature during download. On retry, it resolves the same stream ID again so expired URLs can be replaced. Manga downloads use the existing ordered page resource and support JPEG, PNG, WebP, GIF and AVIF. Chapter files are published together after every page succeeds.
 
 The Story Sampler includes a small download compatibility clip made from Big Buck Bunny © 2008 Blender Foundation, licensed CC BY 3.0. The fixture is a resized, eight-second excerpt with audio removed and H.264 Baseline encoding. Its separate stream ID lets the Android check use a device-friendly MP4 while retaining the original trailer.
+
+## Optional AniList progress mapping
+
+An add-on can map a title and individual units to AniList. The existing resource URLs and manifest version stay the same. Put a positive integer `anilistId` in the originating title's `meta` object and a positive integer `anilistProgress` on each mapped episode or chapter. For example, using illustrative IDs:
+
+```json
+{"meta":{"anilistId":12345,"videos":[{"id":"provider-episode-3","title":"Episode 3","anilistProgress":3}]}}
+```
+
+```json
+{"meta":{"anilistId":67890},"chapters":[{"id":"provider-chapter-6","title":"Chapter 6","anilistProgress":6}]}
+```
+
+The add-on author should verify each title and unit against the AniList release, including the season or edition. Omit the fields when the match is uncertain or when a special has no equivalent completed count. The originating catalogue supplies the mapping even when another provider resolves the stream or pages. Existing add-ons without the fields still support playback, reading, and local resume.
+
+For **Library → Find Sources**, a provider can advertise the `anilist:` ID prefix on the appropriate `meta` or `chapters` resource, then accept IDs such as `anilist:12345` on that resource. AniKatha also checks searchable catalogs for candidates found by name or an explicit ID in the catalogue response. In each case the title's detail response must confirm the exact AniList ID before the source is offered. Provider IDs remain the IDs used for subsequent unit requests.

@@ -68,6 +68,19 @@ internal static class AniListAccountChecks
         await account.ImportAsync(store, viewer.Id);
         Assert((await store.GetLibraryAsync()).Single(x => x.Id == 42).Status == "CURRENT", "Remote status imported after prior acknowledgement");
 
+        await AddonProgressAsync(store, account, fixture, viewer.Id, path);
+
+        await store.QueueAniListEditAsync(8, 43, "progress", "1");
+        auth.ChangeViewer(8);
+        auth.Expire();
+        var expiredCalls = fixture.Calls;
+        Assert(await account.SyncPendingAsync(store) == 0 && fixture.Calls == expiredCalls &&
+               (await store.AniListEditsAsync(8)).Any(edit => edit.Field == "progress"),
+            "Expired authorization preserves the queued account edits");
+        auth.ChangeViewer(7);
+        await account.SyncPendingAsync(store);
+        Assert((await store.AniListEditsAsync(8)).Any(edit => edit.Field == "progress"), "Switching accounts does not replay a different account's edits");
+
         fixture.Revoked = true;
         try { await account.CurrentAsync(); throw new Exception("Revoked token accepted"); }
         catch (AniListAuthorizationException) { }
@@ -78,6 +91,59 @@ internal static class AniListAccountChecks
         Assert(await store.GetReadingPageAsync("manga:local-position") == 7 &&
                await store.GetPlaybackPositionAsync("anime:local-position") == 125.75, "Precise progress survived account changes");
         Console.WriteLine("PASS: AniList callback state, pagination, idempotent import, score scale, durable queue, reset conflicts, stale acknowledgement, revocation and disconnect.");
+    }
+
+    private static async Task AddonProgressAsync(LocalStore store, AniListAccount account, Remote fixture, int viewer, string path)
+    {
+        async Task<bool> Complete(string type, string unit, AddonAniListProgress? mapping, int? accountId)
+        {
+            var key = ResumeEntry.Key("origin", type, "title", unit, "source");
+            await store.SaveAddonAniListProgressAsync(key, mapping);
+            var queued = await store.CompleteAddonUnitAsync(key, accountId);
+            Assert(await store.IsUnitCompleteAsync(key), "Every completion stays in local history");
+            return queued;
+        }
+
+        Assert(!await Complete("anime", "unmapped", null, viewer), "Legacy add-on remains local");
+        Assert(!await Complete("anime", "wrong-type", new(44, "ANIME", 1), viewer), "Reject cross-media mappings");
+        Assert(!await Complete("anime", "other-viewer", new(42, "ANIME", 3), 99), "Require linked account baseline");
+        Assert(!await Complete("anime", "jump", new(42, "ANIME", 9), viewer), "A skipped episode cannot mark intervening episodes complete");
+        Assert(await Complete("anime", "episode-3", new(42, "ANIME", 3), viewer), "Queue the next completed episode");
+        fixture.Offline = true;
+        Assert(await account.SyncPendingAsync(store) == 0, "Offline retains automatic progress");
+        Assert(await Complete("anime", "episode-4", new(42, "ANIME", 4), viewer), "Queue consecutive offline completion");
+        store = new LocalStore(path);
+        Assert((await store.AniListEditsAsync(viewer)).Single() is { ExpectedProgress: 2, Value: "4" },
+            "Keep the prior baseline and latest consecutive completion across restart");
+        fixture.Offline = false;
+        Assert(await account.SyncPendingAsync(store) == 1 && fixture.Progress == 4, "Retry sends the completed count");
+
+        Assert(await Complete("anime", "episode-5", new(42, "ANIME", 5), viewer), "Queue before remote progress changes");
+        fixture.Progress = 7;
+        await account.SyncPendingAsync(store);
+        Assert(fixture.Progress == 7 && (await store.GetLibraryAsync()).Single(x => x.Id == 42).Progress == 7,
+            "Automatic playback cannot reduce a higher remote count");
+
+        Assert(await Complete("anime", "episode-8", new(42, "ANIME", 8), viewer), "Queue before remote reset");
+        fixture.Progress = 0;
+        await account.SyncPendingAsync(store);
+        Assert(fixture.Progress == 0 && (await store.GetLibraryAsync()).Single(x => x.Id == 42).Progress == 0,
+            "Automatic playback follows an external reset");
+        await store.QueueAniListEditAsync(viewer, 42, "progress", "2");
+        Assert(!await Complete("anime", "episode-3", new(42, "ANIME", 3), viewer), "Replay stays complete locally");
+        Assert(!await Complete("anime", "different-source-3", new(42, "ANIME", 3), viewer),
+            "Automatic progress cannot replace a pending manual edit");
+        await account.SyncPendingAsync(store);
+
+        Assert(!await Complete("manga", "chapter-2", new(44, "MANGA", 2), viewer) && (await store.AniListEditsAsync(viewer)).Count == 0,
+            "A later chapter stays local while a gap remains");
+        Assert(await Complete("manga", "chapter-1", new(44, "MANGA", 1), viewer), "Filling a gap includes previously completed chapters");
+        Assert(await account.SyncPendingAsync(store) == 1 && fixture.MangaProgress == 2, "Upload the contiguous manga count");
+        Assert(!await Complete("manga", "chapter-2-alternate", new(44, "MANGA", 2), viewer), "Alternate provider cannot count twice");
+        await store.SetSettingAsync(LocalStore.AutomaticAniListKey, "false");
+        Assert(!await Complete("manga", "chapter-3", new(44, "MANGA", 3), viewer), "Opt-out retains local completion");
+        await store.SetSettingAsync(LocalStore.AutomaticAniListKey, "true");
+        Console.WriteLine("PASS: mapped add-on completion, offline replay, gaps, duplicates, account and media isolation, and remote count protection.");
     }
 
     private static void Assert(bool condition, string message)
@@ -104,12 +170,15 @@ internal static class AniListAccountChecks
         public Task<AniListCredential?> ReadAsync() => Task.FromResult(credential);
         public Task WriteAsync(AniListCredential value) { credential = value; return Task.CompletedTask; }
         public void Clear() => credential = null;
+        public void ChangeViewer(int viewer) => credential = credential! with { ViewerId = viewer, Expires = DateTimeOffset.UtcNow.AddHours(1) };
+        public void Expire() => credential = credential! with { Expires = DateTimeOffset.UtcNow.AddMinutes(-1) };
     }
 
     private sealed class Remote : HttpMessageHandler
     {
         public string Status { get; set; } = "CURRENT";
         public int Progress { get; set; } = 4;
+        public int MangaProgress { get; set; }
         public double Score { get; set; } = 8.4;
         public bool Offline { get; set; }
         public bool Revoked { get; set; }
@@ -132,7 +201,7 @@ internal static class AniListAccountChecks
             if (query.Contains("mediaListEntry"))
             {
                 var mediaId = variables.GetProperty("id").GetInt32();
-                return Json(new { Media = new { id = mediaId, mediaListEntry = new { id = mediaId + 1000 } } });
+                return Json(new { Media = new { id = mediaId, mediaListEntry = new { id = mediaId + 1000, progress = mediaId == 44 ? MangaProgress : Progress } } });
             }
             if (query.Contains("SaveMediaListEntry"))
             {
@@ -147,7 +216,8 @@ internal static class AniListAccountChecks
                         Sending.TrySetResult();
                         await Release.Task.WaitAsync(token);
                     }
-                    Progress = value.GetInt32();
+                    if (mediaId == 44) MangaProgress = value.GetInt32();
+                    else Progress = value.GetInt32();
                 }
                 if (query.Contains("score:")) Score = value.GetDouble();
                 if (query.Contains("status:")) Status = value.GetString()!;

@@ -4,7 +4,7 @@ using SQLite;
 
 namespace AniKatha.Core;
 
-public sealed record AniListEdit(int MediaId, string Field, string Value, string Revision, string? ScoreFormat, bool Failed = false);
+public sealed record AniListEdit(int MediaId, string Field, string Value, string Revision, string? ScoreFormat, bool Failed = false, int? ExpectedProgress = null);
 
 public sealed partial class LocalStore
 {
@@ -27,6 +27,7 @@ public sealed partial class LocalStore
                     connection.Update(item);
                     break;
                 case "progress":
+                    connection.Execute("DELETE FROM AppSetting WHERE Key LIKE ?", VerifiedCompletionPattern(account, media));
                     item.Progress = int.Parse(value, CultureInfo.InvariantCulture);
                     item.UpdatedAt = DateTime.UtcNow;
                     connection.Update(item);
@@ -54,7 +55,7 @@ public sealed partial class LocalStore
         return value is not null && JsonSerializer.Deserialize<AniListEdit>(value)?.Revision == edit.Revision;
     }
 
-    public async Task FinishAniListEditAsync(int account, AniListEdit edit, bool success)
+    public async Task FinishAniListEditAsync(int account, AniListEdit edit, bool success, int? remoteProgress = null)
     {
         await initialized.Value;
         await db.RunInTransactionAsync(connection =>
@@ -68,13 +69,21 @@ public sealed partial class LocalStore
                 return;
             }
             connection.Delete<AppSetting>(key);
+            if (remoteProgress is int remote && edit.ExpectedProgress is int floor && remote < floor)
+                connection.Execute("DELETE FROM AppSetting WHERE Key LIKE ?", VerifiedCompletionPattern(account, edit.MediaId));
+            if (remoteProgress is int progress && connection.Find<SavedTitle>(edit.MediaId) is { } title &&
+                title.ProviderKey is null && title.Progress.ToString(CultureInfo.InvariantCulture) == edit.Value)
+            {
+                title.Progress = progress;
+                connection.Update(title);
+            }
             var baselineKey = AniListBaselineKey(account, edit.MediaId);
             var baselineSetting = connection.Find<AppSetting>(baselineKey);
             if (baselineSetting is null || JsonSerializer.Deserialize<AniListListEntry>(baselineSetting.Value) is not { } baseline) return;
             var updated = edit.Field switch
             {
                 "status" => baseline with { Status = edit.Value },
-                "progress" => baseline with { Progress = int.Parse(edit.Value, CultureInfo.InvariantCulture) },
+                "progress" => baseline with { Progress = remoteProgress ?? int.Parse(edit.Value, CultureInfo.InvariantCulture) },
                 "score" when double.TryParse(edit.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var score) =>
                     baseline with { Score = score > 0 ? score : null, ScoreFormat = edit.ScoreFormat ?? baseline.ScoreFormat },
                 _ => baseline

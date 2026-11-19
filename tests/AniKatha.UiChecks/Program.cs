@@ -12,10 +12,13 @@ var store = new LocalStore(database);
 var handler=new FixtureHandler();
 using var http = new HttpClient(handler);
 var client = new AddonClient(http, (_,_) => Task.FromResult(new[] { IPAddress.Parse("192.0.2.5") }));
+var tracking = new TrackingFixture();
+using var trackingHttp = new HttpClient(tracking);
 await using var context = new BunitContext();
 context.Services.AddSingleton(store);
 context.Services.AddCascadingValue(_ => new SourceResultCache());
 context.Services.AddSingleton(client);
+context.Services.AddSingleton(new AniListAccount(trackingHttp, tracking));
 context.JSInterop.Mode = JSRuntimeMode.Loose;
 
 var profile = context.Render<Profile>();
@@ -91,8 +94,28 @@ resume.WaitForAssertion(()=>Check(resume.FindAll("button").Any(x=>x.TextContent.
 await ClickAsync(resume, "Read Chapter 7");
 resume.WaitForAssertion(()=>Check(resume.Find(".reader-page").GetAttribute("src")=="https://images.example/2.webp","History restores exact page"));
 
-await ClickAsync(reopened, "Mark chapter read");
-reopened.WaitForAssertion(()=>Check(reopened.Markup.Contains("Chapter completed"),"Complete chapter"));
+await store.ImportAniListPageAsync(7,
+[
+ new(42, "ANIME", "Tracked anime", null, "CURRENT", 8, null, "POINT_10"),
+ new(44, "MANGA", "Tracked manga", null, "CURRENT", 6, null, "POINT_10")
+]);
+tracking.Linked = true;
+Check(tracking.Anime == 8 && tracking.Manga == 6 && (await store.AniListEditsAsync(7)).Count == 0,
+ "Opening content and saving a page did not queue a completion");
+var importedLibrary = context.Render<Library>();
+importedLibrary.WaitForAssertion(() => Check(importedLibrary.FindAll("a").Any(a =>
+ a.TextContent.Trim() == "Find Sources" && a.GetAttribute("href") == "/library/title/44"), "Imported title exposes Find Sources"));
+var importedManga = context.Render<LibraryProviderTitle>(p => p.Add(x => x.Id, 44));
+foreach (var name in new[] {"Chapter 7", "Read Chapter 7"})
+ await ClickAsync(importedManga, name);
+importedManga.WaitForAssertion(() => Check(importedManga.Find(".reader-page").GetAttribute("src") == "https://images.example/2.webp",
+ "Imported title opens add-on content at the exact page"));
+await ClickAsync(importedManga, "Mark chapter read");
+importedManga.WaitForAssertion(() => Check(tracking.Manga == 7 && importedManga.Markup.Contains("AniList progress confirmed"),
+ "Imported Library chapter updated AniList"));
+var completedReader = context.Render<Resume>(p=>p.Add(x=>x.Id,record.Id));
+await ClickAsync(completedReader, "Read Chapter 7");
+completedReader.WaitForAssertion(() => Check(completedReader.Markup.Contains("Chapter completed"), "Completed chapter remains marked on resume"));
 var readingKey = ResumeEntry.Key(record.Origin, record.Type, record.TitleId, record.UnitId, record.Source);
 Check(await store.IsUnitCompleteAsync(readingKey) && await store.GetReadingPageAsync(readingKey)==2,"Completion preserves precise page");
 await ClickAsync(reopened, "Next chapter →");
@@ -104,7 +127,19 @@ var firstPlayer = anime.FindComponent<WatchPreview>();
 await firstPlayer.InvokeAsync(() => firstPlayer.Instance.CompleteEpisode());
 anime.WaitForAssertion(()=>Check(anime.FindComponent<WatchPreview>().Instance.VideoUrl=="https://video.example/10.mp4","Autoplay opens the next episode source"));
 Check(!anime.FindComponent<WatchPreview>().Instance.OnNext.HasDelegate, "Last episode boundary");
+anime.WaitForAssertion(() => Check(tracking.Anime == 9, "Discovery episode completion updated AniList"));
+var importedAnime = context.Render<LibraryProviderTitle>(p => p.Add(x => x.Id, 42));
+importedAnime.WaitForAssertion(() => Check(!importedAnime.Markup.Contains("Other season"), "A same-name candidate with another AniList ID stays hidden"));
+foreach (var name in new[] {"Episode 10", "Stream 10"})
+ await ClickAsync(importedAnime, name);
+var importedPlayer = importedAnime.FindComponent<WatchPreview>();
+await importedPlayer.InvokeAsync(() => importedPlayer.Instance.CompleteEpisode());
+importedAnime.WaitForAssertion(() => Check(tracking.Anime == 10 && importedAnime.Markup.Contains("AniList progress confirmed"),
+ "Imported Library episode updated AniList"));
+await importedPlayer.InvokeAsync(() => importedPlayer.Instance.CompleteEpisode());
+Check(tracking.Anime == 10, "Duplicate completion does not inflate the count");
 await ReaderChecks.RunAsync(context, store);
+Console.WriteLine("PASS: imported Library source matching, discovery playback, offline-ready mapping and automatic episode and chapter tracking.");
 
 
 Console.WriteLine("PASS: phase 2 fixture covered metadata, explicit unit mapping, source fallback and preference, cache refresh and chapter completion.");
@@ -145,11 +180,15 @@ sealed class FixtureHandler : HttpMessageHandler
    var type=path.Contains("/anime/")?"anime":"manga";
    var next=path.Contains("skip=");
    result=new{metas=new[]{new{id=next?"two":"one",type,name=next?"Second title":type=="anime"?"Anime Story":"Manga Story"}}};
+   if (path.Contains("search="))
+    result = new { metas = new[] { new { id = "one", type, name = type == "anime" ? "Tracked anime" : "Tracked manga" },
+                                    new { id = "other-season", type, name = type == "anime" ? "Tracked anime" : "Tracked manga" } } };
   }
-  else if(path.EndsWith("/chapters/manga/one.json"))result=new{meta=new{description="Under the sea",status="Ongoing"},chapters=new[]{new{id="chapter-7",title="Chapter 7"},new{id="chapter-7.5",title="Chapter 7.5"}}};
+  else if (path.Contains("/other-season.json")) result = new { meta = new { anilistId = 999, name = "Other season" } };
+  else if(path.EndsWith("/chapters/manga/one.json"))result=new{meta=new{description="Under the sea",status="Ongoing",anilistId=44},chapters=new[]{new{id="chapter-7",title="Chapter 7",anilistProgress=(int?)7},new{id="chapter-7.5",title="Chapter 7.5",anilistProgress=(int?)null}}};
   else if(path.EndsWith("/pages/manga/chapter-7.json"))result=new{language="English",pages=new[]{"https://images.example/1.webp","https://images.example/2.webp"}};
   else if(path.EndsWith("/pages/manga/chapter-7.5.json"))result=new{pages=new[]{"https://images.example/special.webp"}};
-  else if(path.EndsWith("/meta/anime/one.json"))result=new{meta=new{videos=new[]{new{id="episode-9",title="Episode 9",sourceMappings=new object[]{new{providerKey=new AddonResources(new InstalledAddon {Url=OtherUrl}).ProviderKey,unitId="alternate-09"}}},new{id="episode-10",title="Episode 10",sourceMappings=Array.Empty<object>()}}}};
+  else if(path.EndsWith("/meta/anime/one.json"))result=new{meta=new{anilistId=42,videos=new[]{new{id="episode-9",title="Episode 9",anilistProgress=9,sourceMappings=new object[]{new{providerKey=new AddonResources(new InstalledAddon {Url=OtherUrl}).ProviderKey,unitId="alternate-09"}}},new{id="episode-10",title="Episode 10",anilistProgress=10,sourceMappings=Array.Empty<object>()}}}};
   else if(path.EndsWith("/stream/anime/episode-9.json"))
   {
    SuccessfulSourceRequests++;
@@ -158,5 +197,42 @@ sealed class FixtureHandler : HttpMessageHandler
   else if (path.EndsWith("/stream/anime/episode-10.json")) result = new { streams = new[] { new { name = "Stream 10", url = "https://video.example/10.mp4" } } };
   else throw new InvalidOperationException("Unexpected fixture request");
   return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(JsonSerializer.Serialize(result))});
+ }
+}
+
+sealed class TrackingFixture : HttpMessageHandler, IAniListAuthorization
+{
+ private int anime = 8, manga = 6;
+ public int Anime => Volatile.Read(ref anime);
+ public int Manga => Volatile.Read(ref manga);
+ public bool Linked { get; set; }
+ public bool Offline { get; set; }
+ public string? ClientId => null;
+ public Uri Callback => new("co.zyma.anikatha://anilist/callback");
+ public Task<Uri> AuthorizeAsync(Uri request, CancellationToken token) => throw new NotSupportedException();
+ public Task<AniListCredential?> ReadAsync() => Task.FromResult<AniListCredential?>(Linked
+  ? new("fixture", DateTimeOffset.UtcNow.AddHours(1), 7, "Reader", "POINT_10") : null);
+ public Task WriteAsync(AniListCredential credential) => throw new NotSupportedException();
+ public void Clear() => Linked = false;
+
+ protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+ {
+  if (Offline) throw new HttpRequestException("Offline fixture");
+  using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+  var query = document.RootElement.GetProperty("query").GetString()!;
+  var variables = document.RootElement.GetProperty("variables");
+  var id = variables.GetProperty("id").GetInt32();
+  if (id is not (42 or 44)) throw new InvalidOperationException("Incorrect AniList title ID");
+  object data;
+  if (query.Contains("SaveMediaListEntry") && query.Contains("progress:"))
+  {
+   var value = variables.GetProperty("value").GetInt32();
+   if (id == 42) Volatile.Write(ref anime, value);
+   else Volatile.Write(ref manga, value);
+   data = new { SaveMediaListEntry = new { mediaId = id } };
+  }
+  else
+   data = new { Media = new { id, mediaListEntry = new { id = id + 100, progress = id == 42 ? Anime : Manga } } };
+  return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new { data })) };
  }
 }

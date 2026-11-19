@@ -72,7 +72,7 @@
    @if (preferenceError) { <p role="alert">Could not save the preferred source.</p> }
   }
   @foreach(var target in targets.OrderByDescending(target => target.Provider.ProviderKey == preferredSource)){
-   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" PreviousChapter="@(CanMove(-1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(-1, target.Provider.ProviderKey)) : default)"
+   <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId)" Source="target.Provider" AniListProgress="aniListProgress" HasOriginMetadata="true" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" PreviousChapter="@(CanMove(-1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(-1, target.Provider.ProviderKey)) : default)"
     NextChapter="@(CanMove(1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)"
     ProgressChanged="RefreshProgress"/>
   }
@@ -84,6 +84,8 @@
  [Parameter] public SearchOptions? Filters { get; set; }
  [Parameter] public string? SubmittedQuery { get; set; }
  [Parameter] public SavedTitle? InitialTitle {get;set;}
+ [Parameter] public string? InitialProviderId { get; set; }
+ [Parameter] public int? ExpectedAniListId { get; set; }
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
  [Parameter,EditorRequired] public AddonCatalog Catalog {get;set;}=null!;
  [Parameter,EditorRequired] public List<AddonResources> Providers {get;set;}=[];
@@ -91,6 +93,7 @@
  List<(AddonResources Provider, string UnitId)> targets=[];
  JsonElement? selected;
  JsonElement details;
+ AddonAniListProgress? aniListProgress;
  Dictionary<string, (bool Completed, string? HistoryId)> progress = new();
  string? continueLink;
  string applied="",titleId="",label="";
@@ -162,7 +165,7 @@
  protected override Task OnInitializedAsync()
  {
   if (InitialTitle is not null)
-   return Open(JsonSerializer.SerializeToElement(new { id = InitialTitle.ExternalId, name = InitialTitle.Title, poster = InitialTitle.Poster }));
+   return Open(JsonSerializer.SerializeToElement(new { id = InitialProviderId ?? InitialTitle.ExternalId, name = InitialTitle.Title, poster = InitialTitle.Poster }));
   if (Session?.GetValueOrDefault(PageKey) is not { } saved) return Load(true);
   applied = SubmittedQuery ?? "";
   (extraValues, titles, seenTitles, offset, more, error) =
@@ -226,6 +229,11 @@
    token.ThrowIfCancellationRequested();
    if (root.TryGetProperty("meta", out var metadata) && metadata.ValueKind == JsonValueKind.Object)
     details = metadata;
+   if (ExpectedAniListId is int expected && AddonAniListProgress.TitleId(details) != expected)
+   {
+    error = "This source no longer confirms the AniList match.";
+    return;
+   }
    units = (resource == "chapters" ? Items(root, "chapters") : Items(details, "videos"))
     .Where(unit => Field(unit, "id").Length > 0).ToList();
    var preference = await Store.GetSettingAsync(PreferenceKey);
@@ -271,6 +279,7 @@
   autoOpenSource = autoOpen;
   unitId = Field(unit, "id");
   label = Field(unit, "title");
+  aniListProgress = AddonAniListProgress.Read(Catalog.Type, details, unit);
   targets = Source.ResolveUnitProviders(Catalog.Type, unit, Providers).ToList();
  }
  public void Dispose()
