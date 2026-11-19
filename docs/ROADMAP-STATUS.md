@@ -22,7 +22,7 @@ Baseline: node --test scripts/*.test.mjs passed 6/6; python scripts/test_startup
 | 14 | AniList connection | Implemented but unverified | Profile and Android OAuth wired. Fixture tests passed. Registered client ID and native flow still needed. | AniListClient, Profile | Connect, revoke and disconnect |
 | 15 | List import | Verified | Paginated, idempotent two-media import passed against fixtures. | LocalStore, AniListClient | Repeat paginated import |
 | 16 | Statuses and scores | Verified | Status and nullable scores round-tripped through fixtures. | Models, AniListClient | Round trip account score scale |
-| 17 | Completed counts | Verified | Explicit Library count updates and reset passed. Provider-only unit counts stay local without an AniList mapping. | LocalStore | Partial unit leaves remote count intact |
+| 17 | Completed counts | Verified | Manual edits and automatic completion from explicitly mapped HTTP add-ons passed in deterministic fixtures. Live Android completion remains to be tested. | TrackedTitleSources, ManifestCatalog, LocalStore, AniListAccount | Open imported Anime and Manga through Find Sources and verify completed counts |
 | 18 | Offline queue | Verified | Edits stayed queued across SQLite reopen and retried after simulated network recovery. | LocalStore | Restart and replay newest edit |
 | 19 | Sync conflicts | Verified | Field-level conflict, intentional reset, account isolation and revision acknowledgement checks passed. | LocalStore | Test reset and independent edits |
 | 20 | Cross-device resume | Blocked | No authorized AniKatha sync backend found. Local precise positions remain intact. | Resume, LocalStore | Restore between two devices |

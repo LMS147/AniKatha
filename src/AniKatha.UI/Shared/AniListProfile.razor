@@ -5,6 +5,9 @@
 <h2>Tracking</h2>
 <section class="settings-card anilist-card">
  <span class="eyebrow">ANILIST</span>
+ <label><input type="checkbox" checked="@automatic" @onchange="ChangeAutomatic" />
+  Automatically sync completed add-on episodes and chapters
+ </label>
  @if (viewer is not null)
  {
   <h3>Connected as @viewer.Name</h3>
@@ -24,6 +27,18 @@
  AniListAccount? account;
  AniListViewer? viewer;
  bool busy;
+ bool automatic = true;
+
+ async Task ChangeAutomatic(ChangeEventArgs args)
+ {
+  var enabled = args.Value is true;
+  try
+  {
+   await Store.SetSettingAsync(LocalStore.AutomaticAniListKey, enabled ? "true" : "false");
+   automatic = enabled;
+  }
+  catch { status = "Could not save automatic tracking preference."; }
+ }
  string? status;
  readonly CancellationTokenSource lifetime = new();
 
@@ -31,7 +46,7 @@
  {
   account = (AniListAccount?)Services.GetService(typeof(AniListAccount));
   if (account is null) return;
-  try { viewer = await account.StoredViewerAsync(); viewer = await account.CurrentAsync(lifetime.Token); }
+  try { automatic = await Store.GetSettingAsync(LocalStore.AutomaticAniListKey) != "false"; viewer = await account.StoredViewerAsync(); viewer = await account.CurrentAsync(lifetime.Token); }
   catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
   catch (AniListAuthorizationException) { viewer = null; status = "AniList access expired or was revoked. Connect again."; }
   catch { status = "Could not check AniList. Try again when connected."; }
@@ -42,7 +57,7 @@
   if (account is null || busy) return;
   busy = true;
   status = null;
-  try { viewer = await account.ConnectAsync(lifetime.Token); }
+  try { automatic = await Store.GetSettingAsync(LocalStore.AutomaticAniListKey) != "false"; viewer = await account.ConnectAsync(lifetime.Token); }
   catch (OperationCanceledException) { status = "AniList sign-in cancelled."; }
   catch { status = "Could not connect to AniList."; }
   finally { busy = false; }

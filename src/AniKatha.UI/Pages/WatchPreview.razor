@@ -4,6 +4,7 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject LocalStore Store
+@inject IServiceProvider Services
 @inject AddonClient Addons
 
 <PageTitle>Watch @Title · AniKatha</PageTitle>
@@ -45,6 +46,7 @@
   <button type="button" @onclick="Retry">Retry video</button>
  </div>
 }
+@if (completionMessage is not null) { <p role="status">@completionMessage</p> }
 @if (progressError)
 {
  <p class="notice" role="status">Your playback position couldn’t be saved.</p>
@@ -152,6 +154,7 @@
  IJSObjectReference? player;
  Task initialization = Task.CompletedTask;
  bool disposed;
+ string? completionMessage;
  bool playbackError;
  bool progressError;
 
@@ -223,13 +226,25 @@
   }
  }
 
+ async Task ShowSyncResult(Task<string> sync)
+ {
+  var message = await sync;
+  if (!disposed) await InvokeAsync(() =>
+  {
+   completionMessage = message;
+   StateHasChanged();
+  });
+ }
+
  [JSInvokable]
  public async Task<bool> CompleteEpisode()
  {
   if (!TrackCompletion) return false;
   try
   {
-   await Store.CompleteUnitAsync(EpisodeKey);
+   var receipt = await AddonCompletion.SaveAsync(Store, Services, EpisodeKey);
+   completionMessage = receipt.Message;
+   if (receipt.Sync is not null) _ = ShowSyncResult(receipt.Sync);
    if (!disposed)
    {
     await InvokeAsync(() => OnCompleted.InvokeAsync());

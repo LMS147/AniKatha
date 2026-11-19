@@ -55,7 +55,11 @@ public sealed partial class AniListAccount
     };
 
     public Task UpdateFieldAsync(int viewerId, int mediaId, string field, string value, CancellationToken token = default) =>
-        WithCredentialAsync(async (credential, ct) =>
+        UpdateFieldAsync(viewerId, mediaId, field, value, null, token);
+
+    private Task<int?> UpdateFieldAsync(int viewerId, int mediaId, string field, string value, int? expectedProgress,
+        CancellationToken token, Func<Task<bool>>? stillCurrent = null) =>
+        WithCredentialAsync<int?>(async (credential, ct) =>
         {
             if (credential.ViewerId != viewerId || mediaId <= 0) throw new AniListAuthorizationException();
             var graphType = field switch
@@ -70,16 +74,24 @@ public sealed partial class AniListAccount
                 _ => value
             };
             var match = await SendAsync(credential,
-                "query ($id: Int!) { Media(id: $id) { id mediaListEntry { id } } }", new { id = mediaId }, ct);
+                "query ($id: Int!) { Media(id: $id) { id mediaListEntry { id progress } } }", new { id = mediaId }, ct);
             var media = match.GetProperty("Media");
             if (media.GetProperty("id").GetInt32() != mediaId)
                 throw new InvalidOperationException("AniList returned an unexpected title.");
             var entry = media.GetProperty("mediaListEntry");
             var entryId = entry.ValueKind == JsonValueKind.Object ? (int?)entry.GetProperty("id").GetInt32() : null;
+            if (expectedProgress is int floor)
+            {
+                if (entryId is null)
+                    throw new InvalidOperationException("The tracked title is no longer in your AniList library.");
+                var current = entry.GetProperty("progress").GetInt32();
+                if (current < floor || current >= (int)typedValue) return current;
+            }
+            if (stillCurrent is not null && !await stillCurrent()) return null;
             var mutation = $"mutation ($entryId: Int, $id: Int!, $value: {graphType}!) {{ SaveMediaListEntry(id: $entryId, mediaId: $id, {field}: $value) {{ mediaId }} }}";
             var data = await SendAsync(credential, mutation, new { entryId, id = mediaId, value = typedValue }, ct);
             return data.GetProperty("SaveMediaListEntry").GetProperty("mediaId").GetInt32() == mediaId
-                ? true : throw new InvalidOperationException("AniList did not acknowledge this edit.");
+                ? null : throw new InvalidOperationException("AniList did not acknowledge this edit.");
         }, token);
 
     private static AniListListEntry ParseListEntry(JsonElement entry, string scoreFormat)

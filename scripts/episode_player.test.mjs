@@ -92,6 +92,35 @@ test('provider completion preserves the timestamp and is recorded once', async (
   assert.deepEqual(calls, [['SavePosition', video.duration], ['CompleteEpisode']]);
 });
 
+test('seeking directly to the end saves only the position', async () => {
+  globalThis.document = new EventTarget();
+  globalThis.window = new EventTarget();
+  const video = new TestVideo();
+  const calls = [];
+  const player = attachPlayer(video, {
+    async invokeMethodAsync(...args) { calls.push(args); return true; },
+  }, 'https://example.com/sample.mp4', 0, true);
+
+  video.emit('loadedmetadata');
+  player.seek(video.duration);
+  video.emit('seeked');
+  video.ended = true;
+  video.emit('ended');
+  await player.checkpoint();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, [['SavePosition', video.duration]]);
+
+  video.ended = false;
+  player.seek(-5);
+  video.emit('seeked');
+  video.currentTime = video.duration;
+  video.ended = true;
+  video.emit('ended');
+  await player.dispose();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls.at(-1), ['CompleteEpisode']);
+});
+
 test('speed survives media load and seek clamps before saving', async () => {
   globalThis.document = new EventTarget();
   globalThis.window = new EventTarget();

@@ -56,6 +56,11 @@ internal static class DownloadChecks
         Assert(reopened.UsedBytes > 0 && reopened.AvailableBytes > 0, "Storage accounting uses the actual filesystem");
         Assert(reopened.FindAsset(manga.DownloadId, "../video.mp4") is null, "Asset route rejects paths outside the job");
 
+        await reopenedStore.ImportAniListPageAsync(7, [new(44, "MANGA", "Book", null, "CURRENT", 6, null, "POINT_10")]);
+        await reopenedStore.SaveAddonAniListProgressAsync(manga.ProgressKey, new(44, "MANGA", 7));
+        var tracking = new TrackingFixture { Linked = true, Offline = true };
+        using var trackingHttp = new HttpClient(tracking);
+        var account = new AniListAccount(trackingHttp, tracking);
         await reopenedStore.SaveReadingPageAsync(manga.ProgressKey, 2);
         await reopenedStore.SavePlaybackPositionAsync(anime.ProgressKey, 17.25);
         await reopenedStore.SaveProviderTitleAsync(provider, "manga", manga.TitleId, manga.Title);
@@ -66,6 +71,7 @@ internal static class DownloadChecks
         context.Services.AddSingleton(reopenedStore);
         context.Services.AddSingleton(reopened);
         context.Services.AddSingleton(client);
+        context.Services.AddSingleton(account);
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.GetRequiredService<NavigationManager>().NavigateTo("/library?view=downloads");
         var library = context.Render<Library>();
@@ -80,10 +86,19 @@ internal static class DownloadChecks
             Assert(player.VideoUrl.EndsWith("/video.mp4") && player.EpisodeKey == anime.ProgressKey, "Offline player uses the same key");
         });
         Assert(handler.Calls == calls, "Opening either offline item does not contact a provider");
+        Assert((await reopenedStore.AniListEditsAsync(7)).Count == 0, "Downloading and opening units does not count as completion");
+        await book.InvokeAsync(() => book.FindAll("button").Single(b => b.TextContent.Trim() == "Mark chapter read").ClickAsync(new()));
+        book.WaitForAssertion(() => Assert(book.Markup.Contains("Retry from Profile"), "Offline reader displays pending sync"));
+        var restartedStore = new LocalStore(Path.Combine(folder, "library.db3"));
+        Assert((await restartedStore.AniListEditsAsync(7)).Single().Value == "7", "Offline completion survives app restart");
+        Assert(tracking.Manga == 6, "No offline upload");
+        tracking.Offline = false;
+        Assert(await account.SyncPendingAsync(restartedStore) == 1 && tracking.Manga == 7, "Reconnect uploads the downloaded chapter completion");
+        Assert(await account.SyncPendingAsync(restartedStore) == 0, "No duplicate upload after reconnect");
         await reopened.RemoveAsync(manga.DownloadId);
         await reopened.RemoveAsync(anime.DownloadId);
         Assert(await reopened.GetDownloadCountAsync() == 0, "Both completed files removed");
-        Assert((await reopenedStore.GetLibraryAsync()).Count == 1 &&
+        Assert((await reopenedStore.GetLibraryAsync()).Count == 2 &&
             await reopenedStore.GetReadingPageAsync(manga.ProgressKey) == 2 &&
             await reopenedStore.GetPlaybackPositionAsync(anime.ProgressKey) == 17.25, "Remove download leaves library and precise progress");
         Console.WriteLine("PASS: persistent queue, interrupted recovery, cancellation, invalid files, source identity, offline Library and precise progress after deletion.");

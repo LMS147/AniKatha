@@ -43,6 +43,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
   if (Downloads is not { } downloads) return;
   try
   {
+   if (HasOriginMetadata) await Store.SaveAddonAniListProgressAsync(Key, AniListProgress);
    await downloads.QueueAsync(new(Origin, Type, TitleId, UnitId, Source.ProviderKey, Title, Label, streamId));
    downloadStatus = "Added to Downloads in Library.";
   }
@@ -51,6 +52,8 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
 
  [CascadingParameter] public SourceResultCache? Cache { get; set; }
  [Parameter,EditorRequired] public AddonResources Source {get;set;}=null!;
+ [Parameter] public AddonAniListProgress? AniListProgress { get; set; }
+ [Parameter] public bool HasOriginMetadata { get; set; }
  [Parameter] public string Origin {get;set;}="";
  [Parameter] public string TitleId {get;set;}="";
  [Parameter] public string UnitId {get;set;}="";
@@ -124,6 +127,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
   var id = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Key)));
   try
   {
+   if (HasOriginMetadata) await Store.SaveAddonAniListProgressAsync(Key, AniListProgress);
    await Store.RememberAsync(new ResumeEntry { Id=id, Origin=Origin, Source=Source.ProviderKey, Type=Type,
     TitleId=TitleId, UnitId=UnitId, Title=Title, Label=Label });
    progressError = false;
