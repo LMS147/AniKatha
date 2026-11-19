@@ -66,6 +66,13 @@
     <a class="primary" href="/manga/preview">Back to chapters</a>
    }
   </div>
+  @if (PreviousChapter.HasDelegate || NextChapter.HasDelegate)
+  {
+   <div class="reader-controls">
+    <button class="secondary" disabled="@(saving || !PreviousChapter.HasDelegate)" @onclick="() => OpenChapter(PreviousChapter)">← Previous chapter</button>
+    <button class="secondary" disabled="@(saving || !NextChapter.HasDelegate)" @onclick="() => OpenChapter(NextChapter)">Next chapter →</button>
+   </div>
+  }
  </section>
  @if (storageError is not null)
  {
@@ -81,6 +88,8 @@ else
  int currentPage = 1;
  bool ready;
  bool saving, completed;
+ [Parameter] public EventCallback PreviousChapter { get; set; }
+ [Parameter] public EventCallback NextChapter { get; set; }
  [Parameter] public EventCallback OnCompleted { get; set; }
  string? storageError;
  [Parameter] public string ChapterKey {get;set;} = MangaSample.ChapterKey;
@@ -198,6 +207,21 @@ else
   {
    ready = true;
   }
+ }
+
+ async Task OpenChapter(EventCallback open)
+ {
+  if (saving || !open.HasDelegate) return;
+  saving = true;
+  try { await Store.SaveReadingPageAsync(ChapterKey, currentPage); }
+  catch
+  {
+   storageError = "Your current page could not be saved.";
+   saving = false;
+   return;
+  }
+  try { await open.InvokeAsync(); }
+  finally { saving = false; }
  }
 
  async Task Finish()
