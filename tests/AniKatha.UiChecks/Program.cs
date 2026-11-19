@@ -54,6 +54,7 @@ var other=new InstalledAddon{Url=FixtureHandler.OtherUrl, Name="Second source",
  ManifestJson="""{"types":["anime"],"resources":[{"name":"stream","idPrefixes":["alternate-"]}]}"""};
 sources.Add(new AddonResources(other));
 await store.SaveAddonAsync(other);
+await store.SetSettingAsync(MediaPreferences.AutoplayKey, "true");
 var anime=context.Render<ManifestCatalog>(p=>p.Add(x=>x.Source,provider).Add(x=>x.Catalog,provider.Catalogs("ANIME").Single()).Add(x=>x.Providers,sources));
 foreach(var name in new[]{"Anime Story","Episode 9","Stream 9"})
  await ClickAsync(anime, name);
@@ -94,6 +95,17 @@ await ClickAsync(reopened, "Mark chapter read");
 reopened.WaitForAssertion(()=>Check(reopened.Markup.Contains("Chapter completed"),"Complete chapter"));
 var readingKey = ResumeEntry.Key(record.Origin, record.Type, record.TitleId, record.UnitId, record.Source);
 Check(await store.IsUnitCompleteAsync(readingKey) && await store.GetReadingPageAsync(readingKey)==2,"Completion preserves precise page");
+await ClickAsync(reopened, "Next chapter →");
+reopened.WaitForAssertion(()=>Check(reopened.Find(".reader-page").GetAttribute("src")=="https://images.example/special.webp","Decimal chapter follows provider order"));
+Check(reopened.FindAll("button").Single(x => x.TextContent.Trim()=="Next chapter →").HasAttribute("disabled"), "Last chapter boundary");
+await ClickAsync(reopened, "← Previous chapter");
+reopened.WaitForAssertion(()=>Check(reopened.Find(".reader-page").GetAttribute("src")=="https://images.example/2.webp","Previous chapter restores page"));
+var firstPlayer = anime.FindComponent<WatchPreview>();
+await firstPlayer.InvokeAsync(() => firstPlayer.Instance.CompleteEpisode());
+anime.WaitForAssertion(()=>Check(anime.FindComponent<WatchPreview>().Instance.VideoUrl=="https://video.example/10.mp4","Autoplay opens the next episode source"));
+Check(!anime.FindComponent<WatchPreview>().Instance.OnNext.HasDelegate, "Last episode boundary");
+await ReaderChecks.RunAsync(context, store);
+
 
 Console.WriteLine("PASS: phase 2 fixture covered metadata, explicit unit mapping, source fallback and preference, cache refresh and chapter completion.");
 Console.WriteLine("PASS: install via Profile, type routing, pagination, repeat-page stop, chapter reading, page resume, enable/disable, episode source → player.");
@@ -133,14 +145,16 @@ sealed class FixtureHandler : HttpMessageHandler
    var next=path.Contains("skip=");
    result=new{metas=new[]{new{id=next?"two":"one",type,name=next?"Second title":type=="anime"?"Anime Story":"Manga Story"}}};
   }
-  else if(path.EndsWith("/chapters/manga/one.json"))result=new{meta=new{description="Under the sea",status="Ongoing"},chapters=new[]{new{id="chapter-7",title="Chapter 7"}}};
+  else if(path.EndsWith("/chapters/manga/one.json"))result=new{meta=new{description="Under the sea",status="Ongoing"},chapters=new[]{new{id="chapter-7",title="Chapter 7"},new{id="chapter-7.5",title="Chapter 7.5"}}};
   else if(path.EndsWith("/pages/manga/chapter-7.json"))result=new{language="English",pages=new[]{"https://images.example/1.webp","https://images.example/2.webp"}};
-  else if(path.EndsWith("/meta/anime/one.json"))result=new{meta=new{videos=new[]{new{id="episode-9",title="Episode 9",sourceMappings=new[]{new{providerKey=new AddonResources(new InstalledAddon {Url=OtherUrl}).ProviderKey,unitId="alternate-09"}}}}}};
+  else if(path.EndsWith("/pages/manga/chapter-7.5.json"))result=new{pages=new[]{"https://images.example/special.webp"}};
+  else if(path.EndsWith("/meta/anime/one.json"))result=new{meta=new{videos=new[]{new{id="episode-9",title="Episode 9",sourceMappings=new object[]{new{providerKey=new AddonResources(new InstalledAddon {Url=OtherUrl}).ProviderKey,unitId="alternate-09"}}},new{id="episode-10",title="Episode 10",sourceMappings=Array.Empty<object>()}}}};
   else if(path.EndsWith("/stream/anime/episode-9.json"))
   {
    SuccessfulSourceRequests++;
    result=new{streams=new[]{new{name="Stream 9",quality="1080p",audioLanguage="Japanese",url="https://video.example/9.mp4"}}};
   }
+  else if (path.EndsWith("/stream/anime/episode-10.json")) result = new { streams = new[] { new { name = "Stream 10", url = "https://video.example/10.mp4" } } };
   else throw new InvalidOperationException("Unexpected fixture request");
   return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(JsonSerializer.Serialize(result))});
  }

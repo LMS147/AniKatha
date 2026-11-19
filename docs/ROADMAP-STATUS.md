@@ -27,16 +27,16 @@ Baseline: node --test scripts/*.test.mjs passed 6/6; python scripts/test_startup
 | 19 | Sync conflicts | Verified | Field-level conflict, intentional reset, account isolation and revision acknowledgement checks passed. | LocalStore | Test reset and independent edits |
 | 20 | Cross-device resume | Blocked | No authorized AniKatha sync backend found. Local precise positions remain intact. | Resume, LocalStore | Restore between two devices |
 | 21 | Settings sync | Optional and pending | Disabled for this run because the session switch was unspecified | Profile | Requires explicit enablement and authorized backend |
-| 22 | Playback speed | Pending | Persistent speed control pending | WatchPreview | Restart restores default |
-| 23 | Subtitle language | Pending | Manual tracks exist; preferred language pending | WatchPreview | Absent language and override |
-| 24 | Subtitle appearance | Pending | Track styling pending | WatchPreview, episode-player.mjs | Check native and embedded support |
-| 25 | Seek controls | Pending | Configurable jumps pending | episode-player.mjs | Clamp and save near boundaries |
-| 26 | Next episode | Pending | Provider order available; transition pending | ManifestCatalog, WatchPreview | Repeated end event advances once |
-| 27 | Reading modes | Pending | Paged reader exists; mode switching pending | ReadMangaPreview | Keep logical page through mode changes |
-| 28 | Reader display | Pending | Zoom and fit controls pending | ReadMangaPreview | Rotate without progress loss |
-| 29 | Jump to page | Pending | Next page exists; direct jump pending | ReadMangaPreview | Reject out-of-range page |
-| 30 | Chapter navigation | Pending | Unit selection exists; adjacent chapter navigation pending | ManifestCatalog | Navigate decimal chapters in source order |
-| 31 | Reader preferences | Pending | Title-specific overrides pending | ReadMangaPreview, LocalStore | Clear override |
+| 22 | Playback speed | Verified | Playback speed has an immediate control and saved default. | WatchPreview | Restart restores default |
+| 23 | Subtitle language | Implemented but unverified | Provider tracks select a preferred language unless overridden for the episode. | WatchPreview | Absent language and override |
+| 24 | Subtitle appearance | Verified | WebView tracks support size, background and placement. YouTube embeds retain their own controls. | WatchPreview, episode-player.mjs | Check native and embedded support |
+| 25 | Seek controls | Verified | Configured seek controls clamp and save positions. | episode-player.mjs | Clamp and save near boundaries |
+| 26 | Next episode | Verified | Next and autoplay resolve the next unit in provider order. The final episode has no next action. | ManifestCatalog, WatchPreview | Repeated end event advances once |
+| 27 | Reading modes | Verified | Vertical, LTR and RTL preserve logical page. | ReadMangaPreview | Keep logical page through mode changes |
+| 28 | Reader display | Verified | Fit and zoom are independent of stored position. | ReadMangaPreview | Rotate without progress loss |
+| 29 | Jump to page | Verified | Valid page jumps persist. Invalid input gets a range message. | ReadMangaPreview | Reject out-of-range page |
+| 30 | Chapter navigation | Verified | Chapter navigation respects provider order and restores the previous page. | ManifestCatalog | Navigate decimal chapters in source order |
+| 31 | Reader preferences | Verified | Global defaults and per-title overrides persist in existing settings. | ReadMangaPreview, LocalStore | Clear override |
 | 32 | Chapter downloads | Pending | Bundled sample exists; provider download pending | ReadMangaPreview | Interrupt and verify incomplete state |
 | 33 | Video downloads | Pending | Stream selection exists; downloadable-file capability pending | ManifestSources | Play local file offline |
 | 34 | Download queue | Pending | Persistent queue pending | LocalStore | Restart and cancel |
@@ -59,3 +59,7 @@ The rendered check opened provider titles from search and Library, verified an e
 The account fixture exercised OAuth callback state validation, two-media pagination and repeat import, decimal and unset scores, a restart of the local store with pending edits, reconnection, concurrent queue revisions, a remote status edit alongside a local progress reset, revocation and disconnect. Both exact positions remained intact. No schema migration. Credential storage on Android uses SecureStorage. Account sync records use scoped keys in the existing settings table.
 
 Live authorization and mutations require a registered public AniList client ID, the matching redirect, and an Android device or emulator signed into a test AniList account. The public .NET tests use simulated GraphQL replies. No authorized service was found for cross-device exact positions or settings. See ANILIST-SYNC.md.
+
+## Phase 4 gate
+
+The Release UI check built with zero warnings and errors. Rendered fixtures exercised autoplay transition to the next episode, last-unit boundaries, decimal chapter order, exact resume, reader jumps, fit and zoom, RTL, vertical page callbacks, reopened title preferences, and clearing an override. JavaScript tests covered speed, bounds, position saves, cue placement, and a duplicate completion event. The app uses the existing settings table and progress keys. Device verification of native HTML video, rendered subtitle appearance, preferred language selection and vertical scrolling remains open. YouTube embeds retain provider-controlled playback and subtitle settings.
