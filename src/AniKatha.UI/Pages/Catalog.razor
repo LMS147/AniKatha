@@ -202,7 +202,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
 
  Task Search()
  {
-  if (!initialized) return;
+  if (!initialized) return Task.CompletedTask;
   appliedSearch = search.Trim();
   appliedFilters = new SearchOptions(Kind, appliedSearch, genre, year, Kind == "ANIME" ? season : null, format, sort);
   submission++;
