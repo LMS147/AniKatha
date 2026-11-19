@@ -31,7 +31,10 @@ fi
 # UIAutomator is unnecessary here and can crash during accessibility traversal.
 app_pid=$(adb shell pidof "$package" | tr -d '\r' | awk '{print $1}')
 adb forward tcp:9222 "localabstract:webview_devtools_remote_$app_pid"
-node scripts/check_webview.mjs fresh
+fresh_result=0
+upgrade_result=0
+node scripts/check_webview.mjs fresh || fresh_result=$?
+adb logcat -d -v threadtime > artifacts/startup/fresh-logcat.txt || true
 baseline=$(find artifacts/apk-baseline -name '*-Signed.apk' -print -quit 2>/dev/null || true)
 if [[ -n "$baseline" ]]; then
   probe() {
@@ -55,9 +58,13 @@ if [[ -n "$baseline" ]]; then
   }
   adb uninstall "$package"
   adb install "$baseline"
-  probe seed
-  adb shell am force-stop "$package"
-  adb install -r "$apk"
-  probe upgrade
+  if probe seed && adb shell am force-stop "$package" && adb install -r "$apk"; then
+    probe upgrade || upgrade_result=$?
+  else
+    upgrade_result=1
+  fi
+fi
+if ((fresh_result != 0 || upgrade_result != 0)); then
+  exit 1
 fi
 echo 'PASS: APK installed without fast deployment, rendered navigation, and stayed open for 45 seconds.'

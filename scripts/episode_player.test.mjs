@@ -121,3 +121,30 @@ test('places subtitle cues and preserves the automatic track layout', () => {
   assert.match(placeSubtitles(cues, 'bottom'), /line:90%/);
   assert.ok(!placeSubtitles(cues, 'bottom').includes('line:42%'));
 });
+
+test('Android offline playback loads a local Blob and revokes it when closed', async () => {
+  globalThis.document = new EventTarget();
+  globalThis.window = new EventTarget();
+  window.location = { hostname: '0.0.0.1' };
+  const video = new TestVideo();
+  const originalFetch = globalThis.fetch;
+  let localUrl;
+  try {
+    globalThis.fetch = async (url, { signal }) => {
+      assert.equal(url, 'offline-media/example/video.mp4');
+      assert.equal(signal.aborted, false);
+      return new Response(new Uint8Array(32), { headers: { 'Content-Type': 'video/mp4' } });
+    };
+    const player = attachPlayer(video, { async invokeMethodAsync() { return true; } },
+      'offline-media/example/video.mp4', 10, true, 1, false, true);
+    await new Promise(resolve => setImmediate(resolve));
+    localUrl = video.src;
+    assert.match(localUrl, /^blob:/);
+    video.emit('loadedmetadata');
+    assert.equal(video.currentTime, 10);
+    await player.dispose();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  await assert.rejects(globalThis.fetch(localUrl));
+});

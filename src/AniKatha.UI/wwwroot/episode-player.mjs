@@ -7,7 +7,7 @@ export function placeSubtitles(cues, placement) {
   }).join('\n');
 }
 
-export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1, startPlaying = false) {
+export function attachPlayer(video, callbacks, url, resumePosition, trackCompletion = false, speed = 1, startPlaying = false, offlineFile = false) {
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
   let ready = false;
@@ -59,7 +59,37 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
     callbacks.invokeMethodAsync('SetPlaybackError').catch(() => {});
   }, options);
 
-  video.src = url;
+  const useLocalBlob = offlineFile && window.location?.hostname === '0.0.0.1';
+  let mediaRequest;
+  let mediaBlobUrl;
+
+  function clearMediaBlob() {
+    mediaRequest?.abort();
+    mediaRequest = undefined;
+    if (mediaBlobUrl) URL.revokeObjectURL(mediaBlobUrl);
+    mediaBlobUrl = undefined;
+  }
+
+  async function loadMediaBlob() {
+    clearMediaBlob();
+    const request = new AbortController();
+    mediaRequest = request;
+    try {
+      // Android's static WebView provider serves whole files. A Blob lets the native
+      // media engine seek without HTTP Range support on that origin.
+      const response = await fetch(url, { signal: request.signal });
+      if (!response.ok) throw new Error('Local media unavailable');
+      const body = await response.blob();
+      if (request.signal.aborted) return;
+      mediaBlobUrl = URL.createObjectURL(body.type === 'video/mp4' ? body : new Blob([body], { type: 'video/mp4' }));
+      video.src = mediaBlobUrl;
+    } catch {
+      if (!request.signal.aborted) callbacks.invokeMethodAsync('SetPlaybackError').catch(() => {});
+    }
+  }
+
+  if (useLocalBlob) void loadMediaBlob();
+  else video.src = url;
 
   let track;
   let subtitleUrl;
@@ -95,7 +125,8 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
     retry() {
       save(true);
       ready = false;
-      video.load();
+      if (useLocalBlob) void loadMediaBlob();
+      else video.load();
     },
     async dispose() {
       const saving = save(true);
@@ -104,6 +135,7 @@ export function attachPlayer(video, callbacks, url, resumePosition, trackComplet
       video.pause();
       video.removeAttribute('src');
       video.load();
+      clearMediaBlob();
       await saving;
     }
   };

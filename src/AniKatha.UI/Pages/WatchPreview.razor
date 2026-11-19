@@ -13,7 +13,7 @@
  <p>@EpisodeLabel</p>
 </header>
 
-<video @ref="video" class="@($"episode-video subtitle-{subtitleSize} subtitle-{subtitleBackground}")" controls playsinline preload="metadata" aria-label="@Title"></video>
+<video @ref="video" class="@($"episode-video subtitle-{subtitleSize} subtitle-{subtitleBackground}")" controls playsinline preload="metadata" data-offline-source="@(OfflineFile ? VideoUrl : null)" aria-label="@Title"></video>
 <div class="reader-controls">
  <button class="secondary" @onclick="() => Seek(-seekSeconds)">−@seekSeconds s</button>
  <button class="secondary" @onclick="() => Seek(seekSeconds)">+@seekSeconds s</button>
@@ -56,6 +56,7 @@
 
 }
 @code {
+ [Parameter] public bool OfflineFile { get; set; }
  [Parameter] public bool StartPlaying { get; set; }
  [Parameter] public EventCallback OnNext { get; set; }
  bool autoplay, advancing;
@@ -177,7 +178,7 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed, StartPlaying);
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed, StartPlaying, OfflineFile);
    if (!disposed) await InvokeAsync(StateHasChanged);
    await ApplyPreferredSubtitle();
   }

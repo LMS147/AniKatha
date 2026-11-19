@@ -16,7 +16,7 @@
  else
  {
   <WatchPreview @key="job.Id" EpisodeKey="@selection.ProgressKey" VideoUrl="@OfflineDownloads.AssetUrl(job.Id, assets[0].Name)"
-   Title="@selection.Title" EpisodeLabel="@selection.Label" TrackCompletion="true"/>
+   Title="@selection.Title" EpisodeLabel="@selection.Label" TrackCompletion="true" OfflineFile="true"/>
  }
 }
 else if (loading) { <p role="status">Opening download…</p> }

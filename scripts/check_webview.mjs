@@ -271,7 +271,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
             (await wait(() => open('Big Buck Bunny'), 'Downloaded video was not listed')).click();
             const video = await wait(() => {
               const media = document.querySelector('video');
-              return media?.src.includes('/offline-media/') && media.readyState >= 2 && media;
+              return media?.dataset.offlineSource?.includes('offline-media/') && media.readyState >= 2 && media;
             }, 'Video frame did not load in airplane mode');
             video.currentTime = Math.min(3, video.duration / 2);
             await wait(() => !video.seeking && video.currentTime > 0, 'Offline video could not seek');
