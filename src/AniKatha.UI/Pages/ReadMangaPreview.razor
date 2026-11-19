@@ -16,6 +16,11 @@
 {
  <section class="manga-reader" aria-label="@ChapterLabel">
   <p class="reader-position" role="status">Page @currentPage of @PageCount</p>
+  <form class="reader-jump" novalidate @onsubmit="JumpToPage" @onsubmit:preventDefault>
+   <label>Go to page <input type="number" inputmode="numeric" min="1" max="@PageCount" @bind="pageInput" /></label>
+   <button type="submit" class="secondary" disabled="@saving">Go</button>
+  </form>
+  @if (jumpError is not null) { <p role="alert">@jumpError</p> }
   <label>Reading mode
    <select value="@mode" @onchange="ChangeMode">
     <option value="ltr">Left to right</option>
@@ -85,6 +90,20 @@ else
  int PageCount => Pages?.Count ?? MangaSample.PageDescriptions.Count;
  string PageUrl(int page) => Pages?[page - 1] ?? $"_content/AniKatha.UI/manga/midnight-lighthouse-{page}.webp";
  string PageDescription(int page) => Pages is null ? MangaSample.PageDescriptions[page - 1] : $"Page {page}";
+ string pageInput = "";
+ string? jumpError;
+
+ async Task JumpToPage()
+ {
+  if (!int.TryParse(pageInput, NumberStyles.None, CultureInfo.InvariantCulture, out var page) || page < 1 || page > PageCount)
+  {
+   jumpError = $"Enter a page from 1 to {PageCount}.";
+   return;
+  }
+  jumpError = null;
+  await MoveTo(page);
+ }
+
  string mode = "ltr", fit = "width";
  int zoom = 100;
  static readonly int[] zoomLevels = [100, 125, 150, 200];
