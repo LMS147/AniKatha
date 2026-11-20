@@ -417,7 +417,8 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     if (mode === 'fresh') {
       await checkHomeViews(command);
       for (const [scene, label] of [
-        ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
+        ['hub', 'profile-account'], ['preferences', 'profile-preferences'],
+        ['sync', 'profile-sync'], ['security', 'profile-security'], ['switcher', 'profile-switcher'],
         ['appearance', 'appearance'], ['sources', 'sources'],
         ['anilist', 'anilist-account-android'], ['tracking-editor', 'anilist-editor-android'],
       ]) {
@@ -427,6 +428,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         }, 45000);
         if (result.result?.value !== true)
           throw new Error(result.exceptionDetails?.exception?.description ?? 'Could not verify ' + label);
+        await new Promise(resolve => setTimeout(resolve, 500));
         const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
         await writeFile('artifacts/startup/' + label + '.png', image);
       }
@@ -453,14 +455,77 @@ async function verifyProfileScene(scene) {
   const heading = name => wait(() => document.querySelector('h1')?.textContent === name, name);
   const activate = async name => {
     (await wait(() => [...document.querySelectorAll('.settings-row')].find(row => row.textContent.includes(name)), name)).click();
-    await wait(() => document.querySelector('.profile-card h2')?.textContent === name, 'Active profile ' + name);
+    await wait(() => document.querySelector('.profile-summary h3')?.textContent === name, 'Active profile ' + name);
   };
 
   if (scene === 'hub') {
     document.querySelector('.bottom-nav a[href="/profile"]').click();
     await heading('Profile');
-    await wait(() => document.querySelector('.profile-card h2')?.textContent === 'Story explorer', 'Default profile');
+    await wait(() => document.querySelector('.profile-summary h3')?.textContent === 'Story explorer', 'Default profile');
+    const username = document.querySelector('#profile-username');
+    username.value = 'TestUser';
+    username.dispatchEvent(new Event('input', { bubbles: true }));
+    await click('Preferences');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) h2')?.textContent === 'Preferences', 'Preferences tab');
+    await click('Account');
+    if (username.value !== 'TestUser') throw new Error('Account draft lost during tab switch');
+    const input = document.querySelector('.profile-photo-edit input');
+    const files = new DataTransfer();
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 32;
+    const art = canvas.getContext('2d');
+    art.fillStyle = '#1763c6';
+    art.fillRect(0, 0, 32, 32);
+    art.fillStyle = '#f3f7ff';
+    art.fillRect(8, 8, 16, 16);
+    const image = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    files.items.add(new File([image], 'avatar.png', { type: 'image/png' }));
+    input.files = files.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(() => document.querySelector('.profile-summary img')?.naturalWidth === 32, 'Local avatar decoded');
+    await click('Save changes');
+    await wait(() => document.querySelector('.profile-summary')?.textContent.includes('TestUser'), 'Saved username');
+  } else if (scene === 'preferences') {
+    await click('Preferences');
+    const toggle = await wait(() => document.querySelector('.profile-panel:not([hidden]) .profile-switch input'), 'Playback switch');
+    toggle.click();
+    await click('Account');
+    await click('Preferences');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) .profile-switch input')?.checked,
+      'Playback preference persisted');
+  } else if (scene === 'sync') {
+    await click('Sync');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) .tracking-account h2')?.textContent === 'AniList account', 'Sync tab');
+    await click('Import');
+    const input = await wait(() => document.querySelector('.profile-panel:not([hidden]) input[type="file"]'), 'Backup picker');
+    const file = new DataTransfer();
+    file.items.add(new File(['{"Version":1,"Library":[],"History":[]}'], 'anikatha-test.json', { type: 'application/json' }));
+    input.files = file.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await click('Merge backup');
+    await wait(() => document.querySelector('.profile-backup-card')?.textContent.includes('Backup merged.'), 'Backup merge');
+    await click('Export');
+  } else if (scene === 'security') {
+    await click('Security');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="new-password"]'), 'Local PIN form');
+    document.querySelector('.profile-panel:not([hidden]) .profile-switch input').click();
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="new-password"]')?.type === 'text', 'Show PIN');
+    document.querySelector('.profile-panel:not([hidden]) .profile-switch input').click();
+    const setPin = (field, value) => {
+      field.value = value;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    for (const input of document.querySelectorAll('.profile-panel:not([hidden]) input[inputmode="numeric"]')) setPin(input, '4275');
+    await click('Set PIN');
+    await click('Done');
+    const current = await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="off"][inputmode="numeric"]'), 'Current PIN');
+    setPin(current, '4275');
+    await click('Remove PIN');
+    await wait(() => document.querySelector('.profile-panel:not([hidden])')?.textContent.includes('PIN removed.'), 'Removed profile PIN');
+    await click('Account');
+    await click('Security');
   } else if (scene === 'switcher') {
+    await click('Account');
     await open('/profile/profiles');
     await open('/profile/profiles/new');
     const input = await wait(() => document.querySelector('input[maxlength="32"]'), 'Profile name');

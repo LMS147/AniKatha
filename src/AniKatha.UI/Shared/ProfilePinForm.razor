@@ -1,0 +1,51 @@
+@using Microsoft.AspNetCore.Components
+@inject LocalProfiles Profiles
+ @if (recoveryCode is not null)
+ {
+  <section class="settings-card">
+   <h2>Save your recovery code</h2><p>Keep this code somewhere private. It can unlock the profile and remove its PIN if you forget it. This is the only time the code is shown.</p>
+   <code class="recovery-code">@recoveryCode</code>
+   <button class="primary" @onclick="() => recoveryCode = null">Done</button>
+  </section>
+ }
+ else if (Profiles.SupportsPin)
+ {
+  <section class="settings-card">
+   <form @onsubmit="() => Save(false)" @onsubmit:preventDefault>
+    @if (Profiles.Active.Locked)
+    {
+     <label>Current PIN<input type="@(show ? "text" : "password")" inputmode="numeric" maxlength="8" autocomplete="off" @bind="current" /></label>
+    }
+    <label>New PIN<input type="@(show ? "text" : "password")" inputmode="numeric" maxlength="8" autocomplete="new-password" @bind="next" /></label>
+    <label>Confirm new PIN<input type="@(show ? "text" : "password")" inputmode="numeric" maxlength="8" autocomplete="new-password" @bind="confirm" /></label>
+    <label class="profile-switch"><span>Show PIN</span><input type="checkbox" role="switch" @bind="show" /></label>
+    <p>Use 4–8 digits.</p>
+    @if (message is not null) { <p role="status">@message</p> }
+    <div class="settings-actions"><button class="primary" disabled="@busy">@(Profiles.Active.Locked ? "Change PIN" : "Set PIN")</button>
+     @if (Profiles.Active.Locked) { <button type="button" class="secondary danger-action" disabled="@busy" @onclick="() => Save(true)">Remove PIN</button> }
+    </div>
+   </form>
+  </section>
+ }
+ else { <p>Secure PIN storage is unavailable on this platform.</p> }
+@code {
+ string current = "", next = "", confirm = "";
+ string? message, recoveryCode;
+ bool busy, show;
+ async Task Save(bool remove)
+ {
+  if (busy) return;
+  if (!remove && next != confirm) { message = "The PINs do not match."; return; }
+  busy = true;
+  try
+  {
+   recoveryCode = await Profiles.SetPinAsync(remove ? null : next, current);
+   current = next = confirm = "";
+   show = false;
+   message = remove ? "PIN removed." : null;
+  }
+  catch (InvalidOperationException ex) { message = ex.Message; }
+  catch { message = "Could not update the profile PIN."; }
+  finally { busy = false; }
+ }
+}

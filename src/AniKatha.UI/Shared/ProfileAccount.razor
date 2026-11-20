@@ -1,0 +1,97 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<section class="profile-summary settings-card">
+ <div class="profile-identity">
+  <div class="profile-photo">
+   <ProfileAvatar Name="@saved.Name" Avatar="@avatar" Size="large" />
+   <label class="profile-photo-edit" title="Edit avatar">
+    <span aria-hidden="true">✎</span><InputFile OnChange="PickAvatar" accept="image/jpeg,image/png,image/webp" aria-label="Edit avatar" disabled="@(saving || checkingAvatar)" />
+   </label>
+  </div>
+  <div>
+   <p class="profile-device">On this device</p>
+   <h3>@saved.Name</h3>
+   @if (!string.IsNullOrEmpty(saved.Details?.Username)) { <p>@@@saved.Details.Username</p> }
+   <small>@(saved.Locked ? "PIN protected" : "Local profile")</small>
+  </div>
+ </div>
+ @if (avatarError is not null) { <p class="profile-error" role="alert">@avatarError</p> }
+ @if (avatar.Length > 0) { <button type="button" class="text-link" disabled="@(saving || checkingAvatar)" @onclick='() => avatar = ""'>Use initials</button> }
+</section>
+
+<form class="profile-form" @onsubmit="Save" @onsubmit:preventDefault>
+ <label for="profile-username">Username</label>
+ <small id="profile-username-help">Optional. Use 3–10 letters or digits.</small>
+ <input id="profile-username" aria-describedby="profile-username-help" @bind="username" @bind:event="oninput" autocomplete="off" autocapitalize="off" maxlength="10" />
+ <label for="profile-display-name">Display name</label>
+ <small id="profile-name-help">How your name appears on this device. Up to 32 characters.</small>
+ <input id="profile-display-name" aria-describedby="profile-name-help" @bind="name" @bind:event="oninput" autocomplete="off" maxlength="32" />
+ <label for="profile-bio">Bio</label>
+ <small id="profile-bio-help">A short introduction.</small>
+ <textarea id="profile-bio" rows="4" maxlength="500" aria-describedby="profile-bio-help profile-bio-count" @bind="bio" @bind:event="oninput"></textarea>
+ <small class="profile-count" id="profile-bio-count">@bio.Length / 500</small>
+ <label for="profile-website">Website</label>
+ <small id="profile-site-help">Optional. Enter a full HTTP or HTTPS address.</small>
+ <input id="profile-website" inputmode="url" maxlength="500" aria-describedby="profile-site-help" @bind="website" @bind:event="oninput" placeholder="https://example.com" />
+ @if (Changed && Validation is { } validation) { <p class="profile-error" role="status">@validation</p> }
+ @if (message is not null) { <p role="@(failed ? "alert" : "status")">@message</p> }
+ <div class="settings-actions">
+  <button class="primary" disabled="@(!Changed || Validation is not null || saving || checkingAvatar)">@(saving ? "Saving…" : "Save changes")</button>
+  @if (Changed) { <button class="secondary" type="button" disabled="@(saving || checkingAvatar)" @onclick="Reset">Cancel</button> }
+ </div>
+</form>
+
+@code {
+ [Parameter, EditorRequired] public LocalProfiles Profiles { get; set; } = null!;
+ LocalProfile saved = LocalProfile.Default;
+ string name = "", username = "", bio = "", website = "", avatar = "";
+ string? message, avatarError;
+ bool saving, checkingAvatar, failed;
+ ProfileDetails Draft => new(username.Trim(), bio, website.Trim());
+ string? Validation => name.Trim().Length is < 1 or > 32 || name.Any(char.IsControl)
+  ? "Enter a display name between 1 and 32 characters." : Draft.Validate();
+ bool Changed => name.Trim() != saved.Name || avatar != saved.Avatar || Draft != (saved.Details ?? new());
+
+ protected override void OnInitialized() { saved = Profiles.Active; Reset(); }
+
+ void Reset()
+ {
+  (name, avatar) = (saved.Name, saved.Avatar);
+  (username, bio, website) = saved.Details ?? new();
+  message = avatarError = null;
+ }
+
+ async Task PickAvatar(InputFileChangeEventArgs args)
+ {
+  if (saving || checkingAvatar) return;
+  checkingAvatar = true;
+  avatarError = null;
+  try
+  {
+   await using var stream = args.File.OpenReadStream(ProfileDetails.AvatarLimit);
+   using var bytes = new MemoryStream();
+   await stream.CopyToAsync(bytes);
+   var candidate = ProfileDetails.CreateAvatar(bytes.ToArray());
+   await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AniKatha.UI/profile-files.mjs");
+   if (!await module.InvokeAsync<bool>("verifyAvatar", candidate))
+    throw new InvalidOperationException("Choose a readable image up to 4096 pixels wide and tall.");
+   avatar = candidate;
+  }
+  catch (InvalidOperationException ex) { avatarError = ex.Message; }
+  catch { avatarError = "Could not open this image. Choose a readable PNG, JPEG, or WebP under 1 MB."; }
+  finally { checkingAvatar = false; }
+ }
+
+ async Task Save()
+ {
+  if (saving || checkingAvatar || !Changed || Validation is not null) return;
+  saving = true;
+  failed = false;
+  try { saved = await Profiles.SaveAsync(saved.Id, name, avatar, Draft); Reset(); message = "Profile saved."; }
+  catch (InvalidOperationException ex) { failed = true; message = ex.Message; }
+  catch { failed = true; message = "Could not save your profile. Try again."; }
+  finally { saving = false; }
+ }
+}

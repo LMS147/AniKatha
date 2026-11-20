@@ -1,5 +1,22 @@
-<span class="local-avatar @Size" data-avatar="@Avatar" aria-hidden="true">@Glyph(Name, Avatar)</span>
+@if (Avatar.StartsWith("data:image/", StringComparison.Ordinal))
+{
+ <span class="local-avatar @Size" aria-hidden="true">
+  @if (!failed) { <img src="@Avatar" alt="" @key="Avatar" @onerror="() => failed = true" /> }
+  else { @Glyph(Name, "") }
+ </span>
+}
+else
+{
+ <span class="local-avatar @Size" data-avatar="@Avatar" aria-hidden="true">@Glyph(Name, Avatar)</span>
+}
 @code {
+ bool failed;
+ string? lastAvatar;
+ protected override void OnParametersSet()
+ {
+  if (lastAvatar == Avatar) return;
+  (lastAvatar, failed) = (Avatar, false);
+ }
  [Parameter] public string Name { get; set; } = "";
  [Parameter] public string Avatar { get; set; } = "";
  [Parameter] public string Size { get; set; } = "";

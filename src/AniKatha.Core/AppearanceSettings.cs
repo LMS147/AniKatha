@@ -4,12 +4,12 @@ namespace AniKatha.Core;
 
 public sealed record AccentPreset(string Name, string Dark, string Light);
 
-public sealed record AppearanceSettings(string Mode = "system", string Accent = "Violet", string Density = "comfortable")
+public sealed record AppearanceSettings(string Mode = "system", string Accent = "Blue", string Density = "comfortable")
 {
     public const string Key = "appearance-v1";
     public static IReadOnlyList<AccentPreset> Presets { get; } =
     [
-        new("Violet", "#b5a0ff", "#5636a0"), new("Ocean", "#83c8ff", "#125783"),
+        new("Blue", "#429cff", "#185ab4"), new("Violet", "#b5a0ff", "#5636a0"), new("Ocean", "#83c8ff", "#125783"),
         new("Rose", "#ffa3c7", "#8c2855"), new("Emerald", "#8cdeb7", "#1b6348"),
         new("Amber", "#ffd28a", "#805314"), new("Graphite", "#f4f4fa", "#414652")
     ];
@@ -32,7 +32,7 @@ public sealed record AppearanceSettings(string Mode = "system", string Accent = 
             catch (JsonException) { }
         }
         var legacy = await store.GetSettingAsync("accent");
-        return new(Accent: Presets.FirstOrDefault(item => item.Dark.Equals(legacy, StringComparison.OrdinalIgnoreCase))?.Name ?? "Violet");
+        return new(Accent: Presets.FirstOrDefault(item => item.Dark.Equals(legacy, StringComparison.OrdinalIgnoreCase))?.Name ?? "Blue");
     }
 }
 

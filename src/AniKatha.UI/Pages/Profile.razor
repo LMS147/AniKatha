@@ -2,37 +2,64 @@
 @inherits ProfileComponent
 @inject IServiceProvider Services
 
-<section class="settings-screen profile-hub">
- <header class="page-header"><h1>Profile</h1></header>
- <section class="profile-card">
-  <div class="profile-identity">
-   <ProfileAvatar Name="@Active.Name" Avatar="@Active.Avatar" Size="large" />
-   <div><h2>@Active.Name</h2><p>@(Active.Locked ? "PIN protected · On this device" : "On this device")</p></div>
+<PageTitle>Profile · AniKatha</PageTitle>
+<section class="settings-screen profile-hub profile-tabs-screen">
+ <header class="profile-brand"><Icon Name="user" /><h1>Profile</h1></header>
+ <nav class="profile-tabs" aria-label="Profile sections">
+  @foreach (var name in Tabs)
+  {
+   <button type="button" aria-pressed="@(tab == name)" @onclick="() => tab = name">@name</button>
+  }
+ </nav>
+ <div class="profile-panel" hidden="@(tab != "Account")">
+  <h2 class="profile-tab-title">Account</h2>
+  @if (Profiles is { } profiles) { <ProfileAccount Profiles="profiles" /> }
+  <div class="settings-list">
+   <a class="settings-row" href="/profile/profiles"><Icon Name="user" />
+    <span><strong>Switch profile</strong><small>Choose a profile on this device</small></span><span aria-hidden="true">›</span></a>
+   <a class="settings-row" href="/profile/sources"><span aria-hidden="true">⊕</span>
+    <span><strong>Sources</strong><small>Install and manage add-ons</small></span><span aria-hidden="true">›</span></a>
   </div>
-  <a class="secondary" href="/profile/profiles">Switch profile</a>
- </section>
- <div class="settings-list">
-  <a class="settings-row" href="/profile/appearance"><span class="settings-icon" aria-hidden="true">✦</span>
-   <span><strong>Appearance</strong><small>Theme, accent colour, and poster density</small></span><span aria-hidden="true">›</span></a>
-  <a class="settings-row" href="/profile/sources"><span class="settings-icon" aria-hidden="true">⊕</span>
-   <span><strong>Sources</strong><small>Install and manage add-ons</small></span><span aria-hidden="true">›</span></a>
-  <a class="settings-row" href="/profile/anilist"><span class="settings-icon" aria-hidden="true">◎</span>
-   <span><strong>AniList</strong><small>@accountStatus</small></span><span aria-hidden="true">›</span></a>
-  <a class="settings-row" href="/profile/playback"><span class="settings-icon" aria-hidden="true">▷</span>
-   <span><strong>Playback &amp; reader</strong><small>Player, subtitles, and reading defaults</small></span><span aria-hidden="true">›</span></a>
  </div>
+ @if (tab == "Preferences")
+ {
+  <div class="profile-panel"><h2 class="profile-tab-title">Preferences</h2><ProfilePreferences /></div>
+ }
+ @if (tab == "Sync" || syncOpened)
+ {
+  <div class="profile-panel" hidden="@(tab != "Sync")">
+   <h2 class="profile-tab-title">Sync</h2>
+   <AniListProfile />
+   <ProfileBackup />
+  </div>
+ }
+ @if (tab == "Security" || securityOpened)
+ {
+  <div class="profile-panel" hidden="@(tab != "Security")">
+   <h2 class="profile-tab-title">Security</h2>
+   <h3>Profile PIN</h3><p>Protect access to this profile on this device.</p>
+   @if (Profiles is not null) { <ProfilePinForm /> }
+   <p>AniList manages its own password and email. Use Sync to manage the connection.</p>
+  </div>
+ }
 </section>
 
 @code {
- LocalProfile Active => (Services.GetService(typeof(LocalProfiles)) as LocalProfiles)?.Active ?? LocalProfile.Default;
- string accountStatus = "Not connected";
- protected override async Task OnInitializedAsync()
+ [SupplyParameterFromQuery] public string? Section { get; set; }
+ static readonly string[] Tabs = ["Account", "Preferences", "Sync", "Security"];
+ string selected = "Account";
+ bool syncOpened, securityOpened;
+ LocalProfiles? Profiles => Services.GetService(typeof(LocalProfiles)) as LocalProfiles;
+ string tab
  {
-  try
+  get => selected;
+  set
   {
-   if (ProfileAniList is { } account && await account.CachedLinkAsync() is { } link)
-    accountStatus = link.RequiresReconnect ? $"Reconnect {link.Viewer.Name}" : $"Connected as {link.Viewer.Name}";
+   selected = value;
+   syncOpened |= value == "Sync";
+   securityOpened |= value == "Security";
   }
-  catch { accountStatus = "Could not check account"; }
  }
+ protected override void OnParametersSet() =>
+  tab = Tabs.FirstOrDefault(name => name.Equals(Section, StringComparison.OrdinalIgnoreCase)) ?? "Account";
 }

@@ -1,0 +1,99 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@inherits ProfileComponent
+@inject IServiceProvider Services
+@inject IJSRuntime JS
+
+<section class="profile-group" aria-labelledby="profile-data-management">
+ <h3 id="profile-data-management">Data management</h3>
+ <section class="settings-card profile-backup-card">
+  <h4>AniKatha JSON</h4>
+  <p>Back up your Library and supported add-on history, including saved timestamps, pages, and completion marks. Account credentials, source settings, and downloaded files are excluded.</p>
+  <div class="profile-file-modes" role="group" aria-label="Backup mode">
+   <button type="button" aria-pressed="@(!importing)" disabled="@busy" @onclick="() => SetMode(false)">Export</button>
+   <button type="button" aria-pressed="@importing" disabled="@busy" @onclick="() => SetMode(true)">Import</button>
+  </div>
+  @if (!importing)
+  {
+   <button class="primary" type="button" disabled="@busy" @onclick="Export">@(NativeExport is null ? "Download JSON" : "Save or share JSON")</button>
+  }
+  else
+  {
+   <label class="profile-file-label">Choose an AniKatha backup
+    <InputFile OnChange="Preview" accept=".json,application/json" disabled="@busy" />
+   </label>
+   @if (plan is { } count)
+   {
+    <p role="status">Add @count.Anime anime, @count.Manga manga, @count.History history entries, and @count.Checkpoints progress values. Skip @count.Skipped existing records or values. Existing data stays in place.</p>
+    <button class="primary" type="button" disabled="@busy" @onclick="Apply">Merge backup</button>
+   }
+  }
+  @if (busy) { <p role="status">Working with your backup…</p> }
+  @if (message is not null) { <p role="@(failure ? "alert" : "status")">@message</p> }
+ </section>
+</section>
+
+@code {
+ bool importing, busy, failure;
+ LibraryBackup? draft;
+ BackupMerge? plan;
+ string? message;
+ IBackupExport? NativeExport => Services.GetService(typeof(IBackupExport)) as IBackupExport;
+
+ void SetMode(bool value)
+ {
+  importing = value;
+  message = null;
+  draft = null;
+  plan = null;
+ }
+
+ async Task Export() => await Run(async () =>
+ {
+  var json = await Store.ExportLibraryBackupAsync();
+  if (NativeExport is { } platform) await platform.ShareAsync(json);
+  else
+  {
+   await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AniKatha.UI/profile-files.mjs");
+   await module.InvokeVoidAsync("downloadBackup", json);
+   message = "Backup download requested.";
+  }
+ });
+
+ async Task Preview(InputFileChangeEventArgs args)
+ {
+  draft = null;
+  plan = null;
+  await Run(async () =>
+  {
+   await using var file = args.File.OpenReadStream(LibraryBackup.MaxBytes);
+   var candidate = await LocalStore.ReadLibraryBackupAsync(file);
+   plan = await Store.MergeLibraryBackupAsync(candidate);
+   draft = candidate;
+  });
+ }
+
+ async Task Apply()
+ {
+  if (draft is not { } backup) return;
+  await Run(async () =>
+  {
+   var result = await Store.MergeLibraryBackupAsync(backup, apply: true);
+   plan = null;
+   draft = null;
+   message = $"Backup merged. Added {result.Anime + result.Manga} Library entries, {result.History} history entries, and {result.Checkpoints} progress values.";
+  });
+ }
+
+ async Task Run(Func<Task> action)
+ {
+  if (busy) return;
+  busy = true;
+  failure = false;
+  message = null;
+  try { await action(); }
+  catch (InvalidDataException ex) { failure = true; message = ex.Message; }
+  catch { failure = true; message = "Could not process the backup. Check that it is a valid AniKatha JSON file or try again."; }
+  finally { busy = false; }
+ }
+}

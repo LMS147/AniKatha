@@ -39,7 +39,7 @@
   {
    var id = Field(unit, "id");
    <div>
-    <button class="secondary" @onclick="() => Choose(unit)" aria-pressed="@(unitId == id)">@Field(unit,"title")</button>
+    <button class="secondary @(dimWatched && Catalog.Type != "manga" && progress.TryGetValue(id, out var status) && status.Completed ? "watched-dimmed" : null)" @onclick="() => Choose(unit)" aria-pressed="@(unitId == id)">@Field(unit,"title")</button>
     @if (progress.TryGetValue(id, out var unitProgress))
     {
      <small>@(unitProgress.Completed ? "Completed" : "In progress")</small>
@@ -105,7 +105,7 @@
  string? continueLink;
  string applied="",titleId="",label="";
  string? unitId,error;
- bool busy,more,retryMeta,retryReset;
+ bool busy,more,retryMeta,retryReset,dimWatched;
  int offset;
  Dictionary<string, string> extraValues = new(StringComparer.Ordinal);
  IEnumerable<CatalogExtra> AdditionalExtras => Catalog.Extras.Where(x => x.Name is not ("search" or "skip"));
@@ -288,6 +288,7 @@
   var request = ++progressRequest;
   var token = active?.Token ?? CancellationToken.None;
   var currentTitle = titleId;
+  var dim = await Store.GetSettingAsync(MediaPreferences.DimWatchedKey) == "true";
   var entries = (await Store.HistoryAsync()).Where(entry => entry.Origin == Source.ProviderKey &&
    entry.Type == Catalog.Type && entry.TitleId == currentTitle).ToList();
   var current = new Dictionary<string, (bool Completed, string? HistoryId)>(StringComparer.Ordinal);
@@ -309,6 +310,7 @@
     unfinished.Add(status.HistoryId);
   }
   if (token.IsCancellationRequested || request != progressRequest) return;
+  dimWatched = dim;
   progress = current;
   continueLink = entries.FirstOrDefault(entry => unfinished.Contains(entry.Id))?.Id;
  }

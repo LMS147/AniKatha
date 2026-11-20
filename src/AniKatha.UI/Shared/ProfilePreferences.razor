@@ -1,0 +1,73 @@
+@inherits ProfileComponent
+
+<section class="profile-group">
+ <h3>Playback</h3>
+ <label class="profile-switch">
+  <span><strong>Start playback on open</strong><small>Play supported videos when the watch view opens.</small></span>
+  <input type="checkbox" role="switch" checked="@start" disabled="@busy" @onchange="args => Change(MediaPreferences.PlayOnOpenKey, args)" />
+ </label>
+ <label class="profile-switch">
+  <span><strong>Play next episode automatically</strong><small>Continue when an episode finishes and another episode is available.</small></span>
+  <input type="checkbox" role="switch" checked="@next" disabled="@busy" @onchange="args => Change(MediaPreferences.AutoplayKey, args)" />
+ </label>
+ <label class="profile-switch">
+  <span><strong>Prefer dubbed audio</strong><small>Move streams explicitly marked as dubbed to the top. You can still choose any stream.</small></span>
+  <input type="checkbox" role="switch" checked="@dub" disabled="@busy" @onchange="args => Change(MediaPreferences.PreferDubKey, args)" />
+ </label>
+ <a class="settings-row" href="/profile/playback"><Icon Name="play" /><span><strong>Playback &amp; reader</strong><small>Speed, audio language, subtitles, skips, and reading defaults</small></span><span aria-hidden="true">›</span></a>
+ <p>Automatic intro and outro skipping requires timing markers from the source.</p>
+</section>
+<section class="profile-group">
+ <h3>Display &amp; reading</h3>
+ <label class="profile-switch">
+  <span><strong>Dim watched episodes</strong><small>Visually de-emphasize completed episodes in add-on lists. They remain selectable.</small></span>
+  <input type="checkbox" role="switch" checked="@dim" disabled="@busy" @onchange="args => Change(MediaPreferences.DimWatchedKey, args)" />
+ </label>
+ <a class="settings-row" href="/profile/appearance"><span aria-hidden="true">✦</span><span><strong>Appearance</strong><small>Theme, accent colour, and poster density</small></span><span aria-hidden="true">›</span></a>
+</section>
+<section class="profile-group">
+ <h3>Release notifications</h3>
+ <p>Release alerts require a background scheduler and reliable release data. AniKatha does not send episode notifications yet.</p>
+</section>
+<section class="profile-group">
+ <h3>Privacy &amp; tracking</h3>
+ <p>Profile details and watch history are stored on this device. Linked AniList accounts can receive completed progress for verified matches.</p>
+</section>
+@if (message is not null) { <p class="profile-error" role="alert">@message</p> }
+
+@code {
+ bool start, next, dub, dim, busy = true;
+ string? message;
+ protected override async Task OnInitializedAsync()
+ {
+  try
+  {
+   start = await Store.GetSettingAsync(MediaPreferences.PlayOnOpenKey) == "true";
+   next = await Store.GetSettingAsync(MediaPreferences.AutoplayKey) == "true";
+   dub = await Store.GetSettingAsync(MediaPreferences.PreferDubKey) == "true";
+   dim = await Store.GetSettingAsync(MediaPreferences.DimWatchedKey) == "true";
+   busy = false;
+  }
+  catch { message = "Could not load preferences. Open this tab again to retry."; }
+ }
+ async Task Change(string key, ChangeEventArgs args)
+ {
+  if (busy) return;
+  busy = true;
+  message = null;
+  var value = args.Value is true;
+  try
+  {
+   await Store.SetSettingAsync(key, value ? "true" : "false");
+   switch (key)
+   {
+    case MediaPreferences.PlayOnOpenKey: start = value; break;
+    case MediaPreferences.AutoplayKey: next = value; break;
+    case MediaPreferences.PreferDubKey: dub = value; break;
+    case MediaPreferences.DimWatchedKey: dim = value; break;
+   }
+  }
+  catch { message = "Could not save the preference. Try again."; }
+  finally { busy = false; }
+ }
+}

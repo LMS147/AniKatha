@@ -17,6 +17,9 @@ public static class MediaPreferences
     public const string SubtitlePlacementKey = "player:subtitle-placement";
     public const string AudioLanguageKey = "player:audio-language";
     public const string SubtitleLanguageKey = "player:subtitle-language";
+    public const string PlayOnOpenKey = "player:play-on-open";
+    public const string PreferDubKey = "player:prefer-dub";
+    public const string DimWatchedKey = "player:dim-watched";
     public const string AutoplayKey = "player:autoplay";
     public const string SpeedKey = "player:default-speed";
 
@@ -39,6 +42,11 @@ public static class MediaPreferences
         }
         return best;
     }
+
+    public static bool IsDubbed(string value) => value
+        .Split([' ', '-', '_', '(', ')', '[', ']', ',', '/'], StringSplitOptions.RemoveEmptyEntries)
+        .Any(word => word.Equals("dub", StringComparison.OrdinalIgnoreCase) ||
+                     word.Equals("dubbed", StringComparison.OrdinalIgnoreCase));
 
     public static int LanguageMatch(string? available, string? preferred)
     {

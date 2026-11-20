@@ -12,6 +12,8 @@ public partial class MainPage : ContentPage
         this.playerBack = playerBack;
         InitializeComponent();
         OfflineView.Profiles = profiles;
+        OfflineView.BlazorWebViewInitialized += (_, args) =>
+            args.WebView.Settings.MediaPlaybackRequiresUserGesture = false;
     }
 
     protected override bool OnBackButtonPressed() => playerBack.TryHandle() || base.OnBackButtonPressed();
