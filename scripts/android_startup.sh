@@ -3,10 +3,10 @@ set -euo pipefail
 mkdir -p artifacts/startup
 package=co.zyma.anikatha
 capture() {
-  adb logcat -d -v threadtime > artifacts/startup/logcat.txt || true
-  adb shell dumpsys activity activities > artifacts/startup/activities.txt || true
-  adb logcat -d -b crash > artifacts/startup/crash.txt || true
-  adb exec-out screencap -p > artifacts/startup/screenshot.png || true
+  timeout 15s adb logcat -d -v threadtime > artifacts/startup/logcat.txt || true
+  timeout 15s adb shell dumpsys activity activities > artifacts/startup/activities.txt || true
+  timeout 15s adb logcat -d -b crash > artifacts/startup/crash.txt || true
+  timeout 15s adb exec-out screencap -p > artifacts/startup/screenshot.png || true
 }
 trap capture EXIT
 apk=$(find artifacts/apk -name '*-Signed.apk' -print -quit)

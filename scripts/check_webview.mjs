@@ -213,6 +213,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
 
 
 
+    if (mode === 'seed') console.log('Seeding the enabled add-on and chapter position in the baseline APK.');
     const httpAddon = await command('Runtime.evaluate', {
       awaitPromise: true, returnByValue: true,
       expression: `(async () => {
@@ -252,12 +253,14 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         if (!oldProfile) await click('Check manifest');
         await click('Add source');
         await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler', 'installed sampler');
-        tab('anime');
-        await click('Big Buck Bunny');
-        await click('Sample trailer');
-        await click('Play trailer');
-        await wait(() => document.querySelector('video')?.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4', 'resolved anime video');
-        if (${testDownloads}) await click('Download Compatibility clip');
+        if (!oldProfile) {
+          tab('anime');
+          await click('Big Buck Bunny');
+          await click('Sample trailer');
+          await click('Play trailer');
+          await wait(() => document.querySelector('video')?.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4', 'resolved anime video');
+          if (${testDownloads}) await click('Download Compatibility clip');
+        }
         tab('manga');
         await click('The Midnight Lighthouse');
         await click('Chapter 1');
@@ -269,6 +272,17 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await wait(() => imageAt(1), 'resolved manga page');
         await click('Next page →');
         await wait(() => imageAt(2), 'second manga page');
+        if (oldProfile) {
+          tab('library');
+          await wait(() => location.pathname === '/library', 'leave the baseline reader');
+          tab('manga');
+          await wait(() => location.pathname === '/manga' && document.querySelector('h1')?.textContent === 'Manga', 'manga catalogue');
+          await click('The Midnight Lighthouse');
+          await click('Chapter 1');
+          await click('Read Chapter 1');
+          await wait(() => imageAt(2), 'saved chapter position in baseline APK');
+          return true;
+        }
         await sources();
         await click('Disable');
         await wait(() => button('Enable'), 'disabled source');
@@ -366,31 +380,40 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           expression: `(async () => {
             const video = document.querySelector('video');
             video.muted = true;
-            const wait = async find => {
+            const wait = async (find, label) => {
               for (let i = 0; i < 45; i++) {
                 const item = find();
                 if (item) return item;
+                if (video.error) throw new Error('Offline video error ' + video.error.code + ' while waiting for ' + label);
                 await new Promise(resolve => setTimeout(resolve, 100));
               }
-              throw new Error('Playback control did not update');
+              throw new Error('Offline video timed out waiting for ' + label +
+                ' (paused=' + video.paused + ', time=' + video.currentTime + ', speed=' + video.playbackRate + ')');
             };
+            const toggle = () => document.querySelector('[data-player-toggle]').click();
+            if (!video.paused) toggle();
+            await wait(() => video.paused, 'initial pause');
             document.querySelector('[data-player-menu="speed"]').click();
-            (await wait(() => document.querySelector('[data-player-rate="1.25"]'))).click();
-            await wait(() => video.playbackRate === 1.25);
+            (await wait(() => document.querySelector('[data-player-rate="1.25"]'), 'speed menu')).click();
+            await wait(() => video.playbackRate === 1.25, '1.25× speed');
             document.querySelector('[data-player-close]').click();
-            await wait(() => !document.querySelector('.player-sheet'));
-            document.querySelector('[data-player-toggle]').click();
-            await wait(() => !video.paused);
+            await wait(() => !document.querySelector('.player-sheet'), 'speed menu to close');
             const checkpoint = Math.min(6, video.duration / 2);
             const scrubber = document.querySelector('[data-player-scrubber]');
+            scrubber.value = 0;
+            scrubber.dispatchEvent(new Event('input', {bubbles:true}));
+            scrubber.dispatchEvent(new Event('change', {bubbles:true}));
+            await wait(() => !video.seeking && video.currentTime < 0.1, 'seek to the start');
+            toggle();
+            await wait(() => !video.paused && video.currentTime > 0, 'playback to start');
             scrubber.value = checkpoint;
             scrubber.dispatchEvent(new Event('input', {bubbles:true}));
             scrubber.dispatchEvent(new Event('change', {bubbles:true}));
             for (let i = 0; i < 150; i++) {
               if (video.error) throw new Error('Media error ' + video.error.code);
               if (!video.seeking && video.currentTime >= checkpoint - 0.1) {
-                document.querySelector('[data-player-toggle]').click();
-                await wait(() => video.paused);
+                if (!video.paused) toggle();
+                await wait(() => video.paused, 'paused checkpoint');
                 return video.currentTime;
               }
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -500,16 +523,21 @@ async function verifyProfileScene(scene) {
     await wait(() => document.querySelector('.profile-summary')?.textContent.includes('TestUser'), 'Saved username');
   } else if (scene === 'preferences') {
     await click('Preferences');
-    const toggle = await wait(() => document.querySelector('.profile-panel:not([hidden]) .profile-switch input'), 'Playback switch');
+    const dimWatched = () => [...document.querySelectorAll('.profile-panel:not([hidden]) .profile-switch')]
+      .find(label => label.textContent.includes('Dim watched episodes'))?.querySelector('input');
+    const toggle = await wait(() => {
+      const input = dimWatched();
+      return input && !input.disabled && input;
+    }, 'Dim watched episodes switch');
     toggle.click();
-    await click('Account');
+    await wait(() => toggle.checked && !toggle.disabled, 'Dim watched episodes enabled');
+    document.querySelector('.bottom-nav a[href="/library"]').click();
+    await heading('Library');
+    document.querySelector('.bottom-nav a[href="/profile"]').click();
+    await heading('Profile');
     await click('Preferences');
-    const restored = await wait(() => {
-      const input = document.querySelector('.profile-panel:not([hidden]) .profile-switch input');
-      return input?.checked && !input.disabled && input;
-    }, 'Playback preference persisted');
-    restored.click();
-    await wait(() => !restored.checked && !restored.disabled, 'Restore the playback default for other tests');
+    await wait(() => dimWatched()?.checked && !dimWatched().disabled, 'Display preference persisted after leaving Profile');
+    scrollTo(0, 0);
   } else if (scene === 'sync') {
     await click('Sync');
     await wait(() => document.querySelector('.profile-panel:not([hidden]) .tracking-account h2')?.textContent === 'AniList account', 'Sync tab');
@@ -607,7 +635,9 @@ async function verifyProfileScene(scene) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  checkWebView().catch(error => {console.error(`FAIL: ${error.message}`); process.exitCode = 1;});
+  checkWebView().catch(error => {
+    process.stderr.write(`FAIL: ${error.message}\n`, () => process.exit(1));
+  });
 }
 
 async function checkPlayerScreens(command, adb) {
