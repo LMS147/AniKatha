@@ -238,7 +238,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
             'AniList availability notice in the unconfigured APK');
         }
         await sources();
-        const input = await wait(() => document.querySelector('input[inputmode="url"]'), 'manifest input');
+        const input = await wait(() => document.querySelector(oldProfile ? 'input[inputmode="url"]' : '#source-manifest'), 'manifest input');
         input.value = ${JSON.stringify(fixture)};
         input.dispatchEvent(new Event('input', {bubbles:true}));
         if (!oldProfile) await click('Check manifest');
