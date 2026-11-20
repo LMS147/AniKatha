@@ -11,7 +11,7 @@
  @if(error is not null){<p role="alert">@error</p>}
  @if(Item.Kind == "ANIME")
  {
-  <YouTubeEpisodeList AniListId="Item.Id"/>
+  <YouTubeEpisodeList AniListId="Item.Id" FromHome="FromHome"/>
  }
  else
  {
@@ -20,6 +20,7 @@
  </div></section></div>
 }
 @code {
+ [Parameter] public bool FromHome { get; set; }
  [Parameter] public Media? Item {get;set;}
  [Parameter] public EventCallback Closed {get;set;}
  int lastId; bool saved; string? error;

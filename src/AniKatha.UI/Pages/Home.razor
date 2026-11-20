@@ -9,6 +9,9 @@
   <h1 class="wordmark">ani<span>katha</span><i aria-hidden="true">✦</i></h1>
   <a class="avatar" href="/profile" aria-label="Open profile">A</a>
  </header>
+ <HomeSpotlight Titles="trending.Items" Loading="trending.Loading" Failed="trending.Failed"
+                Retry="LoadTrending" OpenDetails="OpenSpotlightDetails" OpenSource="OpenSpotlightSource"
+                Providers="spotlightProviders" EmbeddedIds="spotlightEmbeddedIds" Session="SpotlightSession" />
  <div class="home-segment home-mode" role="tablist" aria-label="Home media" @onkeydown="HandleTabKeys">
   <button type="button" id="home-tab-anime" role="tab" aria-controls="home-anime" aria-selected="@Pressed(!manga)" tabindex="@(manga ? -1 : 0)" @ref="animeTab" @onclick="() => Switch(false)">Anime</button>
   <button type="button" id="home-tab-manga" role="tab" aria-controls="home-manga" aria-selected="@Pressed(manga)" tabindex="@(manga ? 0 : -1)" @ref="mangaTab" @onclick="() => Switch(true)">Manga</button>
@@ -34,10 +37,10 @@
     </div>
     @if (showTrending) { <p class="home-description">Trending anime currently airing.</p> }
     @{
-     var episodeFeed = showTrending ? trending : latest;
+     var episodeCards = showTrending ? trending.Items.Select(title => FromTitle(title, null, null)) : latest.Items;
     }
-    <HomeCards Cards="episodeFeed.Items.Take(6)" Selected="OpenCard" />
-    <HomeFeedState Loading="episodeFeed.Loading" Failed="episodeFeed.Failed" HasItems="episodeFeed.HasItems"
+    <HomeCards Cards="episodeCards.Take(6)" Selected="OpenCard" />
+    <HomeFeedState Loading="@(showTrending ? trending.Loading : latest.Loading)" Failed="@(showTrending ? trending.Failed : latest.Failed)" HasItems="episodeCards.Any()"
                    Error="The latest feed couldn’t be loaded." Empty="No titles in this feed." Retry="RetryLatest"/>
    </section>
 
@@ -145,14 +148,14 @@
  </div>
 </div>
 
-<MediaDetails Item="selected" Closed="CloseCard"/>
+<MediaDetails Item="selected" Closed="CloseCard" FromHome="spotlightDetails"/>
 @if (selectedProvider is { } picked)
 {
  <div class="modal-backdrop" @onclick="CloseCard">
   <section class="detail-sheet home-source-sheet" role="dialog" aria-modal="true" aria-label="@picked.Title.Title" @onclick:stopPropagation="true" @onkeydown="HandleDetailsKeys">
    <button class="close" aria-label="Close details" @onclick="CloseCard">✕</button>
    <ManifestCatalog Source="picked.Source" Catalog="@(new AddonCatalog(picked.Type, "", "", false, false))"
-                    Providers="providers" InitialTitle="picked.Title" InitialUnitId="@picked.Unit"
+                    Providers="@(spotlightDetails ? spotlightProviders : providers)" InitialTitle="picked.Title" InitialUnitId="@picked.Unit"
                     ExpectedAniListId="picked.AniListId" AllowSaveInitialTitle="@(picked.Title.Id == 0)" />
   </section>
  </div>

@@ -64,6 +64,12 @@ internal static class HomeChecks
         await store.RememberAsync(new ResumeEntry { Id = "watch", Origin = "video-provider", Source = "video-provider", Type = "anime",
             TitleId = "series", UnitId = "episode", Label = "Episode 2", Title = "Anime with no art" });
 
+        fixture.DeferTrending = !fixture.PopulateCaptures;
+        if (fixture.PopulateCaptures)
+        {
+            await store.SaveAddonAsync(new InstalledAddon { Url = "https://video.example/manifest.json", Name = "Preview episodes",
+                YouTubeEpisodesJson = """[{"aniListId":10,"episode":1,"series":"Preview title","title":"Preview episode","videoId":"dQw4w9WgXcQ"}]""" });
+        }
         var home = context.Render<Home>();
         home.WaitForAssertion(() =>
         {
@@ -77,7 +83,8 @@ internal static class HomeChecks
         if (fixture.PopulateCaptures)
         {
             home.WaitForAssertion(() => Check(home.FindAll("#home-anime .home-card-target").Count >= 16 &&
-                home.FindAll("#home-anime time").Count >= 3, "All Anime capture shelves are populated."));
+                home.FindAll("#home-anime time").Count >= 3 && home.FindAll(".home-spotlight-art").Count == 1 &&
+                home.Find(".home-spotlight-action").TextContent.Contains("Watch now"), "All Anime capture shelves and the spotlight are populated."));
             Capture(captureDirectory!, "anime", home, context);
             await Click(home, "[aria-labelledby='home-watch-title'] header button", "View more ›");
             Check(home.FindAll("[aria-labelledby='home-watch-title'] .home-card-target").Count == 5, "Watch history expansion keeps the saved cards.");
@@ -117,6 +124,7 @@ internal static class HomeChecks
         }
         fixture.Trending.TrySetResult();
         await latest;
+        home.WaitForElement(".home-spotlight-slide");
         Check(!home.Find("#home-manga").TextContent.Contains("Delayed anime"), "Delayed Anime data stays off Manga.");
         await home.InvokeAsync(() => home.Find("[aria-labelledby='home-followed-title'] .home-card-target").ClickAsync(new()));
         home.WaitForAssertion(() => Check(home.Find(".home-source-sheet").TextContent.Contains("Read Chapter 2"), "Home opens the exact followed chapter source."));
@@ -166,6 +174,7 @@ internal static class HomeChecks
     private sealed class HomeFixture : HttpMessageHandler
     {
         internal bool PopulateCaptures { get; set; }
+        internal bool DeferTrending { get; set; }
         internal TaskCompletionSource TrendingStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Trending { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -209,16 +218,17 @@ internal static class HomeChecks
             if (kind == "ANIME" && sort == "TRENDING_DESC")
             {
                 TrendingStarted.TrySetResult();
-                await Trending.Task.WaitAsync(token);
+                if (DeferTrending) await Trending.Task.WaitAsync(token);
             }
             var title = sort == "END_DATE_DESC" ? "Recently finished" :
                 kind == "MANGA" ? "Discovery manga" : sort == "TRENDING_DESC" ? "Delayed anime" : "Other anime";
             var date = DateTime.Today.AddDays(-1);
             var items = Enumerable.Range(0, PopulateCaptures ? 6 : 1).Select(index => new
             {
-                id = (kind == "ANIME" ? 10 : 20) + index, type = kind, isAdult = false,
+                id = (kind == "ANIME" ? 10 : 20) + index, type = kind, isAdult = false, status = "RELEASING",
                 title = new { userPreferred = index == 0 ? title : $"{title} · Collection {index + 1}" },
                 coverImage = new { large = PopulateCaptures ? Cover(index) : null },
+                bannerImage = PopulateCaptures ? Cover(index + 1) : null, averageScore = 81, episodes = 12,
                 startDate = new { year = date.Year, month = date.Month, day = date.Day },
                 endDate = new { year = date.Year, month = date.Month, day = date.Day },
                 format = kind == "ANIME" ? "TV" : "MANGA", chapters = kind == "MANGA" ? (int?)(12 + index) : null,

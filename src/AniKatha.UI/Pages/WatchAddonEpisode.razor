@@ -3,7 +3,7 @@
 
 <PageTitle>Watch episode · AniKatha</PageTitle>
 <header class="page-header embedded-player-heading">
- <a class="text-link" href="/anime">← Anime</a>
+ <a class="text-link" href="@(From == "home" ? "/" : "/anime")">@(From == "home" ? "← Home" : "← Anime")</a>
  @if (episode is not null)
  {
   <h1 class="sample-heading">@episode.Series</h1>
@@ -34,6 +34,7 @@ else
 }
 
 @code {
+ [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
  [Parameter] public int MediaId { get; set; }
  [Parameter] public int EpisodeNumber { get; set; }
  [Parameter] public string VideoId { get; set; } = "";

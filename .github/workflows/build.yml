@@ -56,7 +56,6 @@ jobs:
           if [[ -n "$BASE_COMMIT" ]]; then
             git fetch --depth=1 origin "$BASE_COMMIT"
             git worktree add --detach "$RUNNER_TEMP/home-baseline" FETCH_HEAD
-            cp tests/AniKatha.UiChecks/HomeChecks.cs "$RUNNER_TEMP/home-baseline/tests/AniKatha.UiChecks/"
             mkdir -p "$RUNNER_TEMP/home-before/art"
             cp "$RUNNER_TEMP/home-baseline/src/AniKatha.UI/wwwroot/app.css" "$RUNNER_TEMP/home-before/"
             cp "$RUNNER_TEMP/home-ui/art/"*.webp "$RUNNER_TEMP/home-before/art/"
