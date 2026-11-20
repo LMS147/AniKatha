@@ -223,15 +223,18 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         const oldProfile = ${mode === 'seed'};
         const sources = async () => {
           tab('profile');
-          if (!oldProfile) await open('/profile/sources');
+          if (!oldProfile) {
+            await click('Account');
+            await open('/profile/sources');
+          }
         };
         tab('profile');
         const expectedAniList = ${JSON.stringify(mode === 'fresh' ? aniListConfigured ?? '' : '')};
-        if (!oldProfile && expectedAniList) await open('/profile/anilist');
+        if (!oldProfile && expectedAniList) await click('Sync');
         if (expectedAniList === 'true') {
           await wait(() => button('Connect AniList'), 'AniList sign-in in the configured APK');
         } else if (expectedAniList === 'false') {
-          await wait(() => document.querySelector('.anilist-card')?.textContent.includes('AniList sign-in is unavailable for this build.'),
+          await wait(() => document.querySelector('.tracking-account')?.textContent.includes('AniList sign-in is unavailable for this build.'),
             'AniList availability notice in the unconfigured APK');
         }
         await sources();
@@ -540,6 +543,7 @@ async function verifyProfileScene(scene) {
     await open('/profile/sources');
     await wait(() => document.body.innerText.includes('No sources installed'), 'Isolated sources');
     await open('/profile');
+    await click('Preferences');
     await open('/profile/appearance');
     await click('Light');
     await click('Compact');
@@ -559,9 +563,9 @@ async function verifyProfileScene(scene) {
     row.scrollIntoView({ block: 'center' });
   } else if (scene === 'anilist') {
     document.querySelector('.bottom-nav a[href="/profile"]').click();
-    await open('/profile/anilist');
-    await heading('AniList');
-    await wait(() => document.querySelector('.tracking-account h2')?.textContent === 'AniList account', 'Disconnected AniList account');
+    await click('Sync');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) .tracking-account h2')?.textContent === 'AniList account',
+      'Disconnected AniList account');
   } else if (scene === 'tracking-editor') {
     document.querySelector('.bottom-nav a[href="/anime"]').click();
     await click('Big Buck Bunny');
