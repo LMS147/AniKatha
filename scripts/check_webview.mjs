@@ -203,6 +203,14 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
       throw new Error(reader.exceptionDetails?.exception?.description ?? 'Sample manga chapter did not load or resume.');
     }
     console.log('PASS: installed APK renders all three bundled manga pages, turns pages, and restores the saved page.');
+    if (mode === 'fresh') {
+      await captureProfileScenes(command, [
+        ['hub', 'profile-account'], ['preferences', 'profile-preferences'],
+        ['sync', 'profile-sync'], ['security', 'profile-security'],
+      ]);
+      console.log('PASS: verified Profile tabs, avatar save, draft retention, playback preference, backup import, and local PIN in the installed APK.');
+    }
+
 
 
     const httpAddon = await command('Runtime.evaluate', {
@@ -419,27 +427,29 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     }
     if (mode === 'fresh') {
       await checkHomeViews(command);
-      for (const [scene, label] of [
-        ['hub', 'profile-account'], ['preferences', 'profile-preferences'],
-        ['sync', 'profile-sync'], ['security', 'profile-security'], ['switcher', 'profile-switcher'],
-        ['appearance', 'appearance'], ['sources', 'sources'],
+      await captureProfileScenes(command, [
+        ['switcher', 'profile-switcher'], ['appearance', 'appearance'], ['sources', 'sources'],
         ['anilist', 'anilist-account-android'], ['tracking-editor', 'anilist-editor-android'],
-      ]) {
-        const result = await command('Runtime.evaluate', {
-          expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
-          awaitPromise: true, returnByValue: true,
-        }, 45000);
-        if (result.result?.value !== true)
-          throw new Error(result.exceptionDetails?.exception?.description ?? 'Could not verify ' + label);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
-        await writeFile('artifacts/startup/' + label + '.png', image);
-      }
+      ]);
       console.log('PASS: created and switched profiles, verified source and appearance isolation, and captured the profile and tracking screens.');
     }
   } finally {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}
+  }
+}
+
+async function captureProfileScenes(command, scenes) {
+  for (const [scene, label] of scenes) {
+    const result = await command('Runtime.evaluate', {
+      expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
+      awaitPromise: true, returnByValue: true,
+    }, 45000);
+    if (result.result?.value !== true)
+      throw new Error(result.exceptionDetails?.exception?.description ?? 'Could not verify ' + label);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
+    await writeFile('artifacts/startup/' + label + '.png', image);
   }
 }
 
@@ -494,8 +504,12 @@ async function verifyProfileScene(scene) {
     toggle.click();
     await click('Account');
     await click('Preferences');
-    await wait(() => document.querySelector('.profile-panel:not([hidden]) .profile-switch input')?.checked,
-      'Playback preference persisted');
+    const restored = await wait(() => {
+      const input = document.querySelector('.profile-panel:not([hidden]) .profile-switch input');
+      return input?.checked && !input.disabled && input;
+    }, 'Playback preference persisted');
+    restored.click();
+    await wait(() => !restored.checked && !restored.disabled, 'Restore the playback default for other tests');
   } else if (scene === 'sync') {
     await click('Sync');
     await wait(() => document.querySelector('.profile-panel:not([hidden]) .tracking-account h2')?.textContent === 'AniList account', 'Sync tab');
@@ -528,6 +542,7 @@ async function verifyProfileScene(scene) {
     await click('Account');
     await click('Security');
   } else if (scene === 'switcher') {
+    document.querySelector('.bottom-nav a[href="/profile"]').click();
     await click('Account');
     await open('/profile/profiles');
     await open('/profile/profiles/new');
@@ -696,6 +711,9 @@ async function exercisePlayerScene(action) {
       throw new Error('Retry changed the saved position.');
   } else if (action === 'settings') {
     await click('.bottom-nav a[href="/profile"]');
+    const preferences = await wait(() => [...document.querySelectorAll('.profile-tabs button')]
+      .find(button => button.textContent.trim() === 'Preferences'), 'Profile Preferences');
+    preferences.click();
     await click('a[href="/profile/playback"]');
     const preview = await wait(() => query('.subtitle-preview'), 'subtitle appearance');
     await wait(() => {
