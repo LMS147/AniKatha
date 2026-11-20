@@ -5,14 +5,14 @@ namespace AniKatha.Core;
 
 public enum HomeCatalogue { TrendingAnime, UpcomingAnime, NewRelease, JustCompleted, RecentPopularManga, NewManga }
 
-public sealed record HomeTitle(Media Media, DateOnly? Date, string? Season);
+public sealed record HomeTitle(Media Media, DateOnly? Date, string? Season, int? SeasonYear = null);
 public sealed record AiringEpisode(Media Media, int Episode, DateTimeOffset AirsAt);
 
 public sealed partial class AniListClient
 {
     private const string HomeMediaFields = """
         id type isAdult title { userPreferred } coverImage { large } bannerImage description(asHtml: false)
-        startDate { year month day } endDate { year month day } season format averageScore episodes chapters genres
+        startDate { year month day } endDate { year month day } season seasonYear format averageScore episodes chapters genres status
         """;
 
     public async Task<IReadOnlyList<HomeTitle>> HomeCatalogueAsync(HomeCatalogue feed, DateOnly today, CancellationToken token)
@@ -28,8 +28,9 @@ public sealed partial class AniListClient
             _ => throw new ArgumentOutOfRangeException(nameof(feed))
         };
         var query = $$"""
-            query ($type: MediaType, $status: MediaStatus, $sort: [MediaSort], $start: FuzzyDateInt, $end: FuzzyDateInt, $before: FuzzyDateInt) {
-              Page(perPage: 24) {
+            query ($type: MediaType, $status: MediaStatus, $sort: [MediaSort], $start: FuzzyDateInt, $end: FuzzyDateInt, $before: FuzzyDateInt, $page: Int) {
+              Page(page: $page, perPage: 24) {
+                pageInfo { hasNextPage }
                 media(type: $type, status: $status, sort: $sort, isAdult: false,
                       startDate_greater: $start, endDate_greater: $end, startDate_lesser: $before) {
                   {{HomeMediaFields}}
@@ -37,14 +38,29 @@ public sealed partial class AniListClient
               }
             }
             """;
-        var variables = new { type, status, sort = new[] { sort }, start, end,
-            before = start.HasValue ? (int?)Fuzzy(today.AddDays(1)) : null };
-        using var doc = await HomeQuery(query, variables, token);
-        var items = HomeItems(doc.RootElement.GetProperty("data").GetProperty("Page"), "media");
-        return items.Where(item => Text(item, "type") == type && !string.IsNullOrWhiteSpace(Text(item.GetProperty("title"), "userPreferred")))
-            .Select(item => new HomeTitle(ReadMedia(item), ReadDate(item, end.HasValue ? "endDate" : "startDate"), Text(item, "season")))
-            .Where(item => feed != HomeCatalogue.JustCompleted || item.Date is { } date && date <= today)
-            .ToArray();
+        var airing = feed == HomeCatalogue.TrendingAnime;
+        var ranked = new List<HomeTitle>();
+        var seen = new HashSet<int>();
+        for (var page = 1; ; page++)
+        {
+            var variables = new { type, status, sort = new[] { sort }, start, end, page,
+                before = start.HasValue ? (int?)Fuzzy(today.AddDays(1)) : null };
+            using var doc = await HomeQuery(query, variables, token);
+            var data = doc.RootElement.GetProperty("data").GetProperty("Page");
+            var seenBefore = seen.Count;
+            foreach (var item in HomeItems(data, "media"))
+            {
+                if (Number(item, "id") is not int id || id <= 0) continue;
+                if (!seen.Add(id) || Text(item, "type") != type ||
+                    !item.TryGetProperty("title", out var title) || string.IsNullOrWhiteSpace(Text(title, "userPreferred"))) continue;
+                var date = ReadDate(item, end.HasValue ? "endDate" : "startDate");
+                if (airing && (Text(item, "status") != "RELEASING" || date > today)) continue;
+                if (feed == HomeCatalogue.JustCompleted && (date is null || date > today)) continue;
+                ranked.Add(new HomeTitle(ReadMedia(item), date, Text(item, "season"), Number(item, "seasonYear")));
+                if (airing && ranked.Count == 10) return ranked;
+            }
+            if (!airing || seen.Count == seenBefore || !data.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean()) return ranked;
+        }
     }
 
     public async Task<IReadOnlyList<AiringEpisode>> HomeAiringsAsync(DateTimeOffset from, DateTimeOffset until,

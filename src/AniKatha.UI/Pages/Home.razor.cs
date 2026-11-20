@@ -14,11 +14,13 @@ public partial class Home
     [Inject] private AniListClient Api { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
     [Inject] private AddonClient Addons { get; set; } = null!;
+    [CascadingParameter] public HomeSpotlightSession? SpotlightSession { get; set; }
 
     private static readonly string[] ReleaseOptions = ["New Release", "Newly Added", "Just Completed"];
     private readonly CancellationTokenSource stop = new();
     private readonly Dictionary<DateOnly, Feed<AiringEpisode>> schedule = [];
-    private readonly Feed<HomeCard> watch = new(), latest = new(), trending = new(), upcoming = new(),
+    private readonly Feed<HomeTitle> trending = new();
+    private readonly Feed<HomeCard> watch = new(), latest = new(), upcoming = new(),
         newRelease = new(), completed = new(), followed = new(), reading = new(), discover = new(),
         addonManga = new(), popular = new(), newManga = new();
 
@@ -30,7 +32,9 @@ public partial class Home
     private Media? selected;
     private HomeProviderTitle? selectedProvider;
     private ElementReference animeTab, mangaTab;
-    private List<AddonResources> providers = [];
+    private List<AddonResources> providers = [], spotlightProviders = [];
+    private IReadOnlySet<int> spotlightEmbeddedIds = new HashSet<int>();
+    private bool spotlightDetails;
 
     private Feed<AiringEpisode> ActiveSchedule => schedule[day];
     private IEnumerable<HomeCard> DiscoveryCards => addonManga.Items.Take(4)
@@ -39,11 +43,13 @@ public partial class Home
         "Save a manga in Library to follow its chapters here.";
 
     protected override Task OnInitializedAsync() =>
-        Task.WhenAll(LoadWatch(), LoadLatest(), LoadUpcoming(), LoadRelease(), LoadSchedule());
+        Task.WhenAll(LoadWatch(), LoadLatest(), LoadUpcoming(), LoadRelease(), LoadSchedule(), LoadTrending(),
+            ReadSpotlightProviders(), Switch(SpotlightSession?.Manga == true));
 
     private Task Switch(bool next)
     {
         manga = next;
+        if (SpotlightSession is { } session) session.Manga = next;
         if (!manga || mangaLoaded) return Task.CompletedTask;
         mangaLoaded = true;
         return Task.WhenAll(LoadReading(), LoadFollowed(), LoadDiscovery(), LoadPopular(), LoadNewManga());
@@ -67,7 +73,19 @@ public partial class Home
 
     private static string Pressed(bool value) => value ? "true" : "false";
     private void OpenCard(HomeCard card) => (selected, selectedProvider) = (card.Detail, card.Provider);
-    private void CloseCard() => (selected, selectedProvider) = (null, null);
+    private void OpenSpotlightDetails(Media media)
+    {
+        spotlightDetails = true;
+        selected = media;
+    }
+
+    private void OpenSpotlightSource(HomeProviderTitle title)
+    {
+        spotlightDetails = true;
+        selectedProvider = title;
+    }
+
+    private void CloseCard() => (selected, selectedProvider, spotlightDetails) = (null, null, false);
     private void HandleDetailsKeys(KeyboardEventArgs args) { if (args.Key == "Escape") CloseCard(); }
 
     private Task LoadWatch() => Load(watch, token => ReadHistory(false, token));
@@ -96,7 +114,20 @@ public partial class Home
     }
 
     private Task RetryLatest() => showTrending ? LoadTrending() : LoadLatest();
-    private Task LoadTrending() => LoadTitles(trending, HomeCatalogue.TrendingAnime);
+    private Task LoadTrending() => Load(trending, token => Api.HomeCatalogueAsync(HomeCatalogue.TrendingAnime, today, token));
+
+    private async Task ReadSpotlightProviders()
+    {
+        try
+        {
+            var installed = await Store.GetAddonsAsync();
+            if (disposed) return;
+            spotlightProviders = installed.Where(addon => addon.ManifestJson is not null).Select(addon => new AddonResources(addon)).ToList();
+            spotlightEmbeddedIds = installed.SelectMany(addon => addon.GetYouTubeEpisodes()).Select(episode => episode.AniListId).ToHashSet();
+        }
+        catch { /* Catalog details remain available when installed sources cannot be read. */ }
+        if (!disposed) await InvokeAsync(StateHasChanged);
+    }
     private void RandomEpisode()
     {
         if (latest.Items.Count == 0) return;

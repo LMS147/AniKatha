@@ -169,6 +169,7 @@ await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"a
 await DownloadChecks.RunAsync();
 await PlayerChecks.RunAsync();
 await HomeChecks.RunAsync();
+await SpotlightChecks.RunAsync();
 await ProfileUiChecks.RunAsync();
 await TrackingScreenChecks.RunAsync();
 

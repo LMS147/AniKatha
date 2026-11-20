@@ -16,6 +16,7 @@
 }
 
 @code {
+ [Parameter] public bool FromHome { get; set; }
  [Parameter] public int? AniListId { get; set; }
  List<YouTubeEpisode> episodes = [];
 
@@ -39,6 +40,6 @@
   }
  }
 
- static string EpisodePath(YouTubeEpisode episode) =>
-  $"/anime/addon/{episode.AniListId}/{episode.Number}/{episode.VideoId}";
+ string EpisodePath(YouTubeEpisode episode) =>
+  $"/anime/addon/{episode.AniListId}/{episode.Number}/{episode.VideoId}{(FromHome ? "?from=home" : "")}";
 }

@@ -116,6 +116,16 @@ function measure({ active, width, enlarged }) {
   const bounds = element => element.getBoundingClientRect();
   if (view.scrollWidth > view.clientWidth + 1 || document.documentElement.scrollWidth > width + 1) issues.push('horizontal overflow');
   const viewBox = bounds(view);
+  const rootChildren = [...document.querySelector('.home-landing').children];
+  const hero = view.closest('.home-landing').querySelector('.home-spotlight');
+  if (hero) {
+    const tabs = view.closest('.home-landing').querySelector('.home-mode');
+    if (rootChildren.indexOf(hero) !== 1 || rootChildren.indexOf(tabs) !== 2 || bounds(tabs).bottom >= innerHeight / 1.4)
+      issues.push('spotlight placement or tab visibility');
+    const action = hero.querySelector('.home-spotlight-action');
+    if (action && (bounds(action).bottom > bounds(hero).bottom || bounds(action).right > width))
+      issues.push('spotlight action clipped');
+  }
   for (const control of document.querySelectorAll('.home-mode button,' + active + ' .home-segment button')) {
     const box = bounds(control);
     if (box.left < viewBox.left - 1 || box.right > viewBox.right + 1 || control.scrollWidth > control.clientWidth + 1) issues.push('clipped control');

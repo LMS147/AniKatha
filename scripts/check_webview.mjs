@@ -712,6 +712,27 @@ async function exerciseHome(action, expected) {
   } else if (action === 'anime top') {
     await home();
     await wait(() => active('anime'), 'Anime is default');
+    const children = [...find('.home-landing').children];
+    if (!children[0]?.matches('.home-header') || !children[1]?.matches('.home-spotlight') ||
+        !children[2]?.matches('.home-mode') || find('.home-mode').getBoundingClientRect().bottom >= innerHeight)
+      throw new Error('Spotlight is out of order or obscures the tabs');
+    if (document.querySelectorAll('.home-spotlight').length !== 1) throw new Error('Home should have one shared spotlight');
+    const next = find('.home-spotlight [aria-label="Next spotlight"]');
+    if (next) {
+      const current = find('.home-spotlight-controls span').textContent;
+      const hero = find('.home-spotlight');
+      hero.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [
+        new Touch({ identifier: 1, target: hero, clientX: 200, clientY: 160 })
+      ] }));
+      hero.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: [
+        new Touch({ identifier: 1, target: hero, clientX: 100, clientY: 170 })
+      ] }));
+      window.spotlightSlide = await wait(() => {
+        const slide = find('.home-spotlight-controls span').textContent;
+        return slide !== current && slide;
+      }, 'spotlight swipe changes the slide');
+      console.log('Spotlight swipe verified');
+    }
     sections('anime', ['Continue Watching', 'Latest Episodes', 'Upcoming Anime', 'Release lists', 'Estimated Schedule']);
     await wait(() => find('#home-anime a[href^="/resume/"]'), 'watch history is shown');
     await settle('#home-anime .home-section:nth-child(2)');
@@ -736,6 +757,8 @@ async function exerciseHome(action, expected) {
       date: find('#home-anime .home-day[aria-pressed="true"]').textContent };
   } else if (action === 'manga top') {
     await format('manga');
+    if (window.spotlightSlide && find('.home-spotlight-controls span')?.textContent !== window.spotlightSlide)
+      throw new Error('Changing to Manga reset the shared spotlight');
     sections('manga', ['New Chapters from Followed Comics', 'Reading History', 'Discover Manga', 'Most Recent Popular', 'New Comics', 'Latest Updates']);
     await wait(() => find('#home-manga a[href^="/resume/"]'), 'reading history is shown');
     active('manga').scrollTop = 0;
@@ -748,6 +771,8 @@ async function exerciseHome(action, expected) {
     window.aniKathaHome.manga = active('manga').scrollTop;
   } else if (action === 'verify memory') {
     await format('anime');
+    if (window.spotlightSlide && find('.home-spotlight-controls span')?.textContent !== window.spotlightSlide)
+      throw new Error('Returning to Anime reset the shared spotlight');
     const memory = window.aniKathaHome;
     if (Math.abs(active('anime').scrollTop - memory.anime) > 5)
       throw new Error('Anime scroll changed from ' + memory.anime + ' to ' + active('anime').scrollTop);

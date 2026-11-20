@@ -1,0 +1,213 @@
+@using static AniKatha.Core.AddonResources
+@implements IDisposable
+@inject AddonClient Addons
+
+<section class="home-spotlight" aria-label="Trending Anime Spotlight" aria-roledescription="carousel"
+         @ontouchstart="StartSwipe" @ontouchend="EndSwipe" @ontouchcancel="CancelSwipe" @onkeydown="HandleKeys">
+ @if (Current is { } title)
+ {
+  var media = title.Media;
+  var artwork = MediaUrl(media.Banner ?? "") ? media.Banner : MediaUrl(media.Poster ?? "") ? media.Poster : null;
+  var playable = verifiedSource is not null || EmbeddedIds.Contains(media.Id);
+  <div class="home-spotlight-slide" role="group" aria-roledescription="slide" aria-label="@($"{Index + 1} of {Titles.Count}")">
+   @if (artwork is not null) { <img @key="artwork" class="home-spotlight-art" src="@artwork" alt="" /> }
+   <div class="home-spotlight-copy">
+    <p class="home-spotlight-rank">#@(Index + 1) Spotlight</p>
+    <h2>@media.Title</h2>
+    <ul class="home-spotlight-meta" aria-label="Anime information">
+     @if (media.Format is { Length: > 0 } format) { <li>@format.Replace('_', ' ')</li> }
+     @if (title.Date is { } date) { <li>@date.ToString("MMM d, yyyy")</li> }
+     else if (title.Season is { Length: > 0 } season && (title.SeasonYear ?? media.Year) is int year)
+     { <li>@($"{char.ToUpperInvariant(season[0])}{season[1..].ToLowerInvariant()} {year}")</li> }
+     @if (media.Score is > 0) { <li>@($"{media.Score.Value / 10.0:0.0}/10")</li> }
+     @if (media.Episodes is > 0) { <li>@media.Episodes episodes</li> }
+    </ul>
+    <div class="home-spotlight-footer">
+     <button type="button" class="home-spotlight-action" @onclick="Open">
+      @if (playable) { <Icon Name="play" /> }
+      @(playable ? "Watch now" : "View details")
+     </button>
+     @if (Titles.Count > 1)
+     {
+      <div class="home-spotlight-controls">
+       <button type="button" aria-label="Previous spotlight" @onclick="() => Move(-1)">‹</button>
+       <span aria-live="polite">@((Index + 1).ToString()) / @Titles.Count</span>
+       <button type="button" aria-label="Next spotlight" @onclick="() => Move(1)">›</button>
+      </div>
+     }
+    </div>
+   </div>
+  </div>
+ }
+ else
+ {
+  <div class="home-spotlight-state">
+   <h2>Trending Anime</h2>
+   @if (Loading) { <p role="status">Loading spotlight…</p> }
+   else if (Failed) { <p role="status">Spotlight unavailable.</p><button type="button" class="home-link" @onclick="Retry">Retry spotlight</button> }
+   else { <p>No currently airing trending anime right now.</p> }
+  </div>
+ }
+</section>
+
+@code {
+ [Parameter, EditorRequired] public IReadOnlyList<HomeTitle> Titles { get; set; } = [];
+ [Parameter] public IReadOnlyList<AddonResources> Providers { get; set; } = [];
+ [Parameter] public IReadOnlySet<int> EmbeddedIds { get; set; } = new HashSet<int>();
+ [Parameter] public HomeSpotlightSession? Session { get; set; }
+ [Parameter] public bool Loading { get; set; }
+ [Parameter] public bool Failed { get; set; }
+ [Parameter] public EventCallback Retry { get; set; }
+ [Parameter] public EventCallback<Media> OpenDetails { get; set; }
+ [Parameter] public EventCallback<HomeProviderTitle> OpenSource { get; set; }
+ [CascadingParameter] public SourceResultCache? Cache { get; set; }
+
+ HomeTitle? Current => Titles.Count > 0 ? Titles[Index] : null;
+ int Index
+ {
+  get
+  {
+   var id = Session?.MediaId ?? currentId;
+   for (var index = 0; index < Titles.Count; index++)
+    if (Titles[index].Media.Id == id) return index;
+   return 0;
+  }
+ }
+
+ int? currentId, checkedId;
+ IReadOnlyList<AddonResources>? checkedProviders;
+ HomeProviderTitle? verifiedSource;
+ CancellationTokenSource? probe;
+ (double X, double Y)? touchStart;
+
+ protected override Task OnParametersSetAsync()
+ {
+  if (Session is { } session && Current is { } title) session.MediaId = title.Media.Id;
+  return CheckSource();
+ }
+
+ async Task Move(int offset)
+ {
+  if (Titles.Count < 2) return;
+  currentId = Titles[(Index + offset + Titles.Count) % Titles.Count].Media.Id;
+  if (Session is not null) Session.MediaId = currentId;
+  await CheckSource();
+ }
+
+ Task HandleKeys(KeyboardEventArgs args) => args.Key switch
+ {
+  "ArrowLeft" => Move(-1), "ArrowRight" => Move(1), _ => Task.CompletedTask
+ };
+
+ void StartSwipe(TouchEventArgs args)
+ {
+  touchStart = args.Touches is [var point] ? (point.ClientX, point.ClientY) : null;
+ }
+
+ void CancelSwipe() => touchStart = null;
+
+ Task EndSwipe(TouchEventArgs args)
+ {
+  var start = touchStart;
+  touchStart = null;
+  if (start is null || args.ChangedTouches is not [var point]) return Task.CompletedTask;
+  var x = point.ClientX - start.Value.X;
+  var y = point.ClientY - start.Value.Y;
+  return Math.Abs(x) >= 42 && Math.Abs(x) > Math.Abs(y) * 1.25 ? Move(x < 0 ? 1 : -1) : Task.CompletedTask;
+ }
+
+ Task Open() => Current is not { } title ? Task.CompletedTask : verifiedSource is { } source
+  ? OpenSource.InvokeAsync(source) : OpenDetails.InvokeAsync(title.Media);
+
+ async Task CheckSource()
+ {
+  var id = Current?.Media.Id;
+  if (checkedId == id && ReferenceEquals(checkedProviders, Providers)) return;
+  (checkedId, checkedProviders, verifiedSource) = (id, Providers, null);
+  probe?.Cancel();
+  probe?.Dispose();
+  probe = null;
+  if (Current is not { } title || Providers.Count == 0 || EmbeddedIds.Contains(title.Media.Id)) return;
+  probe = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+  var token = probe.Token;
+  try
+  {
+   var source = await FindPlayable(title.Media, Providers, token);
+   if (!token.IsCancellationRequested) verifiedSource = source;
+  }
+  catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+ }
+
+ async Task<HomeProviderTitle?> FindPlayable(Media media, IReadOnlyList<AddonResources> providers, CancellationToken token)
+ {
+  var canonicalId = $"anilist:{media.Id}";
+  foreach (var provider in providers)
+  {
+   var candidates = new HashSet<(string Type, string Id)>();
+   foreach (var type in new[] { "anime", "series" })
+    if (provider.HasPrefix("meta", type, canonicalId)) candidates.Add((type, canonicalId));
+   var direct = await ProbeTitles(provider, candidates, media, providers, token);
+   if (direct is not null) return direct;
+
+   foreach (var catalogue in provider.Catalogs("ANIME").Where(c => c.Search && !c.Extras.Any(e => e.Required && e.Name != "search")))
+   {
+    var result = await TryResource(provider, "catalog", catalogue.Type, catalogue.Id, token,
+       "search=" + Uri.EscapeDataString(media.Title));
+    foreach (var item in Items(result, "metas"))
+    {
+     var id = Field(item, "id");
+     var declaredType = Field(item, "type");
+     if (string.IsNullOrWhiteSpace(id) || declaredType.Length > 0 && declaredType != catalogue.Type ||
+         !provider.Supports("meta", catalogue.Type, id)) continue;
+     var declaredId = AddonAniListProgress.TitleId(item);
+     if (declaredId == media.Id || declaredId is null &&
+         string.Equals(Field(item, "name").Trim(), media.Title.Trim(), StringComparison.OrdinalIgnoreCase))
+      candidates.Add((catalogue.Type, id));
+    }
+   }
+   var remaining = candidates.Where(candidate => candidate.Id != canonicalId || !provider.HasPrefix("meta", candidate.Type, canonicalId));
+   var fromCatalogue = await ProbeTitles(provider, remaining, media, providers, token);
+   if (fromCatalogue is not null) return fromCatalogue;
+  }
+  return null;
+ }
+
+ async Task<HomeProviderTitle?> ProbeTitles(AddonResources provider, IEnumerable<(string Type, string Id)> candidates,
+     Media media, IReadOnlyList<AddonResources> providers, CancellationToken token)
+ {
+  foreach (var candidate in candidates)
+  {
+   var root = await TryResource(provider, "meta", candidate.Type, candidate.Id, token);
+   if (root.ValueKind != System.Text.Json.JsonValueKind.Object || !root.TryGetProperty("meta", out var meta) ||
+       AddonAniListProgress.TitleId(meta) != media.Id) continue;
+   foreach (var unit in Items(meta, "videos").Where(unit => !string.IsNullOrWhiteSpace(Field(unit, "id"))))
+   {
+    foreach (var (source, unitId) in provider.ResolveUnitProviders(candidate.Type, unit, providers))
+    {
+     var key = ResumeEntry.Key(provider.ProviderKey, candidate.Type, candidate.Id, unitId, source.ProviderKey);
+     var streams = Cache is not null && Cache.TryGet(key, source.Addon.ManifestJson, out var cached) ? cached :
+       await TryResource(source, "stream", candidate.Type, unitId, token);
+     if (!Items(streams, "streams").Any(stream => MediaUrl(Field(stream, "url")))) continue;
+     Cache?.Set(key, source.Addon.ManifestJson, streams);
+     var title = new SavedTitle { Id = media.Id, Kind = media.Kind, Title = media.Title, Poster = media.Poster, ExternalId = candidate.Id };
+     return new(provider, candidate.Type, title, AniListId: media.Id);
+    }
+   }
+  }
+  return null;
+ }
+
+ async Task<System.Text.Json.JsonElement> TryResource(AddonResources source, string resource, string type, string id,
+     CancellationToken token, string? extra = null)
+ {
+  token.ThrowIfCancellationRequested();
+  try { return await Addons.FetchJsonAsync(source.Resource(resource, type, id, extra), token); }
+  catch (Exception) when (!token.IsCancellationRequested) { return default; }
+ }
+
+ public void Dispose()
+ {
+  probe?.Cancel();
+  probe?.Dispose();
+ }
+}

@@ -12,7 +12,9 @@ else
  <CascadingValue Value="apply" IsFixed="true">
  <CascadingValue Value="catalogSession" IsFixed="true">
   <CascadingValue Value="sourceResultCache" IsFixed="true">
-   <main id="main-content">@Body</main>
+   <CascadingValue Value="homeSpotlightSession" IsFixed="true">
+    <main id="main-content">@Body</main>
+   </CascadingValue>
   </CascadingValue>
  </CascadingValue>
  <nav class="bottom-nav" aria-label="Main navigation">
@@ -29,6 +31,7 @@ else
 @code {
  readonly SourceResultCache sourceResultCache = new();
  readonly CatalogSession catalogSession = new();
+ readonly HomeSpotlightSession homeSpotlightSession = new();
  [CascadingParameter] public ProfileSession? Session { get; set; }
  AppearanceSettings appearance = new();
  Func<AppearanceSettings, Task> apply = null!;
