@@ -10,8 +10,8 @@
   <h4>AniKatha JSON</h4>
   <p>Back up your Library and supported add-on history, including saved timestamps, pages, and completion marks. Account credentials, source settings, and downloaded files are excluded.</p>
   <div class="profile-file-modes" role="group" aria-label="Backup mode">
-   <button type="button" aria-pressed="@(!importing)" disabled="@busy" @onclick="() => SetMode(false)">Export</button>
-   <button type="button" aria-pressed="@importing" disabled="@busy" @onclick="() => SetMode(true)">Import</button>
+   <button type="button" aria-pressed="@(!importing ? "true" : "false")" disabled="@busy" @onclick="() => SetMode(false)">Export</button>
+   <button type="button" aria-pressed="@(importing ? "true" : "false")" disabled="@busy" @onclick="() => SetMode(true)">Import</button>
   </div>
   @if (!importing)
   {

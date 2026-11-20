@@ -4,7 +4,7 @@ namespace AniKatha.Core;
 
 public sealed record AccentPreset(string Name, string Dark, string Light);
 
-public sealed record AppearanceSettings(string Mode = "system", string Accent = "Blue", string Density = "comfortable")
+public sealed record AppearanceSettings(string Mode = "dark", string Accent = "Blue", string Density = "comfortable")
 {
     public const string Key = "appearance-v1";
     public static IReadOnlyList<AccentPreset> Presets { get; } =

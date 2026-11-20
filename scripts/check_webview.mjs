@@ -550,7 +550,7 @@ async function verifyProfileScene(scene) {
     await open('/profile');
     await open('/profile/profiles');
     await activate('Story explorer');
-    await wait(() => document.querySelector('.app-shell')?.dataset.theme === 'system', 'Original theme');
+    await wait(() => document.querySelector('.app-shell')?.dataset.theme === 'dark', 'Original theme');
     await open('/profile/sources');
     const row = await wait(() => {
       const card = document.querySelector('.source-card');

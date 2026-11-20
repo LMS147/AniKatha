@@ -8,7 +8,7 @@
  <nav class="profile-tabs" aria-label="Profile sections">
   @foreach (var name in Tabs)
   {
-   <button type="button" aria-pressed="@(tab == name)" @onclick="() => tab = name">@name</button>
+   <button type="button" aria-pressed="@(tab == name ? "true" : "false")" @onclick="() => tab = name">@name</button>
   }
  </nav>
  <div class="profile-panel" hidden="@(tab != "Account")">

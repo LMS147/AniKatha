@@ -92,7 +92,7 @@ internal static class ProfileUiChecks
         await Click("Ocean");
         await Click("Compact");
         await Click("Cancel preview");
-        if (view.Find(".appearance-preview").GetAttribute("data-theme") != "system")
+        if (view.Find(".appearance-preview").GetAttribute("data-theme") != "dark")
             throw new Exception("Cancel did not restore saved preview");
         await Click("Light");
         await Click("Ocean");
@@ -104,7 +104,7 @@ internal static class ProfileUiChecks
         await Go("/profile/profiles");
         await view.FindAll(".settings-row").Single(x => x.TextContent.Contains("Story keeper")).ClickAsync(new());
         Has("Story keeper");
-        if (view.Find(".app-shell").GetAttribute("data-theme") != "system")
+        if (view.Find(".app-shell").GetAttribute("data-theme") != "dark")
             throw new Exception("Another profile's theme leaked to original");
         await Go("/profile/sources");
         Has("Original source");
