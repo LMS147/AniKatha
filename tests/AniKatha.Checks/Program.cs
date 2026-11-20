@@ -100,6 +100,7 @@ try { await jikan.SearchAsync("ANIME", null, 1, default); throw new Exception("M
 catch (InvalidOperationException ex) { Assert(ex.Message.Contains("too many requests"), "Jikan rate limits must be retryable"); }
 Console.WriteLine("PASS: SQLite persistence, progress, settings, add-ons, URL validation, metadata parsing, GraphQL errors, and rate limiting.");
 await LocalProfileChecks.RunAsync();
+await BackupChecks.RunAsync();
 
 static void Assert(bool condition,string message){if(!condition)throw new Exception(message);}
 sealed class StubHandler:HttpMessageHandler {

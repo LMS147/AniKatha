@@ -34,11 +34,50 @@ internal static class ProfileUiChecks
         {
             if (!view.Markup.Contains(value, StringComparison.Ordinal)) throw new Exception("Missing " + value);
         });
+        void Capture(string screen)
+        {
+            if (Environment.GetEnvironmentVariable("ANIKATHA_PROFILE_CAPTURE_DIRECTORY") is not { Length: > 0 } folder) return;
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, screen + ".html"), $$"""
+                <!doctype html><html lang="en"><head><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <link rel="stylesheet" href="app.css"><title>AniKatha Profile</title>
+                </head><body>{{view.Markup}}</body></html>
+                """);
+        }
         async Task Go(string uri) => await view.InvokeAsync(() => location.NavigateTo(uri));
         async Task Click(string label) => await view.InvokeAsync(() => view.FindAll("button")
             .Single(x => x.TextContent.Trim() == label || x.GetAttribute("aria-label") == label).ClickAsync(new()));
         Has("Story explorer");
         Has("/profile/sources");
+        await view.Find("#profile-username").InputAsync("!");
+        Has("Use 3–10 letters or digits");
+        await view.Find("#profile-username").InputAsync("Reader27");
+        await view.Find("#profile-display-name").InputAsync("Story keeper");
+        await Click("Preferences");
+        Has("Dim watched episodes");
+        Capture("preferences");
+        await view.FindAll(".profile-switch input").First().ChangeAsync(true);
+        if (await profiles.Session!.Store.GetSettingAsync(MediaPreferences.PlayOnOpenKey) != "true")
+            throw new Exception("Play-on-open preference was not persisted");
+        await Click("Sync");
+        Has("AniKatha JSON");
+        Capture("sync");
+        await Click("Import");
+        Has("Choose an AniKatha backup");
+        await Click("Security");
+        Has("Secure PIN storage is unavailable on this platform.");
+        Capture("security");
+        await Click("Account");
+        if (view.Find("#profile-display-name").GetAttribute("value") != "Story keeper")
+            throw new Exception("Account draft was lost");
+        await view.Find(".profile-form").SubmitAsync();
+        Has("Profile saved.");
+        Capture("account");
+        var reloaded = new LocalProfiles(path, "legacy.db3", addons);
+        await reloaded.InitializeAsync();
+        if (reloaded.Active.Name != "Story keeper" || reloaded.Active.Details?.Username != "Reader27")
+            throw new Exception("Account fields did not survive restart");
         await Go("/profile/profiles/new");
         await view.Find("label input").InputAsync(new ChangeEventArgs { Value = "Late night reader" });
         await Click("Moon");
@@ -53,7 +92,7 @@ internal static class ProfileUiChecks
         await Click("Ocean");
         await Click("Compact");
         await Click("Cancel preview");
-        if (view.Find(".appearance-preview").GetAttribute("data-theme") != "system")
+        if (view.Find(".appearance-preview").GetAttribute("data-theme") != "dark")
             throw new Exception("Cancel did not restore saved preview");
         await Click("Light");
         await Click("Ocean");
@@ -63,9 +102,9 @@ internal static class ProfileUiChecks
         if (view.Find(".app-shell").GetAttribute("data-theme") != "light")
             throw new Exception("Save did not update the shell");
         await Go("/profile/profiles");
-        await view.FindAll(".settings-row").Single(x => x.TextContent.Contains("Story explorer")).ClickAsync(new());
-        Has("Story explorer");
-        if (view.Find(".app-shell").GetAttribute("data-theme") != "system")
+        await view.FindAll(".settings-row").Single(x => x.TextContent.Contains("Story keeper")).ClickAsync(new());
+        Has("Story keeper");
+        if (view.Find(".app-shell").GetAttribute("data-theme") != "dark")
             throw new Exception("Another profile's theme leaked to original");
         await Go("/profile/sources");
         Has("Original source");

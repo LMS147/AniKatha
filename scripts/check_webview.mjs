@@ -203,8 +203,17 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
       throw new Error(reader.exceptionDetails?.exception?.description ?? 'Sample manga chapter did not load or resume.');
     }
     console.log('PASS: installed APK renders all three bundled manga pages, turns pages, and restores the saved page.');
+    if (mode === 'fresh') {
+      await captureProfileScenes(command, [
+        ['hub', 'profile-account'], ['preferences', 'profile-preferences'],
+        ['sync', 'profile-sync'], ['security', 'profile-security'],
+      ]);
+      console.log('PASS: verified Profile tabs, avatar save, draft retention, playback preference, backup import, and local PIN in the installed APK.');
+    }
 
 
+
+    if (mode === 'seed') console.log('Seeding the enabled add-on and chapter position in the baseline APK.');
     const httpAddon = await command('Runtime.evaluate', {
       awaitPromise: true, returnByValue: true,
       expression: `(async () => {
@@ -223,30 +232,35 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         const oldProfile = ${mode === 'seed'};
         const sources = async () => {
           tab('profile');
-          if (!oldProfile) await open('/profile/sources');
+          if (!oldProfile) {
+            await click('Account');
+            await open('/profile/sources');
+          }
         };
         tab('profile');
         const expectedAniList = ${JSON.stringify(mode === 'fresh' ? aniListConfigured ?? '' : '')};
-        if (!oldProfile && expectedAniList) await open('/profile/anilist');
+        if (!oldProfile && expectedAniList) await click('Sync');
         if (expectedAniList === 'true') {
           await wait(() => button('Connect AniList'), 'AniList sign-in in the configured APK');
         } else if (expectedAniList === 'false') {
-          await wait(() => document.querySelector('.anilist-card')?.textContent.includes('AniList sign-in is unavailable for this build.'),
+          await wait(() => document.querySelector('.tracking-account')?.textContent.includes('AniList sign-in is unavailable for this build.'),
             'AniList availability notice in the unconfigured APK');
         }
         await sources();
-        const input = await wait(() => document.querySelector('input[inputmode="url"]'), 'manifest input');
+        const input = await wait(() => document.querySelector(oldProfile ? 'input[inputmode="url"]' : '#source-manifest'), 'manifest input');
         input.value = ${JSON.stringify(fixture)};
         input.dispatchEvent(new Event('input', {bubbles:true}));
         if (!oldProfile) await click('Check manifest');
         await click('Add source');
         await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler', 'installed sampler');
-        tab('anime');
-        await click('Big Buck Bunny');
-        await click('Sample trailer');
-        await click('Play trailer');
-        await wait(() => document.querySelector('video')?.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4', 'resolved anime video');
-        if (${testDownloads}) await click('Download Compatibility clip');
+        if (!oldProfile) {
+          tab('anime');
+          await click('Big Buck Bunny');
+          await click('Sample trailer');
+          await click('Play trailer');
+          await wait(() => document.querySelector('video')?.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4', 'resolved anime video');
+          if (${testDownloads}) await click('Download Compatibility clip');
+        }
         tab('manga');
         await click('The Midnight Lighthouse');
         await click('Chapter 1');
@@ -258,6 +272,17 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await wait(() => imageAt(1), 'resolved manga page');
         await click('Next page →');
         await wait(() => imageAt(2), 'second manga page');
+        if (oldProfile) {
+          tab('library');
+          await wait(() => location.pathname === '/library', 'leave the baseline reader');
+          tab('manga');
+          await wait(() => location.pathname === '/manga' && document.querySelector('h1')?.textContent === 'Manga', 'manga catalogue');
+          await click('The Midnight Lighthouse');
+          await click('Chapter 1');
+          await click('Read Chapter 1');
+          await wait(() => imageAt(2), 'saved chapter position in baseline APK');
+          return true;
+        }
         await sources();
         await click('Disable');
         await wait(() => button('Enable'), 'disabled source');
@@ -355,31 +380,40 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           expression: `(async () => {
             const video = document.querySelector('video');
             video.muted = true;
-            const wait = async find => {
+            const wait = async (find, label) => {
               for (let i = 0; i < 45; i++) {
                 const item = find();
                 if (item) return item;
+                if (video.error) throw new Error('Offline video error ' + video.error.code + ' while waiting for ' + label);
                 await new Promise(resolve => setTimeout(resolve, 100));
               }
-              throw new Error('Playback control did not update');
+              throw new Error('Offline video timed out waiting for ' + label +
+                ' (paused=' + video.paused + ', time=' + video.currentTime + ', speed=' + video.playbackRate + ')');
             };
+            const toggle = () => document.querySelector('[data-player-toggle]').click();
+            if (!video.paused) toggle();
+            await wait(() => video.paused, 'initial pause');
             document.querySelector('[data-player-menu="speed"]').click();
-            (await wait(() => document.querySelector('[data-player-rate="1.25"]'))).click();
-            await wait(() => video.playbackRate === 1.25);
+            (await wait(() => document.querySelector('[data-player-rate="1.25"]'), 'speed menu')).click();
+            await wait(() => video.playbackRate === 1.25, '1.25× speed');
             document.querySelector('[data-player-close]').click();
-            await wait(() => !document.querySelector('.player-sheet'));
-            document.querySelector('[data-player-toggle]').click();
-            await wait(() => !video.paused);
+            await wait(() => !document.querySelector('.player-sheet'), 'speed menu to close');
             const checkpoint = Math.min(6, video.duration / 2);
             const scrubber = document.querySelector('[data-player-scrubber]');
+            scrubber.value = 0;
+            scrubber.dispatchEvent(new Event('input', {bubbles:true}));
+            scrubber.dispatchEvent(new Event('change', {bubbles:true}));
+            await wait(() => !video.seeking && video.currentTime < 0.1, 'seek to the start');
+            toggle();
+            await wait(() => !video.paused && video.currentTime > 0, 'playback to start');
             scrubber.value = checkpoint;
             scrubber.dispatchEvent(new Event('input', {bubbles:true}));
             scrubber.dispatchEvent(new Event('change', {bubbles:true}));
             for (let i = 0; i < 150; i++) {
               if (video.error) throw new Error('Media error ' + video.error.code);
               if (!video.seeking && video.currentTime >= checkpoint - 0.1) {
-                document.querySelector('[data-player-toggle]').click();
-                await wait(() => video.paused);
+                if (!video.paused) toggle();
+                await wait(() => video.paused, 'paused checkpoint');
                 return video.currentTime;
               }
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -416,25 +450,29 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     }
     if (mode === 'fresh') {
       await checkHomeViews(command);
-      for (const [scene, label] of [
-        ['hub', 'profile-hub'], ['switcher', 'profile-switcher'],
-        ['appearance', 'appearance'], ['sources', 'sources'],
+      await captureProfileScenes(command, [
+        ['switcher', 'profile-switcher'], ['appearance', 'appearance'], ['sources', 'sources'],
         ['anilist', 'anilist-account-android'], ['tracking-editor', 'anilist-editor-android'],
-      ]) {
-        const result = await command('Runtime.evaluate', {
-          expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
-          awaitPromise: true, returnByValue: true,
-        }, 45000);
-        if (result.result?.value !== true)
-          throw new Error(result.exceptionDetails?.exception?.description ?? 'Could not verify ' + label);
-        const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
-        await writeFile('artifacts/startup/' + label + '.png', image);
-      }
+      ]);
       console.log('PASS: created and switched profiles, verified source and appearance isolation, and captured the profile and tracking screens.');
     }
   } finally {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}
+  }
+}
+
+async function captureProfileScenes(command, scenes) {
+  for (const [scene, label] of scenes) {
+    const result = await command('Runtime.evaluate', {
+      expression: '(' + verifyProfileScene.toString() + ')(' + JSON.stringify(scene) + ')',
+      awaitPromise: true, returnByValue: true,
+    }, 45000);
+    if (result.result?.value !== true)
+      throw new Error(result.exceptionDetails?.exception?.description ?? 'Could not verify ' + label);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
+    await writeFile('artifacts/startup/' + label + '.png', image);
   }
 }
 
@@ -453,14 +491,87 @@ async function verifyProfileScene(scene) {
   const heading = name => wait(() => document.querySelector('h1')?.textContent === name, name);
   const activate = async name => {
     (await wait(() => [...document.querySelectorAll('.settings-row')].find(row => row.textContent.includes(name)), name)).click();
-    await wait(() => document.querySelector('.profile-card h2')?.textContent === name, 'Active profile ' + name);
+    await wait(() => document.querySelector('.profile-summary h3')?.textContent === name, 'Active profile ' + name);
   };
 
   if (scene === 'hub') {
     document.querySelector('.bottom-nav a[href="/profile"]').click();
     await heading('Profile');
-    await wait(() => document.querySelector('.profile-card h2')?.textContent === 'Story explorer', 'Default profile');
+    await wait(() => document.querySelector('.profile-summary h3')?.textContent === 'Story explorer', 'Default profile');
+    const username = document.querySelector('#profile-username');
+    username.value = 'TestUser';
+    username.dispatchEvent(new Event('input', { bubbles: true }));
+    await click('Preferences');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) h2')?.textContent === 'Preferences', 'Preferences tab');
+    await click('Account');
+    if (username.value !== 'TestUser') throw new Error('Account draft lost during tab switch');
+    const input = document.querySelector('.profile-photo-edit input');
+    const files = new DataTransfer();
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 32;
+    const art = canvas.getContext('2d');
+    art.fillStyle = '#1763c6';
+    art.fillRect(0, 0, 32, 32);
+    art.fillStyle = '#f3f7ff';
+    art.fillRect(8, 8, 16, 16);
+    const image = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    files.items.add(new File([image], 'avatar.png', { type: 'image/png' }));
+    input.files = files.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(() => document.querySelector('.profile-summary img')?.naturalWidth === 32, 'Local avatar decoded');
+    await click('Save changes');
+    await wait(() => document.querySelector('.profile-summary')?.textContent.includes('TestUser'), 'Saved username');
+  } else if (scene === 'preferences') {
+    await click('Preferences');
+    const dimWatched = () => [...document.querySelectorAll('.profile-panel:not([hidden]) .profile-switch')]
+      .find(label => label.textContent.includes('Dim watched episodes'))?.querySelector('input');
+    const toggle = await wait(() => {
+      const input = dimWatched();
+      return input && !input.disabled && input;
+    }, 'Dim watched episodes switch');
+    toggle.click();
+    await wait(() => toggle.checked && !toggle.disabled, 'Dim watched episodes enabled');
+    document.querySelector('.bottom-nav a[href="/library"]').click();
+    await heading('Library');
+    document.querySelector('.bottom-nav a[href="/profile"]').click();
+    await heading('Profile');
+    await click('Preferences');
+    await wait(() => dimWatched()?.checked && !dimWatched().disabled, 'Display preference persisted after leaving Profile');
+    scrollTo(0, 0);
+  } else if (scene === 'sync') {
+    await click('Sync');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) .tracking-account h2')?.textContent === 'AniList account', 'Sync tab');
+    await click('Import');
+    const input = await wait(() => document.querySelector('.profile-panel:not([hidden]) input[type="file"]'), 'Backup picker');
+    const file = new DataTransfer();
+    file.items.add(new File(['{"Version":1,"Library":[],"History":[]}'], 'anikatha-test.json', { type: 'application/json' }));
+    input.files = file.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await click('Merge backup');
+    await wait(() => document.querySelector('.profile-backup-card')?.textContent.includes('Backup merged.'), 'Backup merge');
+    await click('Export');
+  } else if (scene === 'security') {
+    await click('Security');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="new-password"]'), 'Local PIN form');
+    document.querySelector('.profile-panel:not([hidden]) .profile-switch input').click();
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="new-password"]')?.type === 'text', 'Show PIN');
+    document.querySelector('.profile-panel:not([hidden]) .profile-switch input').click();
+    const setPin = (field, value) => {
+      field.value = value;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    for (const input of document.querySelectorAll('.profile-panel:not([hidden]) input[inputmode="numeric"]')) setPin(input, '4275');
+    await click('Set PIN');
+    await click('Done');
+    const current = await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="off"][inputmode="numeric"]'), 'Current PIN');
+    setPin(current, '4275');
+    await click('Remove PIN');
+    await wait(() => document.querySelector('.profile-panel:not([hidden])')?.textContent.includes('PIN removed.'), 'Removed profile PIN');
+    await click('Account');
+    await click('Security');
   } else if (scene === 'switcher') {
+    document.querySelector('.bottom-nav a[href="/profile"]').click();
+    await click('Account');
     await open('/profile/profiles');
     await open('/profile/profiles/new');
     const input = await wait(() => document.querySelector('input[maxlength="32"]'), 'Profile name');
@@ -475,6 +586,7 @@ async function verifyProfileScene(scene) {
     await open('/profile/sources');
     await wait(() => document.body.innerText.includes('No sources installed'), 'Isolated sources');
     await open('/profile');
+    await click('Preferences');
     await open('/profile/appearance');
     await click('Light');
     await click('Compact');
@@ -485,7 +597,7 @@ async function verifyProfileScene(scene) {
     await open('/profile');
     await open('/profile/profiles');
     await activate('Story explorer');
-    await wait(() => document.querySelector('.app-shell')?.dataset.theme === 'system', 'Original theme');
+    await wait(() => document.querySelector('.app-shell')?.dataset.theme === 'dark', 'Original theme');
     await open('/profile/sources');
     const row = await wait(() => {
       const card = document.querySelector('.source-card');
@@ -494,9 +606,9 @@ async function verifyProfileScene(scene) {
     row.scrollIntoView({ block: 'center' });
   } else if (scene === 'anilist') {
     document.querySelector('.bottom-nav a[href="/profile"]').click();
-    await open('/profile/anilist');
-    await heading('AniList');
-    await wait(() => document.querySelector('.tracking-account h2')?.textContent === 'AniList account', 'Disconnected AniList account');
+    await click('Sync');
+    await wait(() => document.querySelector('.profile-panel:not([hidden]) .tracking-account h2')?.textContent === 'AniList account',
+      'Disconnected AniList account');
   } else if (scene === 'tracking-editor') {
     document.querySelector('.bottom-nav a[href="/anime"]').click();
     await click('Big Buck Bunny');
@@ -523,7 +635,9 @@ async function verifyProfileScene(scene) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  checkWebView().catch(error => {console.error(`FAIL: ${error.message}`); process.exitCode = 1;});
+  checkWebView().catch(error => {
+    process.stderr.write(`FAIL: ${error.message}\n`, () => process.exit(1));
+  });
 }
 
 async function checkPlayerScreens(command, adb) {
@@ -627,6 +741,9 @@ async function exercisePlayerScene(action) {
       throw new Error('Retry changed the saved position.');
   } else if (action === 'settings') {
     await click('.bottom-nav a[href="/profile"]');
+    const preferences = await wait(() => [...document.querySelectorAll('.profile-tabs button')]
+      .find(button => button.textContent.trim() === 'Preferences'), 'Profile Preferences');
+    preferences.click();
     await click('a[href="/profile/playback"]');
     const preview = await wait(() => query('.subtitle-preview'), 'subtitle appearance');
     await wait(() => {

@@ -3,51 +3,5 @@
 <a class="text-link" href="/profile/profiles/manage">← Manage profiles</a>
 <section class="settings-screen">
  <header class="page-header"><h1>Profile PIN</h1><p>Protect access to @Profiles.Active.Name on this device.</p></header>
- @if (recoveryCode is not null)
- {
-  <section class="settings-card">
-   <h2>Save your recovery code</h2><p>Keep this code somewhere private. It can unlock the profile and remove its PIN if you forget it. This is the only time the code is shown.</p>
-   <code class="recovery-code">@recoveryCode</code>
-   <a class="primary" href="/profile/profiles/manage">Done</a>
-  </section>
- }
- else if (Profiles.SupportsPin)
- {
-  <section class="settings-card">
-   <form @onsubmit="() => Save(false)" @onsubmit:preventDefault>
-    @if (Profiles.Active.Locked)
-    {
-     <label>Current PIN<input type="password" inputmode="numeric" maxlength="8" autocomplete="off" @bind="current" /></label>
-    }
-    <label>New PIN<input type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" @bind="next" /></label>
-    <label>Confirm new PIN<input type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" @bind="confirm" /></label>
-    <p>Use 4–8 digits.</p>
-    @if (message is not null) { <p role="status">@message</p> }
-    <div class="settings-actions"><button class="primary" disabled="@busy">Save PIN</button>
-     @if (Profiles.Active.Locked) { <button type="button" class="secondary danger-action" disabled="@busy" @onclick="() => Save(true)">Remove PIN</button> }
-    </div>
-   </form>
-  </section>
- }
- else { <p>Secure PIN storage is unavailable on this platform.</p> }
+ <ProfilePinForm />
 </section>
-@code {
- string current = "", next = "", confirm = "";
- string? message, recoveryCode;
- bool busy;
- async Task Save(bool remove)
- {
-  if (busy) return;
-  if (!remove && next != confirm) { message = "The PINs do not match."; return; }
-  busy = true;
-  try
-  {
-   recoveryCode = await Profiles.SetPinAsync(remove ? null : next, current);
-   current = next = confirm = "";
-   message = remove ? "PIN removed." : null;
-  }
-  catch (InvalidOperationException ex) { message = ex.Message; }
-  catch { message = "Could not update the profile PIN."; }
-  finally { busy = false; }
- }
-}

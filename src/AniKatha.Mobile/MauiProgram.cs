@@ -26,6 +26,7 @@ public static class MauiProgram
    store => new YouTubePlayer(store)));
   builder.Services.AddSingleton<AniListTransport>();
   builder.Services.AddSingleton<IAppearancePlatform, NativeAppearance>();
+  builder.Services.AddSingleton<IBackupExport, AndroidBackupExport>();
   builder.Services.AddSingleton<IExternalVideoPlayer, ExternalVideoPlayer>();
   builder.Services.AddSingleton<AniKatha.UI.PlayerBackHandler>();
   builder.Services.AddSingleton<MainPage>();

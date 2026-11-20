@@ -152,7 +152,13 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
     pages=Items(root,"pages").Select(x=>x.GetString()??"").ToList();
     translation = Field(root, "language");
     if(pages.Any(x=>!MediaUrl(x)))throw new FormatException();
-   }else streams=Items(root,"streams").Where(x=>MediaUrl(Field(x,"url"))).ToList();
+   } else {
+    var available = Items(root, "streams").Where(stream => MediaUrl(Field(stream, "url")));
+    var preferDub = await Store.GetSettingAsync(MediaPreferences.PreferDubKey) == "true";
+    if (stop.IsCancellationRequested) return;
+    streams = (preferDub ? available.OrderByDescending(stream => MediaPreferences.IsDubbed(Field(stream, "audioType")) ||
+       MediaPreferences.IsDubbed(Field(stream, "name")) || MediaPreferences.IsDubbed(Field(stream, "audioLanguage"))) : available).ToList();
+   }
    if (!cached && (pages.Count > 0 || streams.Count > 0)) Cache?.Set(Key, Source.Addon.ManifestJson, root);
   }catch(AddonResourceNotFoundException){}
   catch(OperationCanceledException) when(stop.IsCancellationRequested){}

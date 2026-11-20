@@ -360,7 +360,8 @@
     return;
 
    callbacks ??= DotNetObjectReference.Create(this);
-   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed, StartPlaying, OfflineFile, Title, EpisodeLabel, pipButton, stage);
+   var playOnOpen = StartPlaying || await Store.GetSettingAsync(MediaPreferences.PlayOnOpenKey) == "true";
+   player = await module.InvokeAsync<IJSObjectReference>("attachPlayer", video, callbacks, VideoUrl, position, TrackCompletion, speed, playOnOpen, OfflineFile, Title, EpisodeLabel, pipButton, stage);
    if (!disposed && OnLeave.HasDelegate) await module.InvokeVoidAsync("revealPlayer", stage);
    if (!disposed) await InvokeAsync(StateHasChanged);
    await ApplyPreferredSubtitle();

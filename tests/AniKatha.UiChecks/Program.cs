@@ -61,11 +61,15 @@ var other=new InstalledAddon{Url=FixtureHandler.OtherUrl, Name="Second source",
 sources.Add(new AddonResources(other));
 await store.SaveAddonAsync(other);
 await store.SetSettingAsync(MediaPreferences.AutoplayKey, "true");
+await store.SetSettingAsync(MediaPreferences.PreferDubKey, "true");
+await store.SetSettingAsync(MediaPreferences.DimWatchedKey, "true");
 var anime=context.Render<ManifestCatalog>(p=>p.Add(x=>x.Source,provider).Add(x=>x.Catalog,provider.Catalogs("ANIME").Single()).Add(x=>x.Providers,sources));
 foreach(var name in new[]{"Anime Story","Episode 9","Stream 9"})
  await ClickAsync(anime, name);
 anime.WaitForAssertion(()=>Check(anime.FindComponent<WatchPreview>().Instance.VideoUrl=="https://video.example/9.mp4","Selected episode reaches existing player"));
 Check(!anime.Markup.Contains("Manga Story"),"No manga in anime catalogue");
+Check(anime.Markup.IndexOf("English Dub", StringComparison.Ordinal) < anime.Markup.IndexOf("Stream 9", StringComparison.Ordinal),
+ "Explicitly dubbed streams sort first while the original stream is selectable");
 Check(anime.Markup.Contains("Loading sources"),"Successful provider rendered while second provider pending");
 Check(handler.SlowRequest?.EndsWith("/alternate-09.json")==true,"Mapped provider got its own unit ID");
 var preferred = new AddonResources(other).ProviderKey;
@@ -147,6 +151,8 @@ Check(await store.GetPlaybackPositionAsync(firstPlayer.Instance.EpisodeKey) == 2
 await firstPlayer.InvokeAsync(() => firstPlayer.Instance.CompleteEpisode());
 anime.WaitForAssertion(()=>Check(anime.FindComponent<WatchPreview>().Instance.VideoUrl=="https://video.example/10.mp4","Autoplay opens the next episode source"));
 Check(!anime.FindComponent<WatchPreview>().Instance.OnNext.HasDelegate, "Last episode boundary");
+anime.WaitForAssertion(() => Check(anime.FindAll(".watched-dimmed").Any(x => x.TextContent.Trim() == "Episode 9"),
+ "Completed episode is dimmed using stored completion"));
 anime.WaitForAssertion(() => Check(tracking.Anime == 9, "Discovery episode completion updated AniList"));
 var importedAnime = context.Render<LibraryProviderTitle>(p => p.Add(x => x.Id, 42));
 importedAnime.WaitForAssertion(() => Check(!importedAnime.Markup.Contains("Other season"), "A same-name candidate with another AniList ID stays hidden"));
@@ -221,7 +227,8 @@ sealed class FixtureHandler : HttpMessageHandler
   else if(path.EndsWith("/stream/anime/episode-9.json"))
   {
    SuccessfulSourceRequests++;
-   result=new{streams=new[]{new{name="Stream 9",quality="1080p",audioLanguage="Japanese",url="https://video.example/9.mp4"}}};
+   result=new{streams=new[]{new{name="Stream 9",quality="1080p",audioLanguage="Japanese",url="https://video.example/9.mp4"},
+     new{name="English Dub",quality="720p",audioLanguage="English",url="https://video.example/9-dub.mp4"}}};
   }
   else if (path.EndsWith("/stream/anime/episode-10.json")) result = new { streams = new[] { new { name = "Stream 10", url = "https://video.example/10.mp4" } } };
   else throw new InvalidOperationException("Unexpected fixture request");

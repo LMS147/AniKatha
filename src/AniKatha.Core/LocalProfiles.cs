@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace AniKatha.Core;
 
-public sealed record LocalProfile(string Id, string Name, string Avatar, bool Locked = false)
+public sealed record LocalProfile(string Id, string Name, string Avatar, bool Locked = false, ProfileDetails? Details = null)
 {
     public const string DefaultId = "default";
     public static LocalProfile Default { get; } = new(DefaultId, "Story explorer", "");
@@ -48,19 +48,20 @@ public sealed class LocalProfiles(string root, string legacyDatabase, AddonClien
         finally { gate.Release(); }
     }
 
-    public async Task<LocalProfile> SaveAsync(string? id, string name, string avatar)
+    public async Task<LocalProfile> SaveAsync(string? id, string name, string avatar, ProfileDetails? details = null)
     {
         name = name.Trim();
         if (name.Length is < 1 or > 32 || name.Any(char.IsControl))
             throw new InvalidOperationException("Enter a name between 1 and 32 characters.");
-        if (avatar is not ("" or "star" or "moon" or "flower" or "bolt"))
+        if (avatar is not ("" or "star" or "moon" or "flower" or "bolt") && !ProfileDetails.IsAvatar(avatar))
             throw new InvalidOperationException("Choose an available avatar.");
         await InitializeAsync();
         await gate.WaitAsync();
         try
         {
             var existing = id is null ? null : Find(id);
-            var profile = new LocalProfile(existing?.Id ?? Guid.NewGuid().ToString("N"), name, avatar, existing?.Locked ?? false);
+            var profile = new LocalProfile(existing?.Id ?? Guid.NewGuid().ToString("N"), name, avatar, existing?.Locked ?? false, details ?? existing?.Details);
+            if (details?.Validate() is { } error) throw new InvalidOperationException(error);
             if (existing?.Locked == true && (Session is null || Active.Id != id))
                 throw new InvalidOperationException("Switch to and unlock this profile before editing it.");
             var updated = existing is null ? All.Append(profile) : All.Select(item => item.Id == id ? profile : item);
