@@ -107,6 +107,10 @@ await ClickAsync(shelf, "Anime List");
 Check(shelf.FindAll(".library-item").Count == 2, "Anime List displays saved anime");
 await shelf.Find(".design-library-controls select").ChangeAsync("COMPLETED");
 Check(shelf.FindAll(".library-item").Count == 0, "Library status filter changes the listed titles");
+await ClickAsync(shelf, "Downloads");
+shelf.Render();
+Check(shelf.Find("[aria-label='Library views'] [aria-pressed='true']").TextContent == "Downloads",
+ "Library retains the selected view when the same route parameters are reapplied");
 var record=(await store.HistoryAsync()).Single(x=>x.Type=="manga");
 var resume=context.Render<Resume>(p=>p.Add(x=>x.Id,record.Id));
 resume.WaitForAssertion(()=>Check(resume.FindAll("button").Any(x=>x.TextContent.Trim()=="Read Chapter 7"),"Re-resolve chapter on resume"));

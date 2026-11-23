@@ -159,8 +159,11 @@ else
  }
  int? Total(int id) => totals.TryGetValue(id, out var known) ? known : null;
 
+ string? appliedView;
  protected override void OnParametersSet()
  {
+  if (string.Equals(View, appliedView, StringComparison.OrdinalIgnoreCase)) return;
+  appliedView = View;
   ChangeView(View?.ToLowerInvariant() switch { "downloads" => "Downloads", "anime" => "Anime", "manga" => "Manga", "stats" => "Stats", _ => "All" });
  }
 
