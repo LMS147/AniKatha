@@ -127,8 +127,12 @@ internal static class HomeChecks
         home.WaitForElement(".home-spotlight-slide");
         Check(!home.Find("#home-manga").TextContent.Contains("Delayed anime"), "Delayed Anime data stays off Manga.");
         await home.InvokeAsync(() => home.Find("[aria-labelledby='home-followed-title'] .home-card-target").ClickAsync(new()));
-        home.WaitForAssertion(() => Check(home.Find(".home-source-sheet").TextContent.Contains("Read Chapter 2"), "Home opens the exact followed chapter source."));
-        await home.InvokeAsync(() => home.Find("[aria-label='Close details']").ClickAsync(new()));
+        var navigation = context.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Check(navigation.Uri.Contains("/manga/details/source?") && navigation.Uri.Contains("release=second"),
+            "Home opens the manga details route with the exact followed release.");
+        var details = context.Render<MangaDetails>();
+        details.WaitForAssertion(() => Check(details.Markup.Contains("Read Chapter 2"),
+            "The manga details page resolves the exact followed chapter."));
         await home.InvokeAsync(() => home.Find("#home-tab-anime").ClickAsync(new()));
         Check(home.Find(".home-day[aria-pressed='true']").TextContent == date &&
             home.FindAll("#home-anime button").Any(x => x.TextContent == "Trending" && x.GetAttribute("aria-pressed") == "true"),

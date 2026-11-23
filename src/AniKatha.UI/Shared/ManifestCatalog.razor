@@ -1,7 +1,10 @@
 @using System.Text.Json
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 @using static AniKatha.Core.AddonResources
 @implements IDisposable
 @inject AddonClient Client
+@inject NavigationManager Navigation
 @inherits ProfileComponent
 
 <section class="settings-card">
@@ -26,20 +29,69 @@
   @if (MissingRequired) { <p>Provide the required filters to search or browse this catalogue.</p> }
  }
  @foreach(var item in titles){
-  <button class="secondary" @onclick="()=>Open(item)">@Field(item,"name")</button>
+  <button class="secondary design-provider-title" @onclick="() => SelectTitle(item)">
+   @if (Catalog.Type == "manga" && MediaUrl(Field(item, "poster"))) { <img src="@Field(item,"poster")" alt="" loading="lazy" /> }
+   @Field(item,"name")
+  </button>
  }
  @if(more){<button disabled="@busy" @onclick="()=>Load(false)">Load more</button>}
  @if(busy){<p role="status">Loading…</p>}
  @if(error!=null){<p role="alert">@error <button @onclick="Retry">Retry</button></p>}
- @if(!busy && error==null && titles.Count==0 && !MissingRequired){<p>No matching titles.</p>}
+ @if(!busy && error==null && selected is null && titles.Count==0 && !MissingRequired){<p>No matching titles.</p>}
  @if(selected!=null){
   <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type"/>
   @if(InitialTitle==null || AllowSaveInitialTitle){<button disabled="@saved" @onclick="SaveTitle">@(saved?"Saved to library":"Save to library")</button>}
-  @foreach (var unit in units)
+  @if (units.Count > 0)
+  {
+   @if (ShowDetailActions)
+   {
+    <div class="settings-actions design-reader-actions">
+     @if (continueLink is not null) { <a class="primary" href="@($"/resume/{continueLink}")">Continue reading</a> }
+     else { <a class="primary" href="@($"#{unitHeading}")">Choose a chapter</a> }
+    </div>
+   }
+   <section class="design-units" aria-labelledby="@unitHeading">
+    <header><h3 id="@unitHeading">@(IsManga ? "Chapters" : "Episodes")</h3><span>@units.Count @(IsManga ? "releases" : "episodes")</span></header>
+    <div class="design-unit-tools">
+     <label>Search @(IsManga ? "chapters" : "episodes")<input type="search" @bind="unitSearch" @bind:event="oninput" @bind:after="ResetUnitPage" /></label>
+     @if (IsManga && ReleaseGroups.Length > 1)
+     {
+      <label>Group<select @bind="group" @bind:after="ResetUnitPage"><option value="">All groups</option>
+       @foreach (var releaseGroup in ReleaseGroups) { <option>@releaseGroup</option> }
+      </select></label>
+     }
+     @if (IsManga && (HasVolume || HasReleaseDate))
+     {
+      <label>Sort releases<select @bind="releaseSort" @bind:after="ResetUnitPage">
+       <option value="">Source order</option>
+       @if (HasReleaseDate) { <option value="date">Newest release</option> }
+       @if (HasVolume) { <option value="volume">Volume</option> }
+      </select></label>
+     }
+    </div>
+    <div class="design-chips" role="group" aria-label="Release order and layout">
+     <button type="button" class="secondary" @onclick="ReverseUnits">@(reverseUnits ? "Reversed order" : "Source order")</button>
+     @if (!IsManga)
+     {
+      <button type="button" class="secondary" aria-pressed="@(gridUnits ? "true" : "false")" @onclick="() => gridUnits = true">Grid</button>
+      <button type="button" class="secondary" aria-pressed="@(!gridUnits ? "true" : "false")" @onclick="() => gridUnits = false">List</button>
+     }
+    </div>
+    @{
+     var results = VisibleUnits.ToArray();
+     var start = unitPage * UnitsPerPage;
+    }
+    @if (results.Length == 0) { <p>No matching releases.</p> }
+    <div class="@(gridUnits && !IsManga ? "design-unit-grid" : "design-unit-list")">
+  @foreach (var unit in results.Skip(start).Take(UnitsPerPage))
   {
    var id = Field(unit, "id");
-   <div>
-    <button class="secondary @(dimWatched && Catalog.Type != "manga" && progress.TryGetValue(id, out var status) && status.Completed ? "watched-dimmed" : null)" @onclick="() => Choose(unit)" aria-pressed="@(unitId == id)">@Field(unit,"title")</button>
+   <div class="design-unit-row" @key="id">
+    <button class="secondary @(dimWatched && Catalog.Type != "manga" && progress.TryGetValue(id, out var status) && status.Completed ? "watched-dimmed" : null)" @onclick="() => SelectUnit(unit)" aria-pressed="@(unitId == id ? "true" : "false")">@Field(unit,"title")</button>
+    @if (IsManga && ReleaseGroup(unit) is { Length: > 0 } releaseGroup) { <small>@releaseGroup</small> }
+    @if (IsManga && Volume(unit) is decimal volume) { <small>Volume @volume</small> }
+    @if (IsManga && ReleaseDate(unit) is { } date)
+    { <small><time datetime="@date.ToString("O")">@date.ToString("MMM d, yyyy")</time></small> }
     @if (progress.TryGetValue(id, out var unitProgress))
     {
      <small>@(unitProgress.Completed ? "Completed" : "In progress")</small>
@@ -50,9 +102,21 @@
     }
    </div>
   }
+    </div>
+    @if (results.Length > UnitsPerPage)
+    {
+     <nav class="design-pagination" aria-label="Release pages">
+      <button type="button" class="secondary" disabled="@(unitPage == 0)" @onclick="() => unitPage--">Previous</button>
+      <span>Showing @(start + 1)–@Math.Min(start + UnitsPerPage, results.Length) of @results.Length</span>
+      <button type="button" class="secondary" disabled="@(start + UnitsPerPage >= results.Length)" @onclick="() => unitPage++">Next</button>
+     </nav>
+    }
+   </section>
+  }
   @if(!busy && error==null && units.Count==0){<p>No episodes or chapters available.</p>}
  }
  @if(unitId!=null){
+  <h3>Sources for @label</h3>
   @if (nextSourceUnavailable) { <p role="status">The previous provider has no source for this episode. Choose another source below.</p> }
   @if (targets.Count == 0) { <p>No compatible add-on.</p> }
   @if (targets.Count > 0 || preferredSource.Length > 0)
@@ -72,7 +136,7 @@
    </label>
    @if (preferenceError) { <p role="alert">Could not save the preferred source.</p> }
   }
-  <div id="@episodeSources" tabindex="-1">
+  <div id="@episodeSources" class="design-source-panel" tabindex="-1" @ref="sourcePanel">
   @foreach(var target in targets.OrderByDescending(target => target.Provider.ProviderKey == preferredSource)){
    <ManifestSources @key="(target.Provider.ProviderKey,target.UnitId,titleId,unitId)" Source="target.Provider" AniListProgress="aniListProgress" HasOriginMetadata="true" Origin="@Source.ProviderKey" Type="@Catalog.Type" TitleId="@titleId" UnitId="@target.UnitId" Label="@label" Title="@Field(selected!.Value,"name")" Poster="@TitlePoster" Preferred="@(target.Provider.ProviderKey == preferredSource)" AutoOpen="@(target.Provider.ProviderKey == autoOpenSource)" NextEpisode="@(CanMove(1) && Catalog.Type != "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)" PreviousChapter="@(CanMove(-1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(-1, target.Provider.ProviderKey)) : default)"
     NextChapter="@(CanMove(1) && Catalog.Type == "manga" ? EventCallback.Factory.Create(this, () => MoveUnit(1, target.Provider.ProviderKey)) : default)"
@@ -89,6 +153,65 @@
  [Parameter] public SavedTitle? InitialTitle {get;set;}
  [Parameter] public bool AllowSaveInitialTitle { get; set; }
  [Parameter] public string? InitialUnitId { get; set; }
+ [Parameter] public bool OpenMangaPage { get; set; }
+ [Parameter] public bool ShowDetailActions { get; set; }
+ ElementReference sourcePanel;
+ bool focusSources;
+
+ Task SelectUnit(JsonElement unit)
+ {
+  Choose(unit);
+  focusSources = IsManga && ShowDetailActions;
+  return Task.CompletedTask;
+ }
+
+ protected override async Task OnAfterRenderAsync(bool firstRender)
+ {
+  if (!focusSources) return;
+  focusSources = false;
+  try { await sourcePanel.FocusAsync(); }
+  catch (JSException) { }
+ }
+ bool IsManga => Catalog.Type == "manga";
+ const int UnitsPerPage = 15;
+ string unitSearch = "", group = "", releaseSort = "";
+ bool reverseUnits, gridUnits;
+ int unitPage;
+ readonly string unitHeading = $"releases-{Guid.NewGuid():N}";
+
+ static string ReleaseGroup(JsonElement unit) => Field(unit, "group") is { Length: > 0 } value ? value : Field(unit, "scanlationGroup");
+ string[] ReleaseGroups => units.Select(ReleaseGroup).Where(value => value.Length > 0)
+  .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value).ToArray();
+ static DateTimeOffset? ReleaseDate(JsonElement unit) =>
+  DateTimeOffset.TryParse(Field(unit, "releasedAt"), System.Globalization.CultureInfo.InvariantCulture,
+   System.Globalization.DateTimeStyles.AssumeUniversal, out var date) ? date : null;
+ static decimal? Volume(JsonElement unit) =>
+  unit.ValueKind == JsonValueKind.Object && unit.TryGetProperty("volume", out var value) &&
+  (value.ValueKind == JsonValueKind.String || value.ValueKind == JsonValueKind.Number) &&
+  decimal.TryParse(value.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture,
+   out var number) ? number : null;
+ bool HasReleaseDate => units.Any(unit => ReleaseDate(unit).HasValue);
+ bool HasVolume => units.Any(unit => Volume(unit).HasValue);
+ IEnumerable<JsonElement> OrderedUnits => releaseSort switch
+ {
+  "date" => units.OrderByDescending(ReleaseDate),
+  "volume" => units.OrderBy(unit => Volume(unit) ?? decimal.MaxValue),
+  _ => units
+ };
+ IEnumerable<JsonElement> VisibleUnits => (reverseUnits ? OrderedUnits.Reverse() : OrderedUnits).Where(unit =>
+  (group.Length == 0 || group.Equals(ReleaseGroup(unit), StringComparison.OrdinalIgnoreCase)) &&
+  (unitSearch.Trim().Length == 0 || Field(unit, "title").Contains(unitSearch.Trim(), StringComparison.OrdinalIgnoreCase) ||
+    Field(unit, "id").Contains(unitSearch.Trim(), StringComparison.OrdinalIgnoreCase)));
+ void ResetUnitPage() => unitPage = 0;
+ void ReverseUnits() { reverseUnits = !reverseUnits; ResetUnitPage(); }
+
+ Task SelectTitle(JsonElement item)
+ {
+  var id = Field(item, "id");
+  if (!OpenMangaPage || !Source.Supports("chapters", "manga", id)) return Open(item);
+  Navigation.NavigateTo(AniKatha.UI.Pages.MangaDetails.ProviderPath(Source.ProviderKey, id, Field(item, "name")));
+  return Task.CompletedTask;
+ }
  string? TitlePoster => MediaUrl(Field(details,"poster")) ? Field(details,"poster") :
   selected is { } item && MediaUrl(Field(item,"poster")) ? Field(item,"poster") : null;
  [Parameter] public string? InitialProviderId { get; set; }
@@ -209,7 +332,7 @@
  async Task SaveTitle()
  {
   if(selected==null)return;
-  try { await Store.SaveProviderTitleAsync(Source.ProviderKey,Catalog.Type,titleId,Field(selected.Value,"name"),
+  try { await Store.SaveProviderTitleAsync(Source.ProviderKey,Catalog.Type,titleId,Field(details, "name") is { Length: > 0 } name ? name : Field(selected.Value,"name"),
     Field(details,"poster") is { Length: > 0 } poster && MediaUrl(poster) ? poster :
     MediaUrl(Field(selected.Value,"poster")) ? Field(selected.Value,"poster") : null);saved=true; }
   catch {error="Could not save this title.";}
@@ -255,6 +378,7 @@
  }
  async Task Open(JsonElement item){
   var token=Begin();retryMeta=true;saved=false;selected=item;details=default;preferredSource="";preferenceError=false;progress.Clear();continueLink=null;titleId=Field(item,"id");unitId=null;activeVideo=null;units=[];
+  unitSearch = group = releaseSort = ""; ResetUnitPage();
   try{
    var resource=Catalog.Type=="manga"?"chapters":"meta";
    if(!Source.Supports(resource,Catalog.Type,titleId)){error="Source does not supply title details.";return;}

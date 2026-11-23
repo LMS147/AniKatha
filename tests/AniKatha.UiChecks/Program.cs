@@ -41,6 +41,10 @@ manga.WaitForAssertion(()=>Check(!manga.Markup.Contains("Load more"),"Repeated p
 await Manga("Manga Story");
 manga.WaitForAssertion(()=>Check(manga.Markup.Contains("Under the sea") && manga.Markup.Contains("Release status"),"Optional manga detail metadata"));
 Check(!manga.Markup.Contains("0 chapters"),"Unknown count stays unknown");
+await manga.Find(".design-unit-tools input").InputAsync("7.5");
+Check(manga.FindAll(".design-unit-row").Single().TextContent.Contains("Chapter 7.5"),
+ "Chapter text search keeps the original release button");
+await manga.Find(".design-unit-tools input").InputAsync("");
 await Manga("Chapter 7"); await Manga("Read Chapter 7");
 manga.WaitForAssertion(()=>Check(manga.Find(".reader-page").GetAttribute("src")=="https://images.example/1.webp","Resolved chapter pages"));
 await Manga("Next page →");
@@ -95,6 +99,14 @@ shelf.WaitForAssertion(()=>Check(shelf.FindAll(".library-item").Count==2,"Saved 
 await shelf.InvokeAsync(()=>shelf.FindAll("button").First(x=>x.TextContent=="Add to favourites").ClickAsync(new()));
 shelf.FindAll("button").Single(x=>x.TextContent=="Favourites").Click();
 Check(shelf.FindAll(".library-item").Count==1,"Favourite filter");
+await ClickAsync(shelf, "Stats");
+Check(shelf.Find(".design-stat-card h2").TextContent == "Anime Stats", "Library switches to anime stats from saved data");
+await ClickAsync(shelf, "Manga");
+Check(shelf.Find(".design-stat-card h2").TextContent == "Manga Stats", "Library switches the statistics media type");
+await ClickAsync(shelf, "Anime List");
+Check(shelf.FindAll(".library-item").Count == 2, "Anime List displays saved anime");
+await shelf.Find(".design-library-controls select").ChangeAsync("COMPLETED");
+Check(shelf.FindAll(".library-item").Count == 0, "Library status filter changes the listed titles");
 var record=(await store.HistoryAsync()).Single(x=>x.Type=="manga");
 var resume=context.Render<Resume>(p=>p.Add(x=>x.Id,record.Id));
 resume.WaitForAssertion(()=>Check(resume.FindAll("button").Any(x=>x.TextContent.Trim()=="Read Chapter 7"),"Re-resolve chapter on resume"));

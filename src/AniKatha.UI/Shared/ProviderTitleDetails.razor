@@ -1,18 +1,17 @@
 @using System.Text.Json
 @using static AniKatha.Core.AddonResources
 
-<h3>@Name</h3>
-@if (MediaUrl(Poster))
-{
- <img class="provider-detail-poster" src="@Poster" alt="" loading="lazy" />
-}
+<header class="design-title-card">
+ @if (MediaUrl(Poster)) { <img class="provider-detail-poster" src="@Poster" alt="" loading="lazy" /> }
+ <div><span class="eyebrow">@(Type == "manga" ? "Manga" : "Anime")</span><h3>@Name</h3>
+ @if (Count is int count) { <p>@count @UnitLabel(count)</p> }
+ @if (Status.Length > 0) { <p>Release status · @Status</p> }</div>
+</header>
 @if (Synopsis.Length > 0) { <p>@Synopsis</p> }
 @if (Genres.Length > 0)
 {
  <div class="chips">@foreach (var genre in Genres) { <span>@genre</span> }</div>
 }
-@if (Status.Length > 0) { <p>Release status · @Status</p> }
-@if (Count is int count) { <p>@count @UnitLabel(count)</p> }
 
 @code {
  [Parameter] public JsonElement Listing { get; set; }

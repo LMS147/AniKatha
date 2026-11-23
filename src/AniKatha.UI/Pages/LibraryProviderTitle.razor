@@ -4,10 +4,11 @@
 <a class="text-link" href="/library">← Library</a>
 @if (title is { } item)
 {
- <header class="page-header">
-  <span class="eyebrow">@TrackingDisplay.Mode(item)</span><h1>@item.Title</h1>
+ <header class="design-title-card">
+  @if (item.Poster is { } poster && AddonResources.MediaUrl(poster)) { <img src="@poster" alt="" /> }
+  <div><span class="eyebrow">@TrackingDisplay.Mode(item)</span><h1>@item.Title</h1>
   <p>@TrackingDisplay.Status(item.Status, item.Kind == "MANGA") · @TrackingDisplay.Progress(item, total)</p>
-  <a class="secondary" href="@($"/library/title/{item.Id}/tracking")">Edit tracking</a>
+  <a class="secondary" href="@($"/library/title/{item.Id}/tracking")">Edit tracking</a></div>
  </header>
  @if (source is not null)
  {

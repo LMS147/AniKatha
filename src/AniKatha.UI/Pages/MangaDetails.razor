@@ -1,0 +1,129 @@
+@page "/manga/details/{Id:int}"
+@page "/manga/details/source"
+@inherits ProfileComponent
+@implements IDisposable
+@inject AniListClient Api
+
+<nav class="detail-toolbar"><a class="text-link" href="@(From == "home" ? "/" : "/manga")">← @(From == "home" ? "Home" : "Browse Manga")</a></nav>
+@if (title is { } item)
+{
+ <PageTitle>@item.Title · AniKatha</PageTitle>
+ @if (provider is { } source)
+ {
+  <ManifestCatalog @key="(source.ProviderKey, item.ExternalId, Release)" Source="source" Catalog="@(new AddonCatalog("manga", "", "", false, false))"
+                   Providers="providers" InitialTitle="item" InitialUnitId="@Release" AllowSaveInitialTitle="true" ShowDetailActions="true" />
+ }
+ else
+ {
+  <header class="design-title-card" id="manga-overview">
+   @if (item.Poster is { } poster && AddonResources.MediaUrl(poster)) { <img src="@poster" alt="" /> }
+   <div>
+    <span class="eyebrow">@((media?.Format ?? "Manga").Replace('_',' '))</span>
+    <h1>@item.Title</h1>
+    <p class="design-title-facts">
+     @if (media?.Year is int year) { <span>@year</span> }
+     @if (media?.Score is int score) { <span>★ @(score / 10.0) / 10</span> }
+     @if (media?.Chapters is int count) { <span>@count chapters</span> }
+    </p>
+   </div>
+  </header>
+  <div class="settings-actions">
+   <a class="primary" href="#chapters">Find chapters</a>
+   @if (saved) { <a class="secondary" href="@($"/library/title/{item.Id}/tracking")">Edit tracking</a> }
+   else { <button class="secondary" disabled="@saving" @onclick="Save">Save to library</button> }
+  </div>
+  @if (media is { } catalogue)
+  {
+   <section class="design-detail-section">
+    <h2>Synopsis</h2>
+    <p>@(string.IsNullOrWhiteSpace(catalogue.Description) ? "No synopsis available." : catalogue.Description)</p>
+    <div class="chips">@foreach (var genre in catalogue.Genres) { <span>@genre</span> }</div>
+    <a class="text-link" href="@($"https://anilist.co/manga/{item.Id}")" target="_blank" rel="noopener noreferrer">View on AniList ↗</a>
+   </section>
+  }
+  <section id="chapters" class="design-detail-section"><h2>Chapters</h2><TrackedTitleSources @key="item.Id" Title="item"/></section>
+ }
+}
+else if (error is null) { <p role="status">Opening manga…</p> }
+@if (error is not null)
+{
+ <div class="notice" role="alert">@error <button type="button" @onclick="Load">Try again</button></div>
+}
+
+@code {
+ public static string ProviderPath(string provider, string title, string name, string? release = null, string? from = null)
+ {
+  var path = $"/manga/details/source?provider={Uri.EscapeDataString(provider)}&title={Uri.EscapeDataString(title)}&name={Uri.EscapeDataString(name)}";
+  if (!string.IsNullOrEmpty(release)) path += $"&release={Uri.EscapeDataString(release)}";
+  if (!string.IsNullOrEmpty(from)) path += $"&from={Uri.EscapeDataString(from)}";
+  return path;
+ }
+ [Parameter] public int Id { get; set; }
+ [SupplyParameterFromQuery] public string? Provider { get; set; }
+ [SupplyParameterFromQuery] public string? Title { get; set; }
+ [SupplyParameterFromQuery] public string? Release { get; set; }
+ [SupplyParameterFromQuery] public string? Name { get; set; }
+ [SupplyParameterFromQuery] public string? From { get; set; }
+ CancellationTokenSource? request;
+ SavedTitle? title;
+ Media? media;
+ AddonResources? provider;
+ List<AddonResources> providers = [];
+ bool saved, saving;
+ string? error;
+
+ protected override Task OnParametersSetAsync() => Load();
+
+ async Task Load()
+ {
+  request?.Cancel();
+  request?.Dispose();
+  request = new();
+  var token = request.Token;
+  var id = Id;
+  (title, media, provider, error, saved) = (null, null, null, null, false);
+  try
+  {
+   if (id <= 0)
+   {
+    var found = (await Store.GetAddonsAsync()).Select(addon => new AddonResources(addon)).ToList();
+    token.ThrowIfCancellationRequested();
+    var source = found.FirstOrDefault(candidate => candidate.ProviderKey == Provider);
+    if (source is null || string.IsNullOrWhiteSpace(Title) || Title.Length > 512 || !source.Supports("chapters", "manga", Title))
+    {
+     error = "This manga’s chapter source is unavailable.";
+     return;
+    }
+    (provider, providers) = (source, found);
+    title = new() { Kind = "MANGA", ResourceType = "manga", ExternalId = Title, Title = string.IsNullOrWhiteSpace(Name) ? "Manga details" : Name };
+    return;
+   }
+   var existing = await Store.FindSavedTitleAsync(id);
+   token.ThrowIfCancellationRequested();
+   if (existing is { Kind: "MANGA" }) { title = existing; saved = true; }
+   var catalogue = await Api.FindMangaAsync(id, token);
+   token.ThrowIfCancellationRequested();
+   if (catalogue is { Kind: "MANGA" } && catalogue.Id == id)
+   {
+    media = catalogue;
+    title ??= new() { Id = id, Kind = "MANGA", Title = catalogue.Title, Poster = catalogue.Poster };
+   }
+   else if (title is null) error = "This manga could not be found.";
+  }
+  catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+  catch { if (!token.IsCancellationRequested) error = "Could not load manga details. Check your connection."; }
+ }
+ async Task Save()
+ {
+  if (media is not { } item || saving) return;
+  saving = true;
+  try
+  {
+   if (await Store.FindSavedTitleAsync(item.Id) is null) await Store.SaveAsync(item);
+   if (media?.Id == item.Id) saved = true;
+  }
+  catch { error = "Could not save this manga."; }
+  finally { saving = false; }
+ }
+ public void Dispose() { request?.Cancel(); request?.Dispose(); }
+}
