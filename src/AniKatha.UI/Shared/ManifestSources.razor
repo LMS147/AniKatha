@@ -19,6 +19,7 @@ else if (streams.Count > 0)
  {
   <div>
    <button disabled="@openingVideo" @onclick="() => Play(stream)">@StreamName(stream)</button>
+   @if (IsDubbed(stream) && !MediaPreferences.IsDubbed(StreamName(stream))) { <span class="source-dub-badge">Dubbed</span> }
    @if (Downloads is not null && OfflineDownloads.DownloadableStreamId(stream) is string streamId)
    { <button @onclick="() => Download(streamId)">Download @StreamName(stream)</button> }
    @if (StreamDetails(stream) is { Length: > 0 } description) { <small>@description</small> }
@@ -82,6 +83,11 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  bool loading,reading,error,progressError,disposed;
  string translation = "";
  long playbackRequest;
+ static bool IsDubbed(JsonElement stream) =>
+  MediaPreferences.IsDubbed(Field(stream, "audioType")) ||
+  MediaPreferences.IsDubbed(StreamName(stream)) ||
+  MediaPreferences.IsDubbed(Field(stream, "audioLanguage"));
+
  static string StreamDetails(JsonElement stream)
  {
   var quality = Field(stream, "quality");
@@ -156,8 +162,7 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
     var available = Items(root, "streams").Where(stream => MediaUrl(Field(stream, "url")));
     var preferDub = await Store.GetSettingAsync(MediaPreferences.PreferDubKey) == "true";
     if (stop.IsCancellationRequested) return;
-    streams = (preferDub ? available.OrderByDescending(stream => MediaPreferences.IsDubbed(Field(stream, "audioType")) ||
-       MediaPreferences.IsDubbed(Field(stream, "name")) || MediaPreferences.IsDubbed(Field(stream, "audioLanguage"))) : available).ToList();
+    streams = (preferDub ? available.OrderByDescending(IsDubbed) : available).ToList();
    }
    if (!cached && (pages.Count > 0 || streams.Count > 0)) Cache?.Set(Key, Source.Addon.ManifestJson, root);
   }catch(AddonResourceNotFoundException){}

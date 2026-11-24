@@ -34,7 +34,7 @@
    {
     <span class="home-card-meta">
      @if (!string.IsNullOrWhiteSpace(card.Caption)) { <small class="home-card-label">@card.Caption</small> }
-     @if (!string.IsNullOrWhiteSpace(card.Note)) { <small class="home-card-note">@card.Note</small> }
+     @if (!string.IsNullOrWhiteSpace(card.Note)) { <small class="@(card.Link is null ? "home-card-note" : "home-card-note home-card-time")">@card.Note</small> }
      @if (!Compact && card.Progress is double progress)
      {
       <progress class="home-progress" value="@progress" max="1" aria-label="Saved progress"></progress>
