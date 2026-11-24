@@ -111,7 +111,7 @@
    }
    <section class="library-panel">
     <header><h3>Score Distribution</h3><small>(@rated.Length scored)</small></header>
-    <div class="library-chart" style="--columns:10">
+    <div class="library-chart library-score-chart" style="--columns:10">
      @for (var index = 0; index < bins.Length; index++)
      {
       <div><span class="library-column"><i style="@($"--bar:{Percent(bins[index], bins.Max())}%")" title="@($"{bins[index]} titles")"></i></span><span>@(index + 1)</span></div>

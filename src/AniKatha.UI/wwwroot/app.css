@@ -1050,7 +1050,7 @@ main:has(> .design-catalog), main:has(> .design-library), main:has(> .profile-ta
 .library-chart { display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); gap: 4px; text-align: center; }
 .library-column { display: flex; align-items: end; height: 128px; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 4px; }
 .library-column i { display: block; width: 100%; height: var(--bar); background: var(--accent); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
-.library-chart > :nth-child(-n+5) .library-column i { background: var(--raised); }
+.library-score-chart > :nth-child(-n+5) .library-column i { background: var(--raised); }
 .library-template .library-breakdown div > header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .library-template .library-breakdown b { margin-left: 8px; }
 .library-credits section { display: grid; gap: 8px; }
@@ -1080,6 +1080,7 @@ main:has(> .design-catalog), main:has(> .design-library), main:has(> .profile-ta
 .library-template .library-template-list { gap: 12px; }
 .library-template .tracking-library-card { padding: 12px; }
 .library-template .tracking-library-card > a { width: 64px; flex: none; }
+.library-template .tracking-library-card .library-template-cover { width: 64px; height: 96px; }
 .library-item-copy { display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
 .library-item-copy header { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 .library-item-copy header > div { min-width: 0; }

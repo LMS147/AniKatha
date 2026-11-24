@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using AniKatha.Core;
 using AniKatha.UI.Pages;
+using AniKatha.UI.Shared;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,38 +31,45 @@ internal static class LibraryTemplateChecks
 
         view.WaitForAssertion(() => Check(view.FindAll(".library-recent-item").Count == 2 &&
             view.FindAll(".library-favorite-grid a").Count == 1, "Overview uses profile titles and Favorites."));
-        Capture("overview", view.Markup);
+        Capture(context, "overview", view.Markup);
         await Click("Anime List");
         view.WaitForAssertion(() => Check(view.Find(".library-item-copy").TextContent.Contains("TV · 2023 · Watching") &&
             view.Find("progress").GetAttribute("max") == "12", "Anime card uses verified format, year and known total."));
-        Capture("anime-list", view.Markup);
+        Capture(context, "anime-list", view.Markup);
         await view.InvokeAsync(() => view.Find("[aria-label='Filter anime list']").ClickAsync(new()));
         await view.InvokeAsync(() => view.Find("input[type=search]").InputAsync("absent"));
         Check(view.FindAll(".tracking-library-card").Count == 0, "Search filters the real title list.");
         await Click("Manga List");
         view.WaitForAssertion(() => Check(view.Find(".library-item-copy").TextContent.Contains("22/30 ch"),
             "Manga uses chapter progress and has independent filters."));
-        Capture("manga-list", view.Markup);
+        Capture(context, "manga-list", view.Markup);
         await Click("Stats");
         Check(view.Find(".library-breakdown").TextContent.Contains("TV") &&
             view.Find(".library-credits").TextContent.Contains("Sky Studio"), "Anime statistics use real format and main studio values.");
-        Capture("anime-stats", view.Markup);
+        Capture(context, "anime-stats", view.Markup);
         await Click("Manga");
         Check(view.Find(".library-stats h2").TextContent == "Manga Stats" && !view.Markup.Contains("Sky Studio") &&
             view.Markup.Contains("Mystery"), "Manga statistics use separate metadata.");
-        Capture("manga-stats", view.Markup);
+        Capture(context, "manga-stats", view.Markup);
         Console.WriteLine("PASS: All five Library templates, saved Favorites, status and search, progress totals, and media-specific statistics.");
     }
 
-    private static void Capture(string name, string markup)
+    private static void Capture(BunitContext context, string name, string markup)
     {
         if (Environment.GetEnvironmentVariable("ANIKATHA_LIBRARY_CAPTURE_DIRECTORY") is not { Length: > 0 } directory) return;
         Directory.CreateDirectory(directory);
+        string Glyph(string icon) => context.Render<Icon>(p => p.Add(component => component.Name, icon)).Markup;
         File.WriteAllText(Path.Combine(directory, $"{name}.html"), $$"""
             <!doctype html><html lang="en"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="app.css"></head>
             <body><div class="app-shell"><main>{{markup.Replace("https://preview.example/art/", "art/")}}</main>
-            <nav class="bottom-nav"><a>Home</a><a>Anime</a><a>Manga</a><a class="active">Library</a><a>Profile</a></nav>
+            <nav class="bottom-nav" aria-label="Main navigation">
+             <a href="/">{{Glyph("home")}}<span>Home</span></a>
+             <a href="/anime">{{Glyph("play")}}<span>Anime</span></a>
+             <a href="/manga">{{Glyph("book")}}<span>Manga</span></a>
+             <a href="/library" class="active">{{Glyph("library")}}<span>Library</span></a>
+             <a href="/profile">{{Glyph("user")}}<span>Profile</span></a>
+            </nav>
             </div></body></html>
             """);
     }
