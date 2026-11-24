@@ -116,6 +116,10 @@ function measure({ active, width, enlarged }) {
   const bounds = element => element.getBoundingClientRect();
   if (view.scrollWidth > view.clientWidth + 1 || document.documentElement.scrollWidth > width + 1) issues.push('horizontal overflow');
   const viewBox = bounds(view);
+  const viewStyle = getComputedStyle(view);
+  const nav = document.querySelector('.bottom-nav');
+  if (viewStyle.paddingLeft !== '16px' || viewStyle.paddingRight !== '16px') issues.push('page gutter');
+  if (viewStyle.paddingBottom !== '112px' || getComputedStyle(nav).borderRadius !== '9999px') issues.push('navigation size or clearance');
   const rootChildren = [...document.querySelector('.home-landing').children];
   const hero = view.closest('.home-landing').querySelector('.home-spotlight');
   if (hero) {
@@ -132,13 +136,14 @@ function measure({ active, width, enlarged }) {
   }
   for (const grid of view.querySelectorAll('.home-grid')) {
     if (!grid.children.length) continue;
-    const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').map(parseFloat);
+    const gridStyle = getComputedStyle(grid);
+    const columns = gridStyle.gridTemplateColumns.split(' ').map(parseFloat);
+    if (gridStyle.columnGap !== '12px') issues.push('poster gutter');
     if (columns.length !== 2 || Math.abs(columns[0] - columns[1]) > 1) issues.push('unequal poster columns');
     const art = grid.querySelector('.home-art');
     if (!art) continue;
     const poster = bounds(art);
-    const ratio = active === '#home-manga' ? 5 / 7 : 3 / 4;
-    if (Math.abs(poster.width / poster.height - ratio) > 0.012) issues.push('poster ratio');
+    if (Math.abs(poster.width / poster.height - 2 / 3) > 0.012) issues.push('poster ratio');
     const band = grid.querySelector('.home-card-meta');
     if (band && active === '#home-anime' && grid.querySelector('.home-card:first-child .home-card-meta') &&
         Math.abs(bounds(band).top - poster.bottom) > 1) issues.push('detached anime strip');
@@ -159,7 +164,7 @@ function measure({ active, width, enlarged }) {
   }
   const before = view.scrollTop;
   view.scrollTop = view.scrollHeight;
-  if (bounds(view.lastElementChild).bottom > bounds(document.querySelector('.bottom-nav')).top) issues.push('last section under navigation');
+  if (bounds(view.lastElementChild).bottom > bounds(nav).top) issues.push('last section under navigation');
   view.scrollTop = before;
   return { issues, width: innerWidth, touch: navigator.maxTouchPoints };
 }
