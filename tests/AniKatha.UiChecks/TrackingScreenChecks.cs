@@ -68,11 +68,13 @@ internal static class TrackingScreenChecks
         Check((await store.GetLibraryAsync()).Count == 2, "Failed refresh retains Library");
 
         await Open("/library");
-        Has("Watching");
-        Has("Reading");
         Has("2 of 12 episodes watched");
         Has("4 chapters read");
-        Check(view.FindAll(".tracking-cover-placeholder").Count == 2, "Missing covers have a fallback");
+        Check(view.FindAll(".library-recent-item span.library-template-cover").Count == 2, "Missing covers have a fallback");
+        await Click("Anime List");
+        Has("Watching");
+        await Click("Manga List");
+        Has("Reading");
         await Open("/library/title/42/tracking");
         Has("Episodes watched");
         Capture("anilist-editor", view.Markup);

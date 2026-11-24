@@ -24,6 +24,7 @@ jobs:
         env:
           ANIKATHA_TRACKING_CAPTURE_DIRECTORY: ${{ runner.temp }}/tracking-ui
           ANIKATHA_HOME_CAPTURE_DIRECTORY: ${{ runner.temp }}/home-ui
+          ANIKATHA_LIBRARY_CAPTURE_DIRECTORY: ${{ runner.temp }}/library-ui
       - name: Capture the connected and pending tracking fixtures
         shell: bash
         run: |
@@ -41,6 +42,25 @@ jobs:
         with:
           name: AniKatha-tracking-fixture-screenshots
           path: artifacts/tracking-ui
+          if-no-files-found: error
+      - name: Capture the five Library views
+        shell: bash
+        run: |
+          mkdir -p artifacts/library-ui "$RUNNER_TEMP/library-ui/art"
+          cp src/AniKatha.UI/wwwroot/app.css "$RUNNER_TEMP/library-ui/"
+          cp -R src/AniKatha.UI/wwwroot/fonts "$RUNNER_TEMP/library-ui/"
+          cp src/AniKatha.UI/wwwroot/manga/*.webp "$RUNNER_TEMP/library-ui/art/"
+          for name in overview anime-list manga-list anime-stats manga-stats; do
+            google-chrome --headless --no-sandbox --disable-gpu --hide-scrollbars \
+              --window-size=390,884 --user-data-dir="$RUNNER_TEMP/library-chrome-$name" \
+              --screenshot="$PWD/artifacts/library-ui/$name.png" \
+              "file://$RUNNER_TEMP/library-ui/$name.html"
+            test -s "artifacts/library-ui/$name.png"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AniKatha-Library-screenshots
+          path: artifacts/library-ui
           if-no-files-found: error
       - uses: actions/setup-node@v4
         with:

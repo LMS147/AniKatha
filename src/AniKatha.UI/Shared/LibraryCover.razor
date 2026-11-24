@@ -1,0 +1,14 @@
+@if (Poster is { } url && AddonResources.MediaUrl(url) && url != broken)
+{
+ <img class="library-template-cover" src="@url" alt="" loading="lazy" @onerror="() => broken = url" />
+}
+else
+{
+ <span class="library-template-cover" aria-hidden="true"><Icon Name="@(Manga ? "book" : "play")" /></span>
+}
+
+@code {
+ [Parameter] public string? Poster { get; set; }
+ [Parameter] public bool Manga { get; set; }
+ string? broken;
+}

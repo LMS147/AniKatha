@@ -616,6 +616,7 @@ async function verifyProfileScene(scene) {
     await wait(() => [...document.querySelectorAll('button')].some(button =>
       button.disabled && button.textContent.trim() === 'Saved to library'), 'Saved title confirmation');
     document.querySelector('.bottom-nav a[href="/library"]').click();
+    await click('Anime List');
     const editor = await wait(() => [...document.querySelectorAll('.tracking-library-card')].find(card =>
       card.querySelector('h3')?.textContent.includes('Big Buck Bunny'))?.querySelector('a[href$="/tracking"]'), 'Library tracking editor link');
     editor.click();
