@@ -1,10 +1,22 @@
-<div class="poster-grid">
- @foreach(var item in Items) {
- <button class="poster-card" @key="item.Id" @onclick="()=>Selected.InvokeAsync(item)">
-  <div class="poster-image">@if(item.Poster is not null){<img src="@item.Poster" alt="" loading="lazy" />}else{<span>AniKatha</span>}
-   @if(item.Score is not null){<span class="score">@(item.Score / 10.0) ★</span>}
-  </div><strong>@item.Title</strong><small>@item.Year · @item.Format?.Replace('_',' ')</small>
- </button>
+<div class="poster-grid catalog-art-grid @(Shelf ? "catalog-shelf" : null)">
+ @foreach (var item in Items)
+ {
+  <button class="poster-card" @key="item.Id" @onclick="() => Selected.InvokeAsync(item)">
+   <div class="poster-image">
+    @if (item.Poster is not null) { <img src="@item.Poster" alt="" loading="lazy" /> }
+    else { <Icon Name="@(item.Kind == "ANIME" ? "play" : "book")" /> }
+    @if (item.Score is int score) { <span class="score"><span aria-hidden="true">★</span> @(score / 10.0)</span> }
+    <strong>@item.Title</strong>
+   </div>
+   <span class="catalog-card-footer">
+    <small>@string.Join(" · ", new[] { item.Format?.Replace('_',' '), item.Year?.ToString() }.Where(value => !string.IsNullOrWhiteSpace(value)))</small>
+    <span class="catalog-card-action" aria-hidden="true">›</span>
+   </span>
+  </button>
  }
 </div>
-@code { [Parameter] public IEnumerable<Media> Items {get;set;}=[]; [Parameter] public EventCallback<Media> Selected {get;set;} }
+@code {
+ [Parameter] public IEnumerable<Media> Items { get; set; } = [];
+ [Parameter] public EventCallback<Media> Selected { get; set; }
+ [Parameter] public bool Shelf { get; set; }
+}

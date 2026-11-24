@@ -14,12 +14,7 @@
  <div class="profile-panel" hidden="@(tab != "Account")">
   <h2 class="profile-tab-title">Account</h2>
   @if (Profiles is { } profiles) { <ProfileAccount Profiles="profiles" /> }
-  <div class="settings-list">
-   <a class="settings-row" href="/profile/profiles"><Icon Name="user" />
-    <span><strong>Switch profile</strong><small>Choose a profile on this device</small></span><span aria-hidden="true">›</span></a>
-   <a class="settings-row" href="/profile/sources"><span aria-hidden="true">⊕</span>
-    <span><strong>Sources</strong><small>Install and manage add-ons</small></span><span aria-hidden="true">›</span></a>
-  </div>
+
  </div>
  @if (tab == "Preferences")
  {
@@ -39,7 +34,7 @@
    <h2 class="profile-tab-title">Security</h2>
    <h3>Profile PIN</h3><p>Protect access to this profile on this device.</p>
    @if (Profiles is not null) { <ProfilePinForm /> }
-   <p>AniList manages its own password and email. Use Sync to manage the connection.</p>
+   <section class="settings-card"><h3>AniList credentials</h3><p>AniList manages its own password and email. Use Sync to manage the connection.</p></section>
   </div>
  }
 </section>

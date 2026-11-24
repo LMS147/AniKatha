@@ -17,9 +17,9 @@
          playsinline preload="metadata" data-offline-source="@(OfflineFile ? VideoUrl : null)" aria-label="@Title"></video>
   <header class="player-context">
    <div class="player-heading">
-    <button class="player-button player-back" type="button" @onclick="HandleBack" aria-label="Back">← <span>Back</span></button>
-    <div class="player-title"><h1>@Title</h1><p>@EpisodeLabel</p></div>
-    <button class="player-button" type="button" @onclick="ToggleFullscreen">@(fullscreen ? "Exit fullscreen" : "Fullscreen")</button>
+    <button class="player-button player-back" type="button" @onclick="HandleBack" aria-label="Back">←</button>
+    <div class="player-title"><h1>@Title</h1><span aria-hidden="true">›</span><p>@EpisodeLabel</p></div>
+    <button class="player-button" type="button" aria-label="@(fullscreen ? "Exit fullscreen" : "Fullscreen")" @onclick="ToggleFullscreen"><Icon Name="fullscreen" /></button>
    </div>
    @if (SourceLabel is not null) { <p class="player-source">@SourceLabel @if (SourceDetails is { Length: > 0 }) { <span>· @SourceDetails</span> }</p> }
   </header>

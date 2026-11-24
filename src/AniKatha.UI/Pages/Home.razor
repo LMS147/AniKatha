@@ -20,7 +20,7 @@
  <div class="home-viewports">
   <div class="home-view" id="home-anime" role="tabpanel" aria-labelledby="home-tab-anime" aria-hidden="@Pressed(manga)" inert="@manga" tabindex="0">
    <section class="home-section" aria-labelledby="home-watch-title">
-    <header><h2 id="home-watch-title">Continue Watching</h2>
+    <header><h2 id="home-watch-title"><Icon Name="history" /> Continue Watching</h2>
      @if (watch.Items.Count > watchLimit) { <button class="home-link" @onclick="() => watchLimit += 6">View more <span aria-hidden="true">›</span></button> }
     </header>
     <HomeCards Cards="watch.Items.Take(watchLimit)" />

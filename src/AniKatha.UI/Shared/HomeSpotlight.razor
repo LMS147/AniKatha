@@ -15,12 +15,12 @@
     <p class="home-spotlight-rank">#@(Index + 1) Spotlight</p>
     <h2>@media.Title</h2>
     <ul class="home-spotlight-meta" aria-label="Anime information">
-     @if (media.Format is { Length: > 0 } format) { <li>@format.Replace('_', ' ')</li> }
-     @if (title.Date is { } date) { <li>@date.ToString("MMM d, yyyy")</li> }
+     @if (media.Format is { Length: > 0 } format) { <li><Icon Name="play" /> @format.Replace('_', ' ')</li> }
+     @if (title.Date is { } date) { <li><Icon Name="calendar" /> @date.ToString("MMM d, yyyy")</li> }
      else if (title.Season is { Length: > 0 } season && (title.SeasonYear ?? media.Year) is int year)
      { <li>@($"{char.ToUpperInvariant(season[0])}{season[1..].ToLowerInvariant()} {year}")</li> }
-     @if (media.Score is > 0) { <li>@($"{media.Score.Value / 10.0:0.0}/10")</li> }
-     @if (media.Episodes is > 0) { <li>@media.Episodes episodes</li> }
+     @if (media.Score is > 0) { <li><span aria-hidden="true" class="spotlight-star">★</span> @($"{media.Score.Value / 10.0:0.0}/10")</li> }
+     @if (media.Episodes is > 0) { <li>@media.Episodes eps</li> }
     </ul>
     <div class="home-spotlight-footer">
      <button type="button" class="home-spotlight-action" @onclick="Open">

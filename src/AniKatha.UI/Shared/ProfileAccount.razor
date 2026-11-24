@@ -15,10 +15,15 @@
    <h3>@saved.Name</h3>
    @if (!string.IsNullOrEmpty(saved.Details?.Username)) { <p>@@@saved.Details.Username</p> }
    <small>@(saved.Locked ? "PIN protected" : "Local profile")</small>
+   <small class="profile-avatar-limit">Max upload size 1 MB (JPEG, PNG, WebP)</small>
   </div>
  </div>
  @if (avatarError is not null) { <p class="profile-error" role="alert">@avatarError</p> }
  @if (avatar.Length > 0) { <button type="button" class="text-link" disabled="@(saving || checkingAvatar)" @onclick='() => avatar = ""'>Use initials</button> }
+ <div class="profile-summary-links">
+  <a class="secondary" href="/profile/profiles">Switch profile <span aria-hidden="true">›</span></a>
+  <a class="secondary" href="/profile/sources">Sources <span aria-hidden="true">›</span></a>
+ </div>
 </section>
 
 <form class="profile-form" @onsubmit="Save" @onsubmit:preventDefault>
@@ -37,7 +42,7 @@
  <input id="profile-website" inputmode="url" maxlength="500" aria-describedby="profile-site-help" @bind="website" @bind:event="oninput" placeholder="https://example.com" />
  @if (Changed && Validation is { } validation) { <p class="profile-error" role="status">@validation</p> }
  @if (message is not null) { <p role="@(failed ? "alert" : "status")">@message</p> }
- <div class="settings-actions">
+ <div class="settings-actions profile-form-actions">
   <button class="primary" disabled="@(!Changed || Validation is not null || saving || checkingAvatar)">@(saving ? "Saving…" : "Save changes")</button>
   @if (Changed) { <button class="secondary" type="button" disabled="@(saving || checkingAvatar)" @onclick="Reset">Cancel</button> }
  </div>

@@ -29,6 +29,7 @@ jobs:
         run: |
           mkdir -p artifacts/tracking-ui
           cp src/AniKatha.UI/wwwroot/app.css "$RUNNER_TEMP/tracking-ui/"
+          cp -R src/AniKatha.UI/wwwroot/fonts "$RUNNER_TEMP/tracking-ui/"
           for name in anilist-disconnected anilist-connected anilist-editor anilist-pending; do
             google-chrome --headless --no-sandbox --disable-gpu --hide-scrollbars \
               --window-size=420,930 --user-data-dir="$RUNNER_TEMP/chrome-$name" \
@@ -51,6 +52,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/home-ui/art"
           cp src/AniKatha.UI/wwwroot/app.css "$RUNNER_TEMP/home-ui/"
+          cp -R src/AniKatha.UI/wwwroot/fonts "$RUNNER_TEMP/home-ui/"
           cp src/AniKatha.UI/wwwroot/manga/*.webp "$RUNNER_TEMP/home-ui/art/"
           node scripts/capture_home_layout.mjs "$RUNNER_TEMP/home-ui" artifacts/home-ui/updated
           if [[ -n "$BASE_COMMIT" ]]; then
