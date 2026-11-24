@@ -57,6 +57,16 @@ internal static class TrackingScreenChecks
         await view.InvokeAsync(() => view.Find("img.tracking-account-avatar").TriggerEventAsync("onerror", new EventArgs()));
         Check(view.Find(".tracking-account-avatar").TextContent == "A", "A failed avatar displays initials");
         Capture("anilist-connected", view.Markup);
+        await Open("/profile?section=sync");
+        Has("Auto-sync completed episodes");
+        Has("Last list import");
+        var autoSync = view.Find(".profile-sync-toggle input");
+        await autoSync.ChangeAsync(false);
+        Check(await store.GetSettingAsync(LocalStore.AutomaticAniListKey) == "false", "Sync template keeps the existing preference.");
+        await autoSync.ChangeAsync(true);
+        Capture("profile-sync-connected", view.Markup);
+        await Open("/profile/anilist");
+        Has("Refresh lists");
         fixture.Empty = true;
         await Click("Refresh lists");
         Has("No Anime or Manga entries found");

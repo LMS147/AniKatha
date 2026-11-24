@@ -2,36 +2,44 @@
 
 <section class="profile-group">
  <h3>Playback</h3>
- <label class="profile-switch">
-  <span><strong>Start playback on open</strong><small>Play supported videos when the watch view opens.</small></span>
-  <input type="checkbox" role="switch" checked="@start" disabled="@busy" @onchange="args => Change(MediaPreferences.PlayOnOpenKey, args)" />
- </label>
- <label class="profile-switch">
-  <span><strong>Play next episode automatically</strong><small>Continue when an episode finishes and another episode is available.</small></span>
-  <input type="checkbox" role="switch" checked="@next" disabled="@busy" @onchange="args => Change(MediaPreferences.AutoplayKey, args)" />
- </label>
- <label class="profile-switch">
-  <span><strong>Prefer dubbed audio</strong><small>Move streams explicitly marked as dubbed to the top. You can still choose any stream.</small></span>
-  <input type="checkbox" role="switch" checked="@dub" disabled="@busy" @onchange="args => Change(MediaPreferences.PreferDubKey, args)" />
- </label>
- <a class="settings-row" href="/profile/playback"><Icon Name="play" /><span><strong>Playback &amp; reader</strong><small>Speed, audio language, subtitles, skips, and reading defaults</small></span><span aria-hidden="true">›</span></a>
+ <div class="profile-option">
+  <div><strong>Start playback on open</strong><small>Play supported videos when the watch view opens.</small></div>
+  <label class="profile-switch"><span>Auto play</span>
+   <input type="checkbox" role="switch" checked="@start" disabled="@busy" @onchange="args => Change(MediaPreferences.PlayOnOpenKey, args)" />
+  </label>
+ </div>
+ <div class="profile-option">
+  <div><strong>Play next episode automatically</strong><small>Continue when an episode finishes and another episode is available.</small></div>
+  <label class="profile-switch"><span>Auto next episode</span>
+   <input type="checkbox" role="switch" checked="@next" disabled="@busy" @onchange="args => Change(MediaPreferences.AutoplayKey, args)" />
+  </label>
+ </div>
+ <div class="profile-option">
+  <div><strong>Prefer dubbed audio</strong><small>Move streams explicitly marked as dubbed to the top. You can still choose any stream.</small></div>
+  <label class="profile-switch"><span>Prefer Dub</span>
+   <input type="checkbox" role="switch" checked="@dub" disabled="@busy" @onchange="args => Change(MediaPreferences.PreferDubKey, args)" />
+  </label>
+ </div>
+ <a class="settings-row" href="/profile/playback"><span class="profile-option-icon"><Icon Name="filters" /></span><span><strong>Playback &amp; reader</strong><small>Speed, audio language, subtitles, skips, and reading defaults</small></span><span aria-hidden="true">›</span></a>
  <p>Automatic intro and outro skipping requires timing markers from the source.</p>
 </section>
 <section class="profile-group">
  <h3>Display &amp; reading</h3>
- <label class="profile-switch">
-  <span><strong>Dim watched episodes</strong><small>Visually de-emphasize completed episodes in add-on lists. They remain selectable.</small></span>
-  <input type="checkbox" role="switch" checked="@dim" disabled="@busy" @onchange="args => Change(MediaPreferences.DimWatchedKey, args)" />
- </label>
- <a class="settings-row" href="/profile/appearance"><span aria-hidden="true">✦</span><span><strong>Appearance</strong><small>Theme, accent colour, and poster density</small></span><span aria-hidden="true">›</span></a>
+ <div class="profile-option">
+  <div><strong>Dim watched episodes</strong><small>Visually de-emphasize completed episodes in add-on lists. They remain selectable.</small></div>
+  <label class="profile-switch"><span>Dim watched episodes</span>
+   <input type="checkbox" role="switch" checked="@dim" disabled="@busy" @onchange="args => Change(MediaPreferences.DimWatchedKey, args)" />
+  </label>
+ </div>
+ <a class="settings-row" href="/profile/appearance"><span class="profile-option-icon"><Icon Name="palette" /></span><span><strong>Appearance</strong><small>Theme, accent colour, and poster density</small></span><span aria-hidden="true">›</span></a>
 </section>
 <section class="profile-group">
  <h3>Release notifications</h3>
- <p>Release alerts require a background scheduler and reliable release data. AniKatha does not send episode notifications yet.</p>
+ <p class="profile-option profile-info">Release alerts require a background scheduler and reliable release data. AniKatha does not send episode notifications yet.</p>
 </section>
 <section class="profile-group">
  <h3>Privacy &amp; tracking</h3>
- <p>Profile details and watch history are stored on this device. Linked AniList accounts can receive completed progress for verified matches when an episode ends or a chapter is marked read.</p>
+ <p class="profile-option profile-info">Profile details and watch history are stored on this device. Linked AniList accounts can receive completed progress for verified matches when an episode ends or a chapter is marked read.</p>
 </section>
 @if (message is not null) { <p class="profile-error" role="alert">@message</p> }
 

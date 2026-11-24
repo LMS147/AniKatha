@@ -25,6 +25,7 @@ jobs:
           ANIKATHA_TRACKING_CAPTURE_DIRECTORY: ${{ runner.temp }}/tracking-ui
           ANIKATHA_HOME_CAPTURE_DIRECTORY: ${{ runner.temp }}/home-ui
           ANIKATHA_LIBRARY_CAPTURE_DIRECTORY: ${{ runner.temp }}/library-ui
+          ANIKATHA_PROFILE_CAPTURE_DIRECTORY: ${{ runner.temp }}/profile-ui
       - name: Capture the connected and pending tracking fixtures
         shell: bash
         run: |
@@ -61,6 +62,25 @@ jobs:
         with:
           name: AniKatha-Library-screenshots
           path: artifacts/library-ui
+          if-no-files-found: error
+      - name: Capture the four Profile tabs
+        shell: bash
+        run: |
+          mkdir -p artifacts/profile-ui
+          cp src/AniKatha.UI/wwwroot/app.css "$RUNNER_TEMP/profile-ui/"
+          cp -R src/AniKatha.UI/wwwroot/fonts "$RUNNER_TEMP/profile-ui/"
+          cp "$RUNNER_TEMP/tracking-ui/profile-sync-connected.html" "$RUNNER_TEMP/profile-ui/sync-connected.html"
+          for name in account preferences sync security sync-connected; do
+            google-chrome --headless --no-sandbox --disable-gpu --hide-scrollbars \
+              --window-size=390,884 --user-data-dir="$RUNNER_TEMP/profile-chrome-$name" \
+              --screenshot="$PWD/artifacts/profile-ui/$name.png" \
+              "file://$RUNNER_TEMP/profile-ui/$name.html"
+            test -s "artifacts/profile-ui/$name.png"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AniKatha-Profile-screenshots
+          path: artifacts/profile-ui
           if-no-files-found: error
       - uses: actions/setup-node@v4
         with:

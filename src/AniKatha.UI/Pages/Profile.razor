@@ -3,12 +3,12 @@
 @inject IServiceProvider Services
 
 <PageTitle>Profile · AniKatha</PageTitle>
-<section class="settings-screen profile-hub profile-tabs-screen">
- <header class="profile-brand"><Icon Name="user" /><h1>Profile</h1><a class="secondary" href="/profile/profiles">Switch <span aria-hidden="true">⇄</span></a></header>
- <nav class="profile-tabs" aria-label="Profile sections">
+<section class="settings-screen profile-hub profile-tabs-screen profile-template">
+ <header class="profile-brand"><Icon Name="user" /><h1>Profile</h1><a class="secondary" href="/profile/profiles" aria-label="Switch profile">Switch <span aria-hidden="true">⇄</span></a></header>
+ <nav class="profile-tabs" role="tablist" aria-label="Profile sections">
   @foreach (var name in Tabs)
   {
-   <button type="button" aria-pressed="@(tab == name ? "true" : "false")" @onclick="() => tab = name">@name</button>
+   <button type="button" role="tab" aria-selected="@(tab == name ? "true" : "false")" @onclick="() => tab = name">@name</button>
   }
  </nav>
  <div class="profile-panel" hidden="@(tab != "Account")">
@@ -23,18 +23,22 @@
  @if (tab == "Sync" || syncOpened)
  {
   <div class="profile-panel" hidden="@(tab != "Sync")">
-   <h2 class="profile-tab-title">Sync</h2>
-   <AniListProfile />
+   <header class="profile-template-heading"><h2 class="profile-tab-title">Sync</h2><span class="profile-service-pill"><b>AL</b> AniList</span></header>
+   <AniListProfile Template="true" />
    <ProfileBackup />
   </div>
  }
  @if (tab == "Security" || securityOpened)
  {
   <div class="profile-panel" hidden="@(tab != "Security")">
-   <h2 class="profile-tab-title">Security</h2>
-   <h3>Profile PIN</h3><p>Protect access to this profile on this device.</p>
+   <header class="profile-template-heading profile-security-heading"><h2 class="profile-tab-title">Security</h2>
+    <p>Protect access to this local profile on this device with a 4–8 digit PIN.</p>
+   </header>
    @if (Profiles is not null) { <ProfilePinForm /> }
-   <section class="settings-card"><h3>AniList credentials</h3><p>AniList manages its own password and email. Use Sync to manage the connection.</p></section>
+   <section class="settings-card profile-security-note">
+    <h3><Icon Name="info" /> AniList credentials</h3>
+    <p>AniKatha profiles are local to this device. AniList manages its own password and email. Use Sync to manage your linked AniList connection.</p>
+   </section>
   </div>
  }
 </section>

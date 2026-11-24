@@ -10,19 +10,43 @@
  }
  else if (Profiles.SupportsPin)
  {
-  <section class="settings-card">
+  <section class="settings-card profile-pin-card" aria-labelledby="profile-pin-title">
+   <h3 id="profile-pin-title"><Icon Name="shield" /> Profile PIN</h3>
    <form @onsubmit="() => Save(false)" @onsubmit:preventDefault>
     @if (Profiles.Active.Locked)
     {
-     <label>Current PIN<input type="@(show ? "text" : "password")" inputmode="numeric" maxlength="8" autocomplete="off" @bind="current" /></label>
+     <div class="profile-field">
+      <label for="current-pin">Current PIN</label>
+      <small id="current-pin-help">Enter your existing PIN to verify your identity.</small>
+      <div class="profile-pin-field">
+       <input id="current-pin" type="@(showCurrent ? "text" : "password")" inputmode="numeric" maxlength="8"
+              autocomplete="off" aria-describedby="current-pin-help" @bind="current" />
+       <button type="button" aria-label="@(showCurrent ? "Hide current PIN" : "Show current PIN")" @onclick="() => showCurrent = !showCurrent"><Icon Name="@(showCurrent ? "eye-off" : "eye")" /></button>
+      </div>
+     </div>
     }
-    <label>New PIN<input type="@(show ? "text" : "password")" inputmode="numeric" maxlength="8" autocomplete="new-password" @bind="next" /></label>
-    <label>Confirm new PIN<input type="@(show ? "text" : "password")" inputmode="numeric" maxlength="8" autocomplete="new-password" @bind="confirm" /></label>
-    <label class="profile-switch"><span>Show PIN</span><input type="checkbox" role="switch" @bind="show" /></label>
-    <p>Use 4–8 digits.</p>
+    <div class="profile-field">
+     <label for="new-pin">New PIN</label>
+     <small id="new-pin-help">Must be 4–8 digits.</small>
+     <div class="profile-pin-field">
+      <input id="new-pin" type="@(showNext ? "text" : "password")" inputmode="numeric" maxlength="8"
+             autocomplete="new-password" placeholder="4–8 digits" aria-describedby="new-pin-help" @bind="next" />
+      <button type="button" aria-label="@(showNext ? "Hide new PIN" : "Show new PIN")" @onclick="() => showNext = !showNext"><Icon Name="@(showNext ? "eye-off" : "eye")" /></button>
+     </div>
+    </div>
+    <div class="profile-field">
+     <label for="confirm-pin">Confirm new PIN</label>
+     <small id="confirm-pin-help">Re-enter your new PIN to confirm.</small>
+     <input id="confirm-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password"
+            placeholder="Re-enter PIN" aria-describedby="confirm-pin-help" @bind="confirm" />
+    </div>
     @if (message is not null) { <p role="status">@message</p> }
-    <div class="settings-actions"><button class="primary" disabled="@busy">@(Profiles.Active.Locked ? "Change PIN" : "Set PIN")</button>
-     @if (Profiles.Active.Locked) { <button type="button" class="secondary danger-action" disabled="@busy" @onclick="() => Save(true)">Remove PIN</button> }
+    <div class="settings-actions profile-pin-actions">
+     <button class="primary" disabled="@busy"><Icon Name="shield" />@(Profiles.Active.Locked ? "Change PIN" : "Set PIN")</button>
+     @if (Profiles.Active.Locked)
+     {
+      <button type="button" class="secondary danger-action" disabled="@busy" @onclick="() => Save(true)"><Icon Name="unlock" />Remove PIN</button>
+     }
     </div>
    </form>
   </section>
@@ -31,7 +55,7 @@
 @code {
  string current = "", next = "", confirm = "";
  string? message, recoveryCode;
- bool busy, show;
+ bool busy, showCurrent, showNext;
  async Task Save(bool remove)
  {
   if (busy) return;
@@ -41,7 +65,7 @@
   {
    recoveryCode = await Profiles.SetPinAsync(remove ? null : next, current);
    current = next = confirm = "";
-   show = false;
+   showCurrent = showNext = false;
    message = remove ? "PIN removed." : null;
   }
   catch (InvalidOperationException ex) { message = ex.Message; }
