@@ -8,7 +8,10 @@
   @if (item.Poster is { } poster && AddonResources.MediaUrl(poster)) { <img src="@poster" alt="" /> }
   <div><span class="eyebrow">@TrackingDisplay.Mode(item)</span><h1>@item.Title</h1>
   <p>@TrackingDisplay.Status(item.Status, item.Kind == "MANGA") · @TrackingDisplay.Progress(item, total)</p>
-  <a class="secondary" href="@($"/library/title/{item.Id}/tracking")">Edit tracking</a></div>
+  <a class="secondary" href="@($"/library/title/{item.Id}/tracking")">Edit tracking</a>
+  <button type="button" class="secondary" aria-pressed="@item.IsFavourite" disabled="@favoriteBusy" @onclick="() => ToggleFavorite(item)">
+   @(item.IsFavourite ? "Remove from favorites" : "Add to favorites")
+  </button></div>
  </header>
  @if (source is not null)
  {
@@ -46,7 +49,7 @@ else { <p role="status">Opening title…</p> }
  List<AddonResources> providers = [];
  int? total;
  string? error;
- bool loaded, confirmRemoval, removing;
+ bool loaded, confirmRemoval, removing, favoriteBusy;
 
  protected override async Task OnParametersSetAsync()
  {
@@ -70,6 +73,20 @@ else { <p role="status">Opening title…</p> }
   }
   catch { if (id == Id) error = "Could not open this title."; }
   finally { if (id == Id) loaded = true; }
+ }
+
+ async Task ToggleFavorite(SavedTitle item)
+ {
+  if (favoriteBusy) return;
+  favoriteBusy = true;
+  try
+  {
+   var next = !item.IsFavourite;
+   await Store.SetFavouriteAsync(item.Id, next);
+   item.IsFavourite = next;
+  }
+  catch { error = "Could not update favorites."; }
+  finally { favoriteBusy = false; }
  }
 
  async Task Remove()

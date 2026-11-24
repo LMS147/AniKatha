@@ -1,159 +1,222 @@
 @page "/library"
 @inherits ProfileComponent
 @implements IDisposable
-<section class="design-library">
-<header class="page-header design-heading">
- <div class="template-title"><Icon Name="library" /><h1>Library</h1></div>
- <a class="secondary template-pill" href="/library?view=downloads" @onclick='() => ChangeView("Downloads")'><Icon Name="download" />Downloads</a>
-</header>
-<div class="template-section-tabs" role="group" aria-label="Library views">
- @foreach (var tab in Views)
+@inject IServiceProvider Services
+<section class="design-library library-template">
+ <header class="page-header design-heading">
+  <div class="template-title"><Icon Name="library" /><h1>Library</h1></div>
+  <a class="secondary template-pill" href="/library?view=downloads" aria-label="Downloads and offline files"><Icon Name="download" />Downloads</a>
+ </header>
+ <div class="template-section-tabs" role="tablist" aria-label="Library sections">
+  @foreach (var tab in Views)
+  {
+   <button type="button" role="tab" aria-selected="@SelectedTab(tab.Filter)" @onclick="() => ChangeView(tab.Filter)">@tab.Label</button>
+  }
+ </div>
+ @if (error is not null) { <div class="notice" role="alert">@error</div> }
+ @if (pending.Count > 0 && filter is not ("Downloads" or "History"))
  {
-  <button type="button" aria-pressed="@(filter == tab.Filter ? "true" : "false")" @onclick="() => ChangeView(tab.Filter)">@tab.Label</button>
- }
-</div>
-@if (filter == "Downloads")
-{
- <DownloadShelf/>
-}
-else
-{
- @if(error is not null) { <div class="notice" role="alert">@error</div> }
- @if (pending.Count > 0)
- {
-  <p class="tracking-pending"><span aria-hidden="true">◷</span> Tracking changes waiting to sync.
+  <p class="tracking-pending"><span aria-hidden="true">◷</span> Saved on this device · Waiting to sync
    <a class="text-link" href="/profile/anilist">@(link?.RequiresReconnect == true ? "Reconnect AniList" : "Manage sync")</a>
   </p>
  }
- @if (!loading && filter is "All" or "Stats")
+ @if (filter == "Downloads") { <DownloadShelf /> }
+ else if (filter == "History")
  {
-  @if (filter == "Stats")
-  {
-   <div class="design-segments design-stat-tabs" role="group" aria-label="Statistics media">
-    <button type="button" aria-pressed="@(statsKind == "ANIME" ? "true" : "false")" @onclick='() => statsKind = "ANIME"'>Anime</button>
-    <button type="button" aria-pressed="@(statsKind == "MANGA" ? "true" : "false")" @onclick='() => statsKind = "MANGA"'>Manga</button>
-   </div>
-  }
-  <div class="design-overview">
-   @foreach (var kind in filter == "All" ? new[] { "ANIME", "MANGA" } : new[] { statsKind })
+  <h2>Resume History</h2>
+  <ResumeHistory @key="historyKind" ShowRemove="true" MediaFilter="@historyKind" />
+ }
+ else if (loading) { <p role="status">Opening your library…</p> }
+ else if (filter == "All")
+ {
+  <div class="library-template-stack">
+   @foreach (var kind in new[] { "ANIME", "MANGA" })
    {
-    var media = items.Where(item => item.Kind == kind).ToArray();
-    var name = kind == "MANGA" ? "Manga" : "Anime";
-    var rated = media.Where(item => scores.ContainsKey(item.Id)).Select(item => scores[item.Id]).ToArray();
-    <section class="settings-card design-stat-card">
-     <header><h2>@name @(filter == "Stats" ? "Stats" : "Overview")</h2>
-      @if (filter == "All") { <button type="button" class="text-link" @onclick="() => ShowStats(kind)">Full stats</button> }
-     </header>
-     <dl class="design-stat-metrics">
-      <div><dt>Entries</dt><dd>@media.Length</dd></div>
-      <div><dt>@(name == "Manga" ? "Chapters read" : "Episodes watched")</dt><dd>@media.Sum(item => (long)item.Progress)</dd></div>
-      <div><dt>@(name == "Manga" ? "Days read" : "Days watched")</dt><dd title="Time totals are unavailable">—</dd></div>
-      <div><dt>Mean score</dt><dd>@(rated.Length == 0 ? "—" : $"{rated.Average():0.00} / 10")</dd></div>
-     </dl>
-     @if (media.Length > 0)
+    var manga = kind == "MANGA";
+    var name = manga ? "Manga" : "Anime";
+    var titles = items.Where(item => item.Kind == kind).ToArray();
+    <section class="library-panel">
+     <header><h2>@name Overview</h2><button type="button" class="text-link" @onclick="() => ShowStats(kind)">Full Stats ›</button></header>
+     @Metrics(titles, manga, false)
+     @if (titles.Length > 0)
      {
-      <div class="design-status-bar" aria-hidden="true">
+      <div class="library-status-strip" aria-hidden="true">
        @foreach (var state in Statuses)
        {
-        var count = media.Count(item => item.Status == state);
-        if (count > 0) { <span class="@StatusColor(state)" style="@($"flex-grow:{count}")"></span> }
+        var count = titles.Count(item => item.Status == state);
+        if (count > 0) { <span class="@StatusColor(state)" style="@($"flex:{count}")"></span> }
        }
       </div>
+      <ul class="library-status-legend">
+       @foreach (var state in Statuses)
+       {
+        var count = titles.Count(item => item.Status == state);
+        <li><i class="@StatusColor(state)"></i><span>@TrackingDisplay.Status(state, manga)</span><strong>@count</strong></li>
+       }
+      </ul>
      }
-     <ul class="design-stat-breakdown">
-      @foreach (var state in Statuses.Where(state => media.Any(item => item.Status == state)))
+     <div class="library-recent">
+      <header><h3>Last @name Updates</h3><button class="text-link" type="button" @onclick="() => ShowHistory(name)">@name History ›</button></header>
+      @foreach (var item in titles.Take(2))
       {
-       var count = media.Count(item => item.Status == state);
-       <li><span><i class="@StatusColor(state)"></i>@TrackingDisplay.Status(state, name == "Manga")</span><strong>@count</strong></li>
+       <a class="library-recent-item" href="@TitlePath(item)">
+        <LibraryCover Poster="@item.Poster" Manga="manga" />
+        <div><strong>@item.Title</strong><small>@TrackingDisplay.Progress(item, Total(item))</small></div>
+        @if (item.UpdatedAt != default) { <time datetime="@item.UpdatedAt.ToString("O")">@RelativeTime(item.UpdatedAt)</time> }
+       </a>
       }
-     </ul>
-     @if (filter == "Stats" && rated.Length > 0)
+      @if (titles.Length == 0) { <p>No @name.ToLowerInvariant() updates yet.</p> }
+     </div>
+    </section>
+   }
+   <section class="library-panel library-favorites">
+    <header><h2>Favorites</h2><span class="library-number">@items.Count(item => item.IsFavourite) saved</span></header>
+    @foreach (var name in new[] { "Anime", "Manga" })
+    {
+     var favorites = items.Where(item => item.IsFavourite && item.Kind == name.ToUpperInvariant()).ToArray();
+     <b>@name (@favorites.Length)</b>
+     <div class="library-favorite-grid">
+      @foreach (var item in favorites)
+      {
+       <a aria-label="@item.Title" title="@item.Title" href="@TitlePath(item)"><LibraryCover Poster="@item.Poster" Manga="@(name == "Manga")" /></a>
+      }
+     </div>
+    }
+   </section>
+   <div class="design-library-shortcuts library-quick-links">
+    <button type="button" aria-label="Downloads" @onclick='() => ChangeView("Downloads")'><Icon Name="download" /><span><strong>Downloads</strong><small>@offlineCount offline</small></span><span aria-hidden="true">›</span></button>
+    <button type="button" @onclick='() => ShowHistory("All")'><Icon Name="history" /><span><strong>Resume</strong><small>@resumeCount positions</small></span><span aria-hidden="true">›</span></button>
+   </div>
+  </div>
+ }
+ else if (filter == "Stats")
+ {
+  var manga = statsKind == "MANGA";
+  var name = manga ? "Manga" : "Anime";
+  var titles = items.Where(item => item.Kind == statsKind).ToArray();
+  <div class="library-template-stack library-stats">
+   <header><h2>@name Stats</h2>
+    <div class="library-stats-toggle" role="group" aria-label="Statistics media">
+     <button type="button" aria-pressed="@(!manga ? "true" : "false")" @onclick='() => ShowStats("ANIME")'>Anime</button>
+     <button type="button" aria-pressed="@(manga ? "true" : "false")" @onclick='() => ShowStats("MANGA")'>Manga</button>
+    </div>
+   </header>
+   <section class="library-panel" aria-label="@($"{name} summary metrics")">@Metrics(titles, manga, true)</section>
+   @{
+    var rated = Ratings(titles);
+    var bins = Enumerable.Range(1, 10).Select(score => rated.Count(value => Math.Clamp((int)Math.Ceiling(value), 1, 10) == score)).ToArray();
+    var counts = titles.Select(item => (Item: item, Info: Metadata(item))).ToArray();
+    var years = counts.Where(entry => entry.Info?.Year is not null).GroupBy(entry => entry.Info!.Year!.Value)
+        .OrderByDescending(group => group.Key).Take(5).OrderBy(group => group.Key).ToArray();
+   }
+   <section class="library-panel">
+    <header><h3>Score Distribution</h3><small>(@rated.Length scored)</small></header>
+    <div class="library-chart" style="--columns:10">
+     @for (var index = 0; index < bins.Length; index++)
      {
-      <h3>Score distribution <small>(@rated.Length scored)</small></h3>
-      <div class="design-score-bars">
-      @foreach (var score in Enumerable.Range(1, 10))
-      {
-       var count = rated.Count(value => Math.Clamp((int)Math.Ceiling(value), 1, 10) == score);
-       <div><meter min="0" max="@rated.Length" value="@count" aria-label="@($"Score {score}: {count} titles")"></meter><span>@score</span></div>
-      }
-      </div>
+      <div><span class="library-column"><i style="@($"--bar:{Percent(bins[index], bins.Max())}%")" title="@($"{bins[index]} titles")"></i></span><span>@(index + 1)</span></div>
      }
+    </div>
+   </section>
+   @Breakdown("Format", counts.SelectMany(entry => entry.Info?.Format is { } format ? new[] { (format, entry.Item) } : []), titles.Length, showScores: true)
+   <section class="library-panel">
+    <h3>Release Year</h3>
+    @if (years.Length == 0) { <small>@MetadataStatus</small> }
+    else
+    {
+     <div class="library-chart" style="@($"--columns:{years.Length}")">
+      @foreach (var year in years)
+      {
+       <div><span class="library-column"><i style="@($"--bar:{Percent(year.Count(), years.Max(group => group.Count()))}%")" title="@($"{year.Count()} titles")"></i></span><span>@year.Key</span></div>
+      }
+     </div>
+    }
+   </section>
+   @Breakdown("Genres", counts.SelectMany(entry => (entry.Info?.Genres ?? []).Distinct().Select(genre => (genre, entry.Item))), titles.Length)
+   @if (!manga)
+   {
+    <section class="library-panel library-credits">
+     @Breakdown("Studios", counts.SelectMany(entry => (entry.Info?.Studios ?? []).Distinct().Select(studio => (studio, entry.Item))), titles.Length, bars: false)
+     @Breakdown("Source Material", counts.SelectMany(entry => entry.Info?.Source is { } source ? new[] { (source, entry.Item) } : []), titles.Length, bars: false)
     </section>
    }
   </div>
-  @if (filter == "All")
-  {
-   <div class="design-library-shortcuts">
-    <button class="secondary" @onclick='() => ChangeView("Favourites")'>Favourites <small>@items.Count(item => item.IsFavourite) saved</small></button>
-    <button class="secondary" @onclick='() => ChangeView("Downloads")'><Icon Name="download" />Downloads</button>
-    <a class="secondary" href="#library-resume"><Icon Name="history" />Resume</a>
-   </div>
-  }
  }
- @if (filter is "Anime" or "Manga")
+ else
  {
+  var manga = filter == "Manga";
+  var visible = Visible.ToArray();
   <div class="design-library-controls">
-   <label>Status<select @bind="status">
-    <option value="">All statuses (@items.Count(item => item.Kind == filter.ToUpperInvariant()))</option>
-    @foreach (var state in Statuses) { <option value="@state">@TrackingDisplay.Status(state, filter == "Manga") (@items.Count(item => item.Kind == filter.ToUpperInvariant() && item.Status == state))</option> }
-   </select></label>
-   <label>Sort<select @bind="order"><option value="">Last updated</option><option value="title">Title</option><option value="progress">Progress</option></select></label>
+   <label class="library-sr-only" for="library-status">Filter @(manga ? "manga" : "anime") by status</label>
+   <select id="library-status" @bind="status">
+    <option value="">All Statuses (@items.Count(item => item.Kind == filter.ToUpperInvariant()))</option>
+    @foreach (var state in Statuses) { <option value="@state">@TrackingDisplay.Status(state, manga) (@items.Count(item => item.Kind == filter.ToUpperInvariant() && item.Status == state))</option> }
+   </select>
   </div>
-  <p class="muted">@Visible.Count() entries</p>
- }
- @if (loading)
- {
-  <p role="status">Opening your library…</p>
- }
- else if (filter != "Stats" && !Visible.Any())
- {
-  <div class="empty"><Icon Name="library"/><h2>No @(filter == "All" ? "saved titles" : filter.ToLowerInvariant()) here yet</h2>
-   <p>Save titles from Anime or Manga, or import your AniList lists.</p><a class="primary" href="/anime">Find a story</a>
+  <div class="library-list-toolbar">
+   <b>@visible.Length entries</b>
+   <label class="library-sort"><span aria-hidden="true">⇅</span><span class="library-sr-only">Sort library</span>
+    <select @bind="order"><option value="">Last Updated</option><option value="title">Title</option><option value="progress">Progress</option><option value="score">Score</option></select>
+   </label>
+   <button type="button" class="library-icon-button" aria-label="Filter @(manga ? "manga" : "anime") list" aria-expanded="@(filtersOpen ? "true" : "false")" @onclick="() => filtersOpen = !filtersOpen"><Icon Name="filters" /></button>
   </div>
- }
- else if (filter != "Stats")
- {
-  <div class="library-list">
-  @foreach (var item in Visible)
+  @if (filtersOpen)
   {
-   var titlePath = $"/library/title/{item.Id}";
-   <article class="library-item tracking-library-card" @key="item.Id">
-    @if (item.Poster is { } cover && AddonResources.MediaUrl(cover)) { <img src="@cover" alt="" loading="lazy"/> }
-    else { <div class="tracking-cover-placeholder" aria-hidden="true"><Icon Name="@(item.Kind == "MANGA" ? "book" : "play")"/></div> }
-    <div>
-     <small class="eyebrow">@TrackingDisplay.Mode(item)</small>
-     <h3><a href="@titlePath">@item.Title</a></h3>
-     <p class="tracking-line"><strong>@TrackingDisplay.Status(item.Status, item.Kind == "MANGA")</strong> · @TrackingDisplay.Progress(item, Total(item.Id))</p>
-     @if (scores.TryGetValue(item.Id, out var personalScore)) { <small>★ @personalScore.ToString("0.0") / 10</small> }
-     @if (pending.Contains(item.Id))
-     {
-      <p class="tracking-pending"><span aria-hidden="true">◷</span> Saved on this device · Waiting to sync</p>
-     }
-     else if (confirmed.Contains(item.Id))
-     {
-      <p class="tracking-line"><span aria-hidden="true">✓</span> Synced to AniList</p>
-     }
-     <div class="tracking-card-actions">
-      <a class="secondary template-edit" aria-label="Edit tracking" href="@($"{titlePath}/tracking")"><Icon Name="edit" /><span>Edit tracking</span></a>
-      <a class="text-link" href="@titlePath">Find Sources</a>
-      <button class="text-link" aria-pressed="@item.IsFavourite" @onclick="()=>Favourite(item)">@(item.IsFavourite ? "Remove favourite" : "Add to favourites")</button>
-     </div>
-    </div>
-   </article>
+   <div class="library-panel library-filters"><label>Search titles<input type="search" @bind="search" @bind:event="oninput" /></label>
+    <label><input type="checkbox" @bind="favoritesOnly" /> Favorites only</label></div>
   }
+  @if (visible.Length == 0)
+  {
+   <div class="empty compact"><Icon Name="library" /><h2>No titles here yet</h2><a class="primary" href="@(manga ? "/manga" : "/anime")">Browse @(manga ? "Manga" : "Anime")</a></div>
+  }
+  <div class="library-list library-template-list">
+   @foreach (var item in visible)
+   {
+    var total = Total(item);
+    var info = Metadata(item);
+    <article class="library-item tracking-library-card" @key="item.Id">
+     <a href="@TitlePath(item)" aria-label="@item.Title"><LibraryCover Poster="@item.Poster" Manga="manga" /></a>
+     <div class="library-item-copy">
+      <header><div><h3><a href="@TitlePath(item)">@item.Title</a></h3>
+       <p>@string.Join(" · ", new[] { Format(info?.Format), info?.Year?.ToString(), TrackingDisplay.Status(item.Status, manga) }.Where(value => !string.IsNullOrEmpty(value)))</p>
+      </div><a class="library-icon-button" aria-label="@($"Edit {item.Title} progress")" href="@($"{TitlePath(item)}/tracking")"><Icon Name="edit" /></a></header>
+      <div class="library-item-progress">
+       @if (total is > 0) { <progress value="@Math.Clamp(item.Progress, 0, total.Value)" max="@total" aria-label="@TrackingDisplay.Progress(item, total)"></progress> }
+       <div>
+        <span class="@(scores.ContainsKey(item.Id) ? "library-rated" : "")"><span aria-hidden="true">★</span> @(scores.TryGetValue(item.Id, out var score) ? score.ToString("0.0") : "—")</span>
+        <span aria-label="@TrackingDisplay.Progress(item, total)">@item.Progress@(total is > 0 ? $"/{total}" : "") @(manga ? "ch" : "ep")</span>
+       </div>
+      </div>
+      @if (pending.Contains(item.Id)) { <p class="tracking-pending">Saved on this device · Waiting to sync</p> }
+      else if (confirmed.Contains(item.Id)) { <small>✓ Synced to AniList</small> }
+     </div>
+    </article>
+   }
   </div>
  }
- @if (filter is "All" or "Anime" or "Manga") { <div id="library-resume"><ResumeHistory ShowRemove="true" MediaFilter="@filter"/></div> }
-}
 </section>
 @code {
  [SupplyParameterFromQuery(Name = "view")] public string? View { get; set; }
  static readonly (string Filter, string Label)[] Views =
   [("All", "Overview"), ("Anime", "Anime List"), ("Manga", "Manga List"), ("Stats", "Stats")];
  static readonly string[] Statuses = ["CURRENT", "COMPLETED", "PAUSED", "DROPPED", "PLANNING", "REPEATING"];
- string filter = "All", statsKind = "ANIME", status = "", order = "";
+ string filter = "All", statsKind = "ANIME", status = "", order = "", search = "", historyKind = "All";
+ bool filtersOpen, favoritesOnly, metadataLoading;
+ int resumeCount, offlineCount;
+ readonly CancellationTokenSource metadataStop = new();
+ readonly Dictionary<(string Kind, int Id), LibraryTitleMetadata> metadata = [];
+ readonly HashSet<(string Kind, int Id)> metadataChecked = [];
+ string MetadataStatus => metadataLoading ? "Loading title metadata…" : "No metadata available.";
+ string SelectedTab(string name) => filter == name || name == "All" && filter == "History" ? "true" : "false";
  static string StatusColor(string state) => $"status-{state.ToLowerInvariant()}";
- void ChangeView(string next) { filter = next; status = ""; }
+ void ChangeView(string next)
+ {
+  filter = next;
+  status = search = "";
+  filtersOpen = favoritesOnly = false;
+  _ = LoadMetadata();
+ }
+ void ShowHistory(string kind) { historyKind = kind; ChangeView("History"); }
  void ShowStats(string kind) { statsKind = kind; ChangeView("Stats"); }
  string? error;
  bool loading = true, disposed;
@@ -167,17 +230,97 @@ else
  {
   get
   {
-   var matches = items.Where(item => (filter == "Favourites" ? item.IsFavourite : filter == "All" ||
-    item.Kind == filter.ToUpperInvariant()) && (status.Length == 0 || item.Status == status));
+   var matches = items.Where(item => item.Kind == filter.ToUpperInvariant() &&
+    (status.Length == 0 || item.Status == status) && (!favoritesOnly || item.IsFavourite) &&
+    item.Title.Contains(search.Trim(), StringComparison.CurrentCultureIgnoreCase));
    return order switch
    {
     "title" => matches.OrderBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase),
     "progress" => matches.OrderByDescending(item => item.Progress),
+    "score" => matches.OrderByDescending(item => scores.GetValueOrDefault(item.Id, -1)),
     _ => matches
    };
   }
  }
- int? Total(int id) => totals.TryGetValue(id, out var known) ? known : null;
+ int? Total(SavedTitle item) => totals.TryGetValue(item.Id, out var known) ? known : Metadata(item)?.Units;
+ LibraryTitleMetadata? Metadata(SavedTitle item) => TrackingDisplay.CanSync(item)
+  ? metadata.GetValueOrDefault((item.Kind, item.Id)) : null;
+ static string TitlePath(SavedTitle item) => $"/library/title/{item.Id}";
+ static int Percent(int count, int total) => total == 0 ? 0 : (int)Math.Round(100.0 * count / total);
+ static string? Format(string? value) => value is null or "" ? null : value switch
+ {
+  "TV" or "OVA" or "ONA" or "OEL" => value,
+  _ => System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(value.Replace('_', ' ').ToLowerInvariant())
+ };
+ static string RelativeTime(DateTime updated)
+ {
+  var age = DateTime.UtcNow - updated.ToUniversalTime();
+  return age.TotalDays >= 1 ? $"{(int)age.TotalDays}d" : age.TotalHours >= 1 ? $"{(int)age.TotalHours}h" :
+   age.TotalMinutes >= 1 ? $"{(int)age.TotalMinutes}m" : "Now";
+ }
+ double[] Ratings(IEnumerable<SavedTitle> titles) =>
+  titles.Where(item => scores.ContainsKey(item.Id)).Select(item => scores[item.Id]).ToArray();
+
+ RenderFragment Metrics(SavedTitle[] titles, bool manga, bool stats) => @<dl class="library-metrics @(stats ? "library-metrics-centered" : "")">
+  <div><dt>Entries</dt><dd>@titles.Length</dd></div>
+  @if (stats) { @Mean(titles) }
+  <div><dt>@(manga ? "Chapters" : "Episodes")</dt><dd>@titles.Sum(item => (long)item.Progress).ToString("N0")</dd></div>
+  <div><dt>@(manga ? "Days Read" : "Days Watched")</dt><dd title="Total time is unavailable">—</dd></div>
+  @if (!stats) { @Mean(titles) }
+ </dl>;
+
+ RenderFragment Mean(SavedTitle[] titles) => @<div class="library-rated"><dt>Mean Score</dt>
+  <dd>@(Ratings(titles) is { Length: > 0 } rated ? rated.Average().ToString("0.00") : "—")</dd>
+ </div>;
+
+ RenderFragment Breakdown(string label, IEnumerable<(string Value, SavedTitle Item)> source, int total,
+  bool bars = true, bool showScores = false) => @<section class="@(bars ? "library-panel library-breakdown" : "library-breakdown")">
+  <h3>@label</h3>
+  @{
+   var groups = source.Where(entry => !string.IsNullOrWhiteSpace(entry.Value)).GroupBy(entry => entry.Value)
+    .OrderByDescending(group => group.Count()).ThenBy(group => group.Key, StringComparer.CurrentCulture).Take(10).ToArray();
+  }
+  @if (groups.Length == 0) { <small>@MetadataStatus</small> }
+  @foreach (var group in groups)
+  {
+   var count = group.Count();
+   var fraction = Percent(count, total);
+   var rated = showScores ? Ratings(group.Select(entry => entry.Item)) : [];
+   <div>
+    <header><span>@(label is "Format" or "Source Material" ? Format(group.Key) : group.Key)</span>
+     <span class="library-number">@count · @fraction% @if (rated.Length > 0) { <b class="library-rated">★ @rated.Average().ToString("0.0")</b> }</span>
+    </header>
+    @if (bars) { <progress value="@count" max="@total" aria-label="@($"{group.Key}: {count} of {total} titles")"></progress> }
+   </div>
+  }
+ </section>;
+
+ async Task LoadMetadata()
+ {
+  if (loading || disposed || metadataLoading || filter is not ("Anime" or "Manga" or "Stats") ||
+      Services.GetService(typeof(AniListClient)) is not AniListClient api) return;
+  var token = metadataStop.Token;
+  var requestedKind = filter == "Stats" ? statsKind : filter.ToUpperInvariant();
+  var ids = items.Where(item => item.Kind == requestedKind && TrackingDisplay.CanSync(item) &&
+   !metadataChecked.Contains((item.Kind, item.Id))).Select(item => item.Id).ToArray();
+  if (ids.Length == 0) return;
+  metadataLoading = true;
+  try
+  {
+   foreach (var batch in ids.Chunk(50))
+   {
+    var found = await api.LibraryMetadataAsync(batch, requestedKind, token);
+    if (token.IsCancellationRequested) return;
+    foreach (var info in found) metadata[(info.Kind, info.Id)] = info;
+    foreach (var id in batch) metadataChecked.Add((requestedKind, id));
+   }
+  }
+  catch (Exception) { /* Saved data and offline controls still render. */ }
+  finally { metadataLoading = false; }
+  if (disposed) return;
+  StateHasChanged();
+  if ((filter == "Stats" ? statsKind : filter.ToUpperInvariant()) != requestedKind) await LoadMetadata();
+ }
 
  string? appliedView;
  protected override void OnParametersSet()
@@ -191,6 +334,7 @@ else
  {
   Store.AniListChanged += Changed;
   await Load();
+  _ = LoadMetadata();
  }
 
  async Task Load()
@@ -201,6 +345,19 @@ else
    var found = await Store.GetLibraryAsync();
    if (disposed || revision != request) return;
    items = found;
+   var history = await Store.HistoryAsync();
+   if (disposed || revision != request) return;
+   resumeCount = history.Count;
+   if (ProfileDownloads is { } downloads)
+   {
+    try
+    {
+     var offline = await downloads.ListAsync();
+     if (disposed || revision != request) return;
+     offlineCount = offline.Count(job => job.State == DownloadState.Complete);
+    }
+    catch { /* Download storage can be unavailable while the local library is usable. */ }
+   }
    var active = ProfileAniList is { } account ? await account.CachedLinkAsync() : null;
    var pendingIds = active is null ? new HashSet<int>() : (await Store.AniListEditsAsync(active.Viewer.Id)).Select(edit => edit.MediaId).ToHashSet();
    var acknowledged = active is null ? new HashSet<int>() : await Store.ConfirmedTrackingTitlesAsync(active.Viewer.Id);
@@ -225,17 +382,14 @@ else
  {
   if (disposed) return;
   await Load();
-  if (!disposed) StateHasChanged();
+  if (!disposed) { StateHasChanged(); await LoadMetadata(); }
  });
 
- async Task Favourite(SavedTitle item)
+ public void Dispose()
  {
-  try
-  {
-   await Store.SetFavouriteAsync(item.Id, !item.IsFavourite);
-   item.IsFavourite = !item.IsFavourite;
-  }
-  catch { error = "Could not save favourite."; }
+  disposed = true;
+  metadataStop.Cancel();
+  metadataStop.Dispose();
+  Store.AniListChanged -= Changed;
  }
- public void Dispose() { disposed = true; Store.AniListChanged -= Changed; }
 }

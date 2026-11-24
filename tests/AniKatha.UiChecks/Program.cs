@@ -95,20 +95,20 @@ Check(saved.ExternalId=="one" && saved.ResourceType=="anime","HTTP title saved w
 await store.SaveProviderTitleAsync(sources[1].ProviderKey,"anime","one","Other story");
 Check((await store.GetLibraryAsync()).Count==2,"Identical local IDs across providers stay distinct");
 var shelf=context.Render<Library>();
-shelf.WaitForAssertion(()=>Check(shelf.FindAll(".library-item").Count==2,"Saved records reach Library"));
-await shelf.InvokeAsync(()=>shelf.FindAll("button").First(x=>x.TextContent=="Add to favourites").ClickAsync(new()));
-shelf.FindAll("button").Single(x=>x.TextContent.StartsWith("Favourites", StringComparison.Ordinal)).Click();
-Check(shelf.FindAll(".library-item").Count==1,"Favourite filter");
+shelf.WaitForAssertion(()=>Check(shelf.FindAll(".library-recent-item").Count == 2, "Saved records reach Library Overview"));
+await store.SetFavouriteAsync(saved.Id, true);
+shelf = context.Render<Library>();
+shelf.WaitForAssertion(() => Check(shelf.FindAll(".library-favorite-grid a").Count == 1, "Favorites appear in the Overview poster grid"));
 await ClickAsync(shelf, "Stats");
-Check(shelf.Find(".design-stat-card h2").TextContent == "Anime Stats", "Library switches to anime stats from saved data");
+Check(shelf.Find(".library-stats h2").TextContent == "Anime Stats", "Library switches to anime stats from saved data");
 await ClickAsync(shelf, "Manga");
-Check(shelf.Find(".design-stat-card h2").TextContent == "Manga Stats", "Library switches the statistics media type");
+Check(shelf.Find(".library-stats h2").TextContent == "Manga Stats", "Library switches the statistics media type");
 await ClickAsync(shelf, "Anime List");
 Check(shelf.FindAll(".library-item").Count == 2, "Anime List displays saved anime");
 await shelf.Find(".design-library-controls select").ChangeAsync("COMPLETED");
 Check(shelf.FindAll(".library-item").Count == 0, "Library status filter changes the listed titles");
 await ClickAsync(shelf, "Overview");
-await ClickAsync(shelf, "Downloads");
+await shelf.InvokeAsync(() => shelf.Find(".library-quick-links [aria-label=Downloads]").ClickAsync(new()));
 shelf.Render();
 Check(shelf.FindAll(".design-library-shortcuts").Count == 0 && shelf.Markup.Contains("Downloads"),
  "Library retains the selected view when the same route parameters are reapplied");
@@ -127,8 +127,9 @@ tracking.Linked = true;
 Check(tracking.Anime == 8 && tracking.Manga == 6 && (await store.AniListEditsAsync(7)).Count == 0,
  "Opening content and saving a page did not queue a completion");
 var importedLibrary = context.Render<Library>();
-importedLibrary.WaitForAssertion(() => Check(importedLibrary.FindAll("a").Any(a =>
- a.TextContent.Trim() == "Find Sources" && a.GetAttribute("href") == "/library/title/44"), "Imported title exposes Find Sources"));
+await ClickAsync(importedLibrary, "Manga List");
+importedLibrary.WaitForAssertion(() => Check(importedLibrary.FindAll(".library-item h3 a").Any(a =>
+ a.GetAttribute("href") == "/library/title/44"), "Imported title opens the source flow"));
 var importedManga = context.Render<LibraryProviderTitle>(p => p.Add(x => x.Id, 44));
 foreach (var name in new[] {"Chapter 7", "Read Chapter 7"})
  await ClickAsync(importedManga, name);
@@ -196,6 +197,7 @@ await SpotlightChecks.RunAsync();
 await ProfileUiChecks.RunAsync();
 await TrackingScreenChecks.RunAsync();
 await TemplateChecks.RunAsync();
+await LibraryTemplateChecks.RunAsync();
 
 static async Task ClickAsync<T>(IRenderedComponent<T> view, string label) where T : IComponent
 {
