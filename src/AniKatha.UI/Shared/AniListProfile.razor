@@ -24,6 +24,7 @@
  else
  {
   <div class="tracking-account-heading">
+   <div class="profile-sync-avatar">
    @if (link.Viewer.Avatar is { } avatar && failedAvatar != avatar && AddonResources.MediaUrl(avatar))
    {
     <img class="tracking-account-avatar" src="@avatar" alt="" width="56" height="56" @onerror="() => failedAvatar = avatar" />
@@ -32,11 +33,23 @@
    {
     <span class="tracking-account-avatar" aria-hidden="true">@ProfileAvatar.Glyph(link.Viewer.Name, "")</span>
    }
+   @if (Template && link.RequiresReconnect == false) { <span class="profile-sync-check" aria-hidden="true">✓</span> }
+   </div>
    <div><span class="muted">Linked AniList account</span><h2>@link.Viewer.Name</h2>
     <p class="tracking-badge" role="status"><span aria-hidden="true">@StateIcon</span> @State</p>
    </div>
   </div>
-  @if (summary.LastImport is { } lastImport)
+  @if (Template)
+  {
+   <dl class="profile-sync-facts">
+    <div><dt>Last list import</dt><dd>
+     @if (summary.LastImport is { } date) { <time datetime="@date.ToString("O")">@date.ToLocalTime().ToString("MMM d, h:mm tt")</time> }
+     else { <span>—</span> }
+    </dd></div>
+    <div><dt>Auto-sync</dt><dd>@(automatic ? "Enabled" : "Disabled")</dd></div>
+   </dl>
+  }
+  else if (summary.LastImport is { } lastImport)
   {
    <p class="muted">Last list import <time datetime="@lastImport.ToString("O")">@lastImport.ToLocalTime().ToString("g")</time></p>
   }
@@ -44,7 +57,7 @@
   {
    <p class="tracking-pending" role="status">@pending @(pending == 1 ? "change" : "changes") saved on this device · Waiting to sync</p>
   }
-  <div class="settings-actions">
+  <div class="settings-actions profile-sync-actions">
    @if (link.RequiresReconnect)
    {
     @if (ProfileAniList?.CanConnect == true)
@@ -54,14 +67,19 @@
    }
    else
    {
-    <button class="@(pending > 0 ? "primary" : "secondary")" disabled="@(operation is not null)" @onclick="Retry">Sync now</button>
-    <button class="@(pending == 0 ? "primary" : "secondary")" disabled="@(operation is not null)" @onclick="Import">
+    <button class="@(Template || pending > 0 ? "primary" : "secondary")" disabled="@(operation is not null)" @onclick="Retry">@if (Template) { <Icon Name="sync" /> }Sync now</button>
+    <button class="@(!Template && pending == 0 ? "primary" : "secondary")" disabled="@(operation is not null)" @onclick="Import">
+     @if (Template) { <Icon Name="download" /> }
      @(summary.HasImported ? "Refresh lists" : "Import lists")
     </button>
    }
    @if (showLibrary) { <a class="secondary" href="/library">Open Library</a> }
   </div>
-  <p class="muted">Import adds Anime and Manga tracking entries to Library. Installed add-ons provide video and chapter pages.</p>
+  @if (Template)
+  {
+   @DisconnectControls
+  }
+  else { <p class="muted">Import adds Anime and Manga tracking entries to Library. Installed add-ons provide video and chapter pages.</p> }
  }
  @if (operation is not null) { <p role="status">@operation</p> }
  @if (message is not null) { <p role="@(hasError ? "alert" : "status")">@message</p> }
@@ -69,13 +87,33 @@
 @if (link is not null)
 {
  <section class="settings-card tracking-preferences">
-  <h2>Tracking preferences</h2>
-  <label class="tracking-toggle"><input type="checkbox" checked="@automatic" @onchange="ChangeAutomatic" />
-   <span><strong>Automatically sync completed add-on episodes and chapters</strong><small>Available for units with a verified AniList match.</small></span>
-  </label>
+  @if (Template)
+  {
+   <label class="profile-switch profile-sync-toggle">
+    <span><strong>Auto-sync completed episodes &amp; chapters</strong><small>Available for units with a verified AniList match.</small></span>
+    <input type="checkbox" role="switch" checked="@automatic" @onchange="ChangeAutomatic" />
+   </label>
+  }
+  else
+  {
+   <h2>Tracking preferences</h2>
+   <label class="tracking-toggle"><input type="checkbox" checked="@automatic" @onchange="ChangeAutomatic" />
+    <span><strong>Automatically sync completed add-on episodes and chapters</strong><small>Available for units with a verified AniList match.</small></span>
+   </label>
+  }
  </section>
- <section class="settings-card">
-  <h2>Account management</h2>
+ @if (!Template)
+ {
+  <section class="settings-card">
+   <h2>Account management</h2>
+   @DisconnectControls
+  </section>
+ }
+}
+
+@code {
+ [Parameter] public bool Template { get; set; }
+ RenderFragment DisconnectControls => @<div class="profile-disconnect">
   @if (confirmDisconnect)
   {
    <p>Disconnect AniList from this profile? Your local Library, watch and reading progress will remain on this device.</p>
@@ -88,10 +126,9 @@
   {
    <button class="text-link danger-action" disabled="@(operation is not null)" @onclick="() => confirmDisconnect = true">Disconnect AniList</button>
   }
- </section>
-}
+ </div>;
 
-@code {
+
  AniListLink? link;
  AniListImportSummary summary = new(false, null);
  bool loading = true, automatic = true, showLibrary, confirmDisconnect, hasError, disposed;

@@ -13,7 +13,7 @@ internal static class ProfileUiChecks
         using var handler = new SourceFixture();
         using var http = new HttpClient(handler);
         var addons = new AddonClient(http, (_, _) => Task.FromResult(new[] { IPAddress.Parse("192.0.2.8") }));
-        var profiles = new LocalProfiles(path, "legacy.db3", addons);
+        var profiles = new LocalProfiles(path, "legacy.db3", addons, new ProfileSecrets());
         await profiles.InitializeAsync();
         await profiles.Session!.Store.SaveAddonAsync(new InstalledAddon
         {
@@ -61,12 +61,19 @@ internal static class ProfileUiChecks
         if (await profiles.Session!.Store.GetSettingAsync(MediaPreferences.PlayOnOpenKey) != "true")
             throw new Exception("Play-on-open preference was not persisted");
         await Click("Sync");
-        Has("AniKatha JSON");
+        Has("JSON (AniKatha)");
         Capture("sync");
         await Click("Import");
         Has("Choose an AniKatha backup");
         await Click("Security");
-        Has("Secure PIN storage is unavailable on this platform.");
+        Has("4–8 digits");
+        await Click("Show new PIN");
+        if (view.Find("#new-pin").GetAttribute("type") != "text" ||
+            view.Find("#confirm-pin").GetAttribute("type") != "password")
+            throw new Exception("PIN reveal must affect only the selected field.");
+        await Click("Hide new PIN");
+        if (view.Find("#new-pin").GetAttribute("type") != "password")
+            throw new Exception("PIN can be hidden again.");
         Capture("security");
         await Click("Account");
         if (view.Find("#profile-display-name").GetAttribute("value") != "Story keeper")
@@ -135,6 +142,18 @@ internal static class ProfileUiChecks
         if ((await profiles.Session!.Store.GetAddonsAsync(true)).Count != 1)
             throw new Exception("Removal affected another source.");
         Console.WriteLine("PASS: Discoverable profile hub, editor, switcher, isolated Sources and Appearance preview/cancel/save.");
+    }
+
+    private sealed class ProfileSecrets : IProfileSecrets
+    {
+        private readonly Dictionary<string, string> values = [];
+        public Task<string?> ReadAsync(string profileId) => Task.FromResult(values.GetValueOrDefault(profileId));
+        public Task WriteAsync(string profileId, string value)
+        {
+            values[profileId] = value;
+            return Task.CompletedTask;
+        }
+        public void Remove(string profileId) => values.Remove(profileId);
     }
 
     private sealed class SourceFixture : HttpMessageHandler

@@ -2,19 +2,18 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 
-<section class="profile-summary settings-card">
+<section class="profile-summary settings-card" aria-label="Profile summary">
  <div class="profile-identity">
   <div class="profile-photo">
    <ProfileAvatar Name="@saved.Name" Avatar="@avatar" Size="large" />
    <label class="profile-photo-edit" title="Edit avatar">
-    <span aria-hidden="true">✎</span><InputFile OnChange="PickAvatar" accept="image/jpeg,image/png,image/webp" aria-label="Edit avatar" disabled="@(saving || checkingAvatar)" />
+    <span><Icon Name="edit" /></span><InputFile OnChange="PickAvatar" accept="image/jpeg,image/png,image/webp" aria-label="Edit avatar" disabled="@(saving || checkingAvatar)" />
    </label>
   </div>
   <div>
    <p class="profile-device">On this device</p>
    <h3>@saved.Name</h3>
-   @if (!string.IsNullOrEmpty(saved.Details?.Username)) { <p>@@@saved.Details.Username</p> }
-   <small>@(saved.Locked ? "PIN protected" : "Local profile")</small>
+   <p class="profile-summary-status">@if (!string.IsNullOrEmpty(saved.Details?.Username)) { <text>@@@saved.Details.Username · </text> }@(saved.Locked ? "PIN protected" : "Local profile")</p>
    <small class="profile-avatar-limit">Max upload size 1 MB (JPEG, PNG, WebP)</small>
   </div>
  </div>
@@ -27,24 +26,32 @@
 </section>
 
 <form class="profile-form" @onsubmit="Save" @onsubmit:preventDefault>
+ <div class="profile-field">
  <label for="profile-username">Username</label>
  <small id="profile-username-help">Optional. Use 3–10 letters or digits.</small>
  <input id="profile-username" aria-describedby="profile-username-help" @bind="username" @bind:event="oninput" autocomplete="off" autocapitalize="off" maxlength="10" />
+ </div>
+ <div class="profile-field">
  <label for="profile-display-name">Display name</label>
  <small id="profile-name-help">How your name appears on this device. Up to 32 characters.</small>
  <input id="profile-display-name" aria-describedby="profile-name-help" @bind="name" @bind:event="oninput" autocomplete="off" maxlength="32" />
+ </div>
+ <div class="profile-field">
  <label for="profile-bio">Bio</label>
  <small id="profile-bio-help">A short introduction.</small>
- <textarea id="profile-bio" rows="4" maxlength="500" aria-describedby="profile-bio-help profile-bio-count" @bind="bio" @bind:event="oninput"></textarea>
+ <textarea id="profile-bio" placeholder="Write something about yourself..." rows="4" maxlength="500" aria-describedby="profile-bio-help profile-bio-count" @bind="bio" @bind:event="oninput"></textarea>
  <small class="profile-count" id="profile-bio-count">@bio.Length / 500</small>
+ </div>
+ <div class="profile-field">
  <label for="profile-website">Website</label>
  <small id="profile-site-help">Optional. Enter a full HTTP or HTTPS address.</small>
  <input id="profile-website" inputmode="url" maxlength="500" aria-describedby="profile-site-help" @bind="website" @bind:event="oninput" placeholder="https://example.com" />
+ </div>
  @if (Changed && Validation is { } validation) { <p class="profile-error" role="status">@validation</p> }
  @if (message is not null) { <p role="@(failed ? "alert" : "status")">@message</p> }
  <div class="settings-actions profile-form-actions">
-  <button class="primary" disabled="@(!Changed || Validation is not null || saving || checkingAvatar)">@(saving ? "Saving…" : "Save changes")</button>
-  @if (Changed) { <button class="secondary" type="button" disabled="@(saving || checkingAvatar)" @onclick="Reset">Cancel</button> }
+  <button class="secondary" type="button" disabled="@(saving || checkingAvatar)" @onclick="Reset">Cancel</button>
+  <button class="primary" disabled="@(!Changed || Validation is not null || saving || checkingAvatar)"><Icon Name="save" />@(saving ? "Saving…" : "Save changes")</button>
  </div>
 </form>
 

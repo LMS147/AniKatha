@@ -553,9 +553,9 @@ async function verifyProfileScene(scene) {
   } else if (scene === 'security') {
     await click('Security');
     await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="new-password"]'), 'Local PIN form');
-    document.querySelector('.profile-panel:not([hidden]) .profile-switch input').click();
-    await wait(() => document.querySelector('.profile-panel:not([hidden]) input[autocomplete="new-password"]')?.type === 'text', 'Show PIN');
-    document.querySelector('.profile-panel:not([hidden]) .profile-switch input').click();
+    await click('Show new PIN');
+    await wait(() => document.querySelector('#new-pin')?.type === 'text' && document.querySelector('#confirm-pin')?.type === 'password', 'Reveal only the selected PIN');
+    await click('Hide new PIN');
     const setPin = (field, value) => {
       field.value = value;
       field.dispatchEvent(new Event('change', { bubbles: true }));

@@ -5,17 +5,22 @@
 @inject IJSRuntime JS
 
 <section class="profile-group" aria-labelledby="profile-data-management">
- <h3 id="profile-data-management">Data management</h3>
+ <h3 id="profile-data-management"><Icon Name="save" /> Data management</h3>
+ <p>Export your Library and supported add-on history, or merge an existing backup into this profile.</p>
  <section class="settings-card profile-backup-card">
-  <h4>AniKatha JSON</h4>
-  <p>Back up your Library and supported add-on history, including saved timestamps, pages, and completion marks. Account credentials, source settings, and downloaded files are excluded.</p>
+  <div class="profile-backup-heading">
+   <span class="profile-option-icon"><Icon Name="file" /></span>
+   <div><h4>JSON (AniKatha)</h4>
+    <p>Native format with Library status, anime/manga progress, and resume timestamps. PINs and tokens are excluded.</p>
+   </div>
+  </div>
   <div class="profile-file-modes" role="group" aria-label="Backup mode">
    <button type="button" aria-pressed="@(!importing ? "true" : "false")" disabled="@busy" @onclick="() => SetMode(false)">Export</button>
    <button type="button" aria-pressed="@(importing ? "true" : "false")" disabled="@busy" @onclick="() => SetMode(true)">Import</button>
   </div>
   @if (!importing)
   {
-   <button class="primary" type="button" disabled="@busy" @onclick="Export">@(NativeExport is null ? "Download JSON" : "Save or share JSON")</button>
+   <button class="primary" type="button" disabled="@busy" @onclick="Export"><Icon Name="download" />@(NativeExport is null ? "Download JSON" : "Save or share JSON")</button>
   }
   else
   {
