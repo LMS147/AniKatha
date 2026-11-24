@@ -1,10 +1,16 @@
 @page "/library"
 @inherits ProfileComponent
 @implements IDisposable
-<header class="page-header"><h1>Library</h1><p>Track your anime and manga, or pick up where you left off.</p></header>
-<div class="tabs tracking-tabs" role="group" aria-label="Library format">
- @foreach(var tab in new[]{"All","Anime","Manga","Favourites","Downloads"})
- { <button class="@(filter==tab?"selected":"")" aria-pressed="@(filter==tab)" @onclick="()=>filter=tab">@tab</button> }
+<section class="design-library">
+<header class="page-header design-heading">
+ <div><h1>Library</h1><p>Track your anime and manga, or pick up where you left off.</p></div>
+ <a class="secondary" href="/library?view=downloads">Downloads</a>
+</header>
+<div class="design-segments" role="group" aria-label="Library views">
+ @foreach (var tab in Views)
+ {
+  <button type="button" aria-pressed="@(filter == tab.Filter ? "true" : "false")" @onclick="() => ChangeView(tab.Filter)">@tab.Label</button>
+ }
 </div>
 @if (filter == "Downloads")
 {
@@ -19,17 +25,74 @@ else
    <a class="text-link" href="/profile/anilist">@(link?.RequiresReconnect == true ? "Reconnect AniList" : "Manage sync")</a>
   </p>
  }
+ @if (!loading && filter is "All" or "Stats")
+ {
+  @if (filter == "Stats")
+  {
+   <div class="design-segments design-stat-tabs" role="group" aria-label="Statistics media">
+    <button type="button" aria-pressed="@(statsKind == "ANIME" ? "true" : "false")" @onclick='() => statsKind = "ANIME"'>Anime</button>
+    <button type="button" aria-pressed="@(statsKind == "MANGA" ? "true" : "false")" @onclick='() => statsKind = "MANGA"'>Manga</button>
+   </div>
+  }
+  <div class="design-overview">
+   @foreach (var kind in filter == "All" ? new[] { "ANIME", "MANGA" } : new[] { statsKind })
+   {
+    var media = items.Where(item => item.Kind == kind).ToArray();
+    var name = kind == "MANGA" ? "Manga" : "Anime";
+    var rated = media.Where(item => scores.ContainsKey(item.Id)).Select(item => scores[item.Id]).ToArray();
+    <section class="settings-card design-stat-card">
+     <header><h2>@name @(filter == "Stats" ? "Stats" : "Overview")</h2>
+      @if (filter == "All") { <button type="button" class="text-link" @onclick="() => ShowStats(kind)">Full stats</button> }
+     </header>
+     <dl class="design-stat-metrics">
+      <div><dt>Entries</dt><dd>@media.Length</dd></div>
+      <div><dt>@(name == "Manga" ? "Chapters read" : "Episodes watched")</dt><dd>@media.Sum(item => (long)item.Progress)</dd></div>
+      <div><dt>Mean score</dt><dd>@(rated.Length == 0 ? "—" : $"{rated.Average():0.00} / 10")</dd></div>
+     </dl>
+     <ul class="design-stat-breakdown">
+      @foreach (var state in Statuses.Where(state => media.Any(item => item.Status == state)))
+      {
+       var count = media.Count(item => item.Status == state);
+       <li><span>@TrackingDisplay.Status(state, name == "Manga")</span><progress max="@media.Length" value="@count" aria-label="@TrackingDisplay.Status(state, name == "Manga")"></progress><strong>@count</strong></li>
+      }
+     </ul>
+     @if (filter == "Stats" && rated.Length > 0)
+     {
+      <h3>Score distribution <small>(@rated.Length scored)</small></h3>
+      <div class="design-score-bars">
+      @foreach (var score in Enumerable.Range(1, 10))
+      {
+       var count = rated.Count(value => Math.Clamp((int)Math.Ceiling(value), 1, 10) == score);
+       <div><meter min="0" max="@rated.Length" value="@count" aria-label="@($"Score {score}: {count} titles")"></meter><span>@score</span></div>
+      }
+      </div>
+     }
+    </section>
+   }
+  </div>
+ }
+ @if (filter is "Anime" or "Manga")
+ {
+  <div class="design-library-controls">
+   <label>Status<select @bind="status">
+    <option value="">All statuses</option>
+    @foreach (var state in Statuses) { <option value="@state">@TrackingDisplay.Status(state, filter == "Manga")</option> }
+   </select></label>
+   <label>Sort<select @bind="order"><option value="">Last updated</option><option value="title">Title</option><option value="progress">Progress</option></select></label>
+  </div>
+  <p class="muted">@Visible.Count() entries</p>
+ }
  @if (loading)
  {
   <p role="status">Opening your library…</p>
  }
- else if (!Visible.Any())
+ else if (filter != "Stats" && !Visible.Any())
  {
   <div class="empty"><Icon Name="library"/><h2>No @(filter == "All" ? "saved titles" : filter.ToLowerInvariant()) here yet</h2>
    <p>Save titles from Anime or Manga, or import your AniList lists.</p><a class="primary" href="/anime">Find a story</a>
   </div>
  }
- else
+ else if (filter != "Stats")
  {
   <div class="library-list">
   @foreach (var item in Visible)
@@ -42,6 +105,7 @@ else
      <small class="eyebrow">@TrackingDisplay.Mode(item)</small>
      <h3><a href="@titlePath">@item.Title</a></h3>
      <p class="tracking-line"><strong>@TrackingDisplay.Status(item.Status, item.Kind == "MANGA")</strong> · @TrackingDisplay.Progress(item, Total(item.Id))</p>
+     @if (scores.TryGetValue(item.Id, out var personalScore)) { <small>★ @personalScore.ToString("0.0") / 10</small> }
      @if (pending.Contains(item.Id))
      {
       <p class="tracking-pending"><span aria-hidden="true">◷</span> Saved on this device · Waiting to sync</p>
@@ -60,11 +124,17 @@ else
   }
   </div>
  }
- <ResumeHistory ShowRemove="true" MediaFilter="@filter"/>
+ @if (filter is "All" or "Anime" or "Manga") { <ResumeHistory ShowRemove="true" MediaFilter="@filter"/> }
 }
+</section>
 @code {
  [SupplyParameterFromQuery(Name = "view")] public string? View { get; set; }
- string filter = "All";
+ static readonly (string Filter, string Label)[] Views =
+  [("All", "Overview"), ("Anime", "Anime List"), ("Manga", "Manga List"), ("Stats", "Stats"), ("Favourites", "Favourites"), ("Downloads", "Downloads")];
+ static readonly string[] Statuses = ["CURRENT", "COMPLETED", "PAUSED", "DROPPED", "PLANNING", "REPEATING"];
+ string filter = "All", statsKind = "ANIME", status = "", order = "";
+ void ChangeView(string next) { filter = next; status = ""; }
+ void ShowStats(string kind) { statsKind = kind; ChangeView("Stats"); }
  string? error;
  bool loading = true, disposed;
  long revision;
@@ -72,12 +142,29 @@ else
  List<SavedTitle> items = [];
  IReadOnlySet<int> pending = new HashSet<int>(), confirmed = new HashSet<int>();
  IReadOnlyDictionary<int, int> totals = new Dictionary<int, int>();
- IEnumerable<SavedTitle> Visible => items.Where(x => filter == "Favourites" ? x.IsFavourite : filter == "All" || x.Kind == filter.ToUpperInvariant());
+ Dictionary<int, double> scores = [];
+ IEnumerable<SavedTitle> Visible
+ {
+  get
+  {
+   var matches = items.Where(item => (filter == "Favourites" ? item.IsFavourite : filter == "All" ||
+    item.Kind == filter.ToUpperInvariant()) && (status.Length == 0 || item.Status == status));
+   return order switch
+   {
+    "title" => matches.OrderBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase),
+    "progress" => matches.OrderByDescending(item => item.Progress),
+    _ => matches
+   };
+  }
+ }
  int? Total(int id) => totals.TryGetValue(id, out var known) ? known : null;
 
+ string? appliedView;
  protected override void OnParametersSet()
  {
-  if (View == "downloads") filter = "Downloads";
+  if (string.Equals(View, appliedView, StringComparison.OrdinalIgnoreCase)) return;
+  appliedView = View;
+  ChangeView(View?.ToLowerInvariant() switch { "downloads" => "Downloads", "anime" => "Anime", "manga" => "Manga", "stats" => "Stats", _ => "All" });
  }
 
  protected override async Task OnInitializedAsync()
@@ -98,7 +185,18 @@ else
    var pendingIds = active is null ? new HashSet<int>() : (await Store.AniListEditsAsync(active.Viewer.Id)).Select(edit => edit.MediaId).ToHashSet();
    var acknowledged = active is null ? new HashSet<int>() : await Store.ConfirmedTrackingTitlesAsync(active.Viewer.Id);
    var knownTotals = await Store.TrackingTotalsAsync(active?.Viewer.Id);
-   if (!disposed && revision == request) (link, pending, confirmed, totals) = (active, pendingIds, acknowledged, knownTotals);
+   var ratings = new Dictionary<int, double>();
+   if (active is { } accountLink)
+   {
+    var scale = AniListAccount.ScoreScale(accountLink.Viewer.ScoreFormat);
+    foreach (var item in found.Where(TrackingDisplay.CanSync))
+    {
+     if (disposed || revision != request) return;
+     if (await Store.GetAniListScoreAsync(accountLink.Viewer.Id, item.Id, accountLink.Viewer.ScoreFormat) is double score)
+      ratings[item.Id] = score * 10 / scale.Maximum;
+    }
+   }
+   if (!disposed && revision == request) (link, pending, confirmed, totals, scores) = (active, pendingIds, acknowledged, knownTotals, ratings);
   }
   catch { if (!disposed && revision == request) error = "Some Library information could not be loaded."; }
   finally { if (!disposed && revision == request) loading = false; }

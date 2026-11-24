@@ -3,10 +3,12 @@
 <div class="modal-backdrop" @onclick="Close"><section class="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabindex="-1" @onkeydown="HandleKey" @onclick:stopPropagation="true">
  <button class="close" aria-label="Close details" @onclick="Close">✕</button>
  @if(Item.Banner is not null){<img class="detail-banner" src="@Item.Banner" alt="" />}
- <div class="detail-content"><span class="eyebrow">@Item.Kind · @Item.Format?.Replace('_',' ')</span><h2 id="detail-title">@Item.Title</h2>
- <p class="muted">@Item.Year · @(Item.Score is null ? "Unrated" : $"{Item.Score / 10.0}/10") · @(Item.Kind=="ANIME" ? $"{Item.Episodes?.ToString()??"?"} episodes" : $"{Item.Chapters?.ToString()??"?"} chapters")</p>
+ <div class="detail-content"><header class="design-title-card">
+ @if (Item.Poster is { } cover && AddonResources.MediaUrl(cover)) { <img src="@cover" alt="" /> }
+ <div><span class="eyebrow">@Item.Kind · @Item.Format?.Replace('_',' ')</span><h2 id="detail-title">@Item.Title</h2>
+ <p class="muted">@Item.Year · @(Item.Score is null ? "Unrated" : $"{Item.Score / 10.0}/10") · @(Item.Kind=="ANIME" ? $"{Item.Episodes?.ToString()??"?"} episodes" : $"{Item.Chapters?.ToString()??"?"} chapters")</p></div></header>
  <div class="chips">@foreach(var genre in Item.Genres){<span>@genre</span>}</div>
- <p>@Item.Description</p><button class="primary" @onclick="Save" disabled="@saved">@(saved?"Saved to library":"Save to library")</button>
+ <section class="design-detail-section"><h3>Synopsis</h3><p>@(string.IsNullOrWhiteSpace(Item.Description) ? "No synopsis available." : Item.Description)</p></section><button class="primary" @onclick="Save" disabled="@saved">@(saved?"Saved to library":"Save to library")</button>
  @if (saved) { <a class="secondary" href="@($"/library/title/{Item.Id}/tracking")">Edit tracking</a> }
  @if(error is not null){<p role="alert">@error</p>}
  @if(Item.Kind == "ANIME")
@@ -15,7 +17,7 @@
  }
  else
  {
-  <div class="notice">Chapter sources for catalogue titles are planned.</div>
+  <a class="primary" href="@($"/manga/details/{Item.Id}")">Find chapters</a>
  }
  </div></section></div>
 }

@@ -2,13 +2,19 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 @inject AniListClient Api
+@inject NavigationManager Navigation
 @inject JikanCatalogue Jikan
 @inherits ProfileComponent
-<header class="page-header" @ref="heading"><span class="eyebrow">FIND YOUR NEXT FAVOURITE</span><h1>@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Every story starts with a little curiosity.</p></header>
-@if (appliedSearch.Length == 0 && source.Length == 0) { @Featured }
+<section class="design-catalog">
+<header class="page-header design-heading" @ref="heading"><h1 aria-label="@(Kind=="ANIME"?"Browse Anime":"Browse Manga")">@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Browse titles and installed catalogues.</p></header>
+<nav class="design-segments" aria-label="Browse media">
+ <a href="/anime" aria-current="@(Kind == "ANIME" ? "page" : null)">Anime</a>
+ <a href="/manga" aria-current="@(Kind == "MANGA" ? "page" : null)">Manga</a>
+</nav>
 <form @onsubmit="Search" @onsubmit:preventDefault>
  <fieldset class="catalog-search-fields" disabled="@(!initialized)">
  <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
+ <details class="design-filter-panel"><summary>Filters @if (ActiveFilters.Count > 0) { <span>@ActiveFilters.Count</span> }</summary>
  <div class="filters">
  <label>Source<select aria-label="Catalogue source" value="@source" @onchange="ChangeSource">
  <option value="">All Sources</option>
@@ -26,8 +32,29 @@
  <label>Sort<select @bind="sort"><option value="TRENDING_DESC">Trending</option><option value="POPULARITY_DESC">Popular</option><option value="SCORE_DESC">Top rated</option><option value="START_DATE_DESC">Newest</option></select></label>
  }
  </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
+ </details>
  </fieldset>
 </form>
+@if (ActiveFilters.Count > 0)
+{
+ <div class="design-chips" aria-label="Applied filters">
+ @foreach (var filter in ActiveFilters)
+ {
+  <button type="button" class="secondary" @onclick="() => ClearFilter(filter.Key)" aria-label="@($"Clear {filter.Key} filter")">@filter.Key: @filter.Value <span aria-hidden="true">×</span></button>
+ }
+ </div>
+}
+@if (ShowBuiltIn && !UsingAddon && appliedSearch.Length == 0)
+{
+ <div class="design-chips" role="group" aria-label="Discovery sort">
+ @foreach (var choice in DiscoverySorts)
+ {
+  <button type="button" class="secondary" aria-pressed="@(appliedFilters.Sort == choice.Value ? "true" : "false")" @onclick="() => Discover(choice.Value)">@choice.Label</button>
+ }
+ </div>
+}
+@if (appliedSearch.Length == 0 && source.Length == 0 && !HasFilters) { @Featured }
+
 @foreach(var provider in httpProviders.Where(p => source.Length == 0 || p.ProviderKey == source)){
  @foreach(var catalog in provider.Catalogs(Kind)){
   @if (appliedSearch.Length > 0 && !catalog.Search)
@@ -36,7 +63,7 @@
   }
   else
   {
-  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch" Filters="appliedFilters" Session="pages"/>
+  <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch" Filters="appliedFilters" Session="pages" OpenMangaPage="@(Kind == "MANGA")"/>
   }
  }
 }
@@ -55,7 +82,7 @@ else if (UsingAddon) { <p class="source-note">Titles and covers from Jikan.</p> 
 @if (UsingAddon && !usingAniListFallback && HasFilters) { <p>Jikan and the starter catalogue cannot apply these filters.</p> }
 @if (!UsingAddon) { <p class="source-note">Titles and covers from AniList.</p> }
 @if(error is not null){<div class="notice" role="alert">@error <button @onclick="RetryBuiltIn">Retry</button></div>}
-<div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch)?"Discover":"Search results")</h2><span class="muted">@ResultCount titles</span></div>
+<div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch)?DiscoveryLabel:$"{(Kind == "ANIME" ? "Anime" : "Manga")} Results")</h2><span class="muted">@ResultCount titles</span></div>
 @if(busy&&ResultCount==0){<div class="loading" role="status">Finding stories…</div>}
 else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching titles</h3><p>@(starterCatalogue ? "No matching title in the starter catalogue." : "Try a different search or reset your filters.")</p></div>}
 @if (UsingAddon && !usingAniListFallback)
@@ -82,6 +109,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
 @if(hasMore && error is null){<button class="secondary load-more" disabled="@busy" @onclick="More">@(busy?"Loading…":"Load more")</button>}
 <MediaDetails Item="selected" Closed="()=>selected=null"/>
 }
+</section>
 @code {
  [CascadingParameter] public CatalogSession? Session { get; set; }
  Dictionary<(string Provider, string Type, string Id), CatalogPage> pages = new();
@@ -280,7 +308,29 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   catch (Exception) when (token.IsCancellationRequested) {}
   finally { if (ReferenceEquals(request, current)) busy = false; }
  }
- void Select(Media item)=>selected=item;
+ static readonly (string Value, string Label)[] DiscoverySorts =
+  [("TRENDING_DESC", "Trending"), ("POPULARITY_DESC", "All-time popular"), ("SCORE_DESC", "Top rated"), ("START_DATE_DESC", "Newest")];
+ string DiscoveryLabel => DiscoverySorts.FirstOrDefault(choice => choice.Value == appliedFilters.Sort).Label ?? "Discover";
+ IReadOnlyList<(string Key, string Value)> ActiveFilters =>
+  new (string Key, string? Value)[] { ("Genre", appliedFilters.Genre), ("Year", appliedFilters.Year?.ToString()),
+    ("Season", appliedFilters.Season), ("Format", appliedFilters.Format?.Replace('_', ' ')) }
+   .Where(filter => !string.IsNullOrWhiteSpace(filter.Value)).Select(filter => (filter.Key, filter.Value!)).ToArray();
+ Task Discover(string value) { sort = value; return Search(); }
+ Task ClearFilter(string key)
+ {
+  genre = key == "Genre" ? "" : appliedFilters.Genre ?? "";
+  year = key == "Year" ? null : appliedFilters.Year;
+  season = key == "Season" ? "" : appliedFilters.Season ?? "";
+  format = key == "Format" ? "" : appliedFilters.Format ?? "";
+  search = appliedSearch;
+  sort = appliedFilters.Sort;
+  return Search();
+ }
+ void Select(Media item)
+ {
+  if (item.Kind == "MANGA") Navigation.NavigateTo($"/manga/details/{item.Id}");
+  else selected = item;
+ }
  public async ValueTask DisposeAsync()
  {
   disposed = true;

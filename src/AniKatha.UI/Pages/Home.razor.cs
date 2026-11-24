@@ -72,7 +72,21 @@ public partial class Home
     }
 
     private static string Pressed(bool value) => value ? "true" : "false";
-    private void OpenCard(HomeCard card) => (selected, selectedProvider) = (card.Detail, card.Provider);
+    private void OpenCard(HomeCard card)
+    {
+        if (card.Detail is { Kind: "MANGA" } mangaTitle)
+        {
+            Navigation.NavigateTo($"/manga/details/{mangaTitle.Id}?from=home");
+            return;
+        }
+        if (card.Provider is { Type: "manga", Title.ExternalId: { } id } mangaSource)
+        {
+            Navigation.NavigateTo(MangaDetails.ProviderPath(mangaSource.Source.ProviderKey, id,
+                mangaSource.Title.Title, mangaSource.Unit, "home"));
+            return;
+        }
+        (selected, selectedProvider) = (card.Detail, card.Provider);
+    }
     private void OpenSpotlightDetails(Media media)
     {
         spotlightDetails = true;
