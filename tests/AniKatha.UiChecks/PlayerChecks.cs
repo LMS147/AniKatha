@@ -85,7 +85,7 @@ internal static class PlayerChecks
         Check(player.Invocations.Last(x => x.Identifier == "selectEmbeddedSubtitle").Arguments[0]?.Equals("em") == true &&
             !screen.Markup.Contains("Reset to 0"), "Embedded track selection hides sidecar timing controls");
         await Close();
-        await Click("Fullscreen");
+        await Press("button[aria-label='Fullscreen']");
         await Menu("subtitles");
         await screen.InvokeAsync(() => screen.Find(".player-stage").KeyDownAsync(Key.Escape));
         Check(screen.Find(".player-stage").ClassList.Contains("player-fullscreen") && !screen.FindAll(".player-sheet").Any(), "Back dismisses the sheet first");

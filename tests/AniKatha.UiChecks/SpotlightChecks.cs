@@ -49,7 +49,7 @@ internal static class SpotlightChecks
         home.WaitForAssertion(() => Check(home.Find(".home-spotlight-action").TextContent.Contains("Watch now"), "A verified stream enables playback."));
         var order = home.Find(".home-landing").Children.Select(element => element.ClassList.First()).ToArray();
         Check(order.SequenceEqual(new[] { "home-header", "home-spotlight", "home-segment", "home-viewports" }), "Spotlight is above the tabs.");
-        Check(home.Find(".home-spotlight-meta").TextContent.Contains("12 episodes"), "The spotlight uses actual episode metadata.");
+        Check(home.Find(".home-spotlight-meta").TextContent.Contains("12 eps"), "The spotlight uses actual episode metadata.");
 
         await home.InvokeAsync(() => home.Find(".home-spotlight-action").ClickAsync(new()));
         home.WaitForAssertion(() => Check(home.FindAll(".home-source-sheet button").Any(button => button.TextContent.Trim() == "Episode 2"),

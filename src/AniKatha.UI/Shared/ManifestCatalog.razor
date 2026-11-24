@@ -39,7 +39,7 @@
  @if(error!=null){<p role="alert">@error <button @onclick="Retry">Retry</button></p>}
  @if(!busy && error==null && selected is null && titles.Count==0 && !MissingRequired){<p>No matching titles.</p>}
  @if(selected!=null){
-  <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type"/>
+  <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type" Standalone="ShowDetailActions"/>
   @if(InitialTitle==null || AllowSaveInitialTitle){<button disabled="@saved" @onclick="SaveTitle">@(saved?"Saved to library":"Save to library")</button>}
   @if (units.Count > 0)
   {

@@ -6,15 +6,20 @@
 @inject JikanCatalogue Jikan
 @inherits ProfileComponent
 <section class="design-catalog">
-<header class="page-header design-heading" @ref="heading"><h1 aria-label="@(Kind=="ANIME"?"Browse Anime":"Browse Manga")">@(Kind=="ANIME"?"Anime":"Manga")</h1><p>Browse titles and installed catalogues.</p></header>
-<nav class="design-segments" aria-label="Browse media">
- <a href="/anime" aria-current="@(Kind == "ANIME" ? "page" : null)">Anime</a>
- <a href="/manga" aria-current="@(Kind == "MANGA" ? "page" : null)">Manga</a>
-</nav>
-<form @onsubmit="Search" @onsubmit:preventDefault>
+<header class="catalog-top" @ref="heading">
+ <h1>Browse @(Kind == "ANIME" ? "Anime" : "Manga")</h1>
+ <nav class="catalog-modes" aria-label="Browse media type">
+  <a href="/anime" aria-current="@(Kind == "ANIME" ? "page" : null)">Anime</a>
+  <a href="/manga" aria-current="@(Kind == "MANGA" ? "page" : null)">Manga</a>
+ </nav>
+</header>
+<form @onsubmit="SubmitSearch" @onsubmit:preventDefault>
  <fieldset class="catalog-search-fields" disabled="@(!initialized)">
- <label class="search-box"><Icon/><input aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/><button type="submit" class="search-submit">Search</button></label>
- <details class="design-filter-panel"><summary>Filters @if (ActiveFilters.Count > 0) { <span>@ActiveFilters.Count</span> }</summary>
+ <div class="catalog-search-row">
+  <div class="search-box"><button type="submit" aria-label="Search"><Icon /></button><input type="search" aria-label="Search titles" placeholder="@(Kind=="ANIME"?"Search anime titles…":"Search manga titles…")" @bind="search"/></div>
+  <button type="button" class="catalog-toggle" aria-label="Toggle filters" aria-expanded="@(filtersOpen ? "true" : "false")" aria-controls="catalog-filters" @onclick="() => filtersOpen = !filtersOpen"><Icon Name="filters" />@if (ActiveFilters.Count > 0) { <span>@ActiveFilters.Count</span> }</button>
+ </div>
+ <section id="catalog-filters" class="design-filter-panel" hidden="@(!filtersOpen)" aria-label="Catalogue filters">
  <div class="filters">
  <label>Source<select aria-label="Catalogue source" value="@source" @onchange="ChangeSource">
  <option value="">All Sources</option>
@@ -31,8 +36,8 @@
  @if (ShowBuiltIn && !UsingAddon) {
  <label>Sort<select @bind="sort"><option value="TRENDING_DESC">Trending</option><option value="POPULARITY_DESC">Popular</option><option value="SCORE_DESC">Top rated</option><option value="START_DATE_DESC">Newest</option></select></label>
  }
- </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Reset</button><button class="primary" type="submit">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
- </details>
+ </div><div class="filter-actions"><button class="secondary" type="button" @onclick="Reset">Clear filters</button><button class="primary" type="submit">@(UsingAddon ? "Find titles" : "Apply filters")</button></div>
+ </section>
  </fieldset>
 </form>
 @if (ActiveFilters.Count > 0)
@@ -44,7 +49,7 @@
  }
  </div>
 }
-@if (ShowBuiltIn && !UsingAddon && appliedSearch.Length == 0)
+@if (!ShowDiscovery && ShowBuiltIn && !UsingAddon && appliedSearch.Length == 0)
 {
  <div class="design-chips" role="group" aria-label="Discovery sort">
  @foreach (var choice in DiscoverySorts)
@@ -53,7 +58,12 @@
  }
  </div>
 }
-@if (appliedSearch.Length == 0 && source.Length == 0 && !HasFilters) { @Featured }
+@if (ShowDiscovery)
+{
+ <CatalogDiscovery Kind="@Kind" Selected="Select" />
+ <section class="catalog-samples" aria-label="Samples">@Featured</section>
+}
+else if (appliedSearch.Length == 0 && source.Length == 0 && !HasFilters) { @Featured }
 
 @foreach(var provider in httpProviders.Where(p => source.Length == 0 || p.ProviderKey == source)){
  @foreach(var catalog in provider.Catalogs(Kind)){
@@ -68,7 +78,7 @@
  }
 }
 
-@if (ShowBuiltIn)
+@if (ShowBuiltIn && !ShowDiscovery)
 {
 @if (usingAniListFallback)
 {
@@ -82,7 +92,7 @@ else if (UsingAddon) { <p class="source-note">Titles and covers from Jikan.</p> 
 @if (UsingAddon && !usingAniListFallback && HasFilters) { <p>Jikan and the starter catalogue cannot apply these filters.</p> }
 @if (!UsingAddon) { <p class="source-note">Titles and covers from AniList.</p> }
 @if(error is not null){<div class="notice" role="alert">@error <button @onclick="RetryBuiltIn">Retry</button></div>}
-<div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch)?DiscoveryLabel:$"{(Kind == "ANIME" ? "Anime" : "Manga")} Results")</h2><span class="muted">@ResultCount titles</span></div>
+<div class="section-title"><h2>@(string.IsNullOrWhiteSpace(appliedSearch) && !HasFilters ? DiscoveryLabel:$"{(Kind == "ANIME" ? "Anime" : "Manga")} Results")</h2><span class="muted">@ResultCount titles</span></div>
 @if(busy&&ResultCount==0){<div class="loading" role="status">Finding stories…</div>}
 else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching titles</h3><p>@(starterCatalogue ? "No matching title in the starter catalogue." : "Try a different search or reset your filters.")</p></div>}
 @if (UsingAddon && !usingAniListFallback)
@@ -107,7 +117,6 @@ else if(ResultCount==0&&error is null){<div class="empty"><Icon/><h3>No matching
 }
 else { <MediaGrid Items="items" Selected="Select"/> }
 @if(hasMore && error is null){<button class="secondary load-more" disabled="@busy" @onclick="More">@(busy?"Loading…":"Load more")</button>}
-<MediaDetails Item="selected" Closed="()=>selected=null"/>
 }
 </section>
 @code {
@@ -115,10 +124,11 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  Dictionary<(string Provider, string Type, string Id), CatalogPage> pages = new();
  ElementReference heading;
  IJSObjectReference? scrollModule;
- bool initialized, disposed, restoreScroll;
+ bool initialized, disposed, restoreScroll, filtersOpen;
+ Task SubmitSearch() { filtersOpen = false; return Search(); }
  [Parameter, EditorRequired] public string Kind { get; set; } = "";
  [Parameter] public RenderFragment? Featured { get; set; }
- string search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];Media? selected;
+ string search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];
  CancellationTokenSource? request;
  List<AddonResources> httpProviders=[];
  InstalledAddon? jikan;
@@ -134,6 +144,8 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  const string AniListSource = "anilist";
  const string JikanSource = "jikan";
  string SourceSetting => $"catalogue-source-{Kind}";
+ bool ShowDiscovery => Featured is not null && ShowBuiltIn && !UsingAddon &&
+    appliedSearch.Length == 0 && !HasFilters && appliedFilters.Sort == "TRENDING_DESC";
  bool ShowBuiltIn => source is "" or AniListSource or JikanSource;
  bool UsingAddon => source == JikanSource || source.Length == 0 && preferJikan && jikan is not null;
  int ResultCount => UsingAddon && !usingAniListFallback ? addonItems.Count : items.Count;
@@ -181,7 +193,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   }
   (page, hasMore, failedNextPage, starterCatalogue, usingAniListFallback, error, items, addonItems) =
    (saved.Page, saved.HasMore, saved.FailedNextPage, saved.StarterCatalogue, saved.AniListFallback, saved.Error, saved.Items, saved.JikanItems);
-  if (ShowBuiltIn && ResultCount == 0 && error is null && page == 0)
+  if (ShowBuiltIn && !ShowDiscovery && ResultCount == 0 && error is null && page == 0)
   {
    page = 1;
    await Load();
@@ -212,7 +224,6 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  {
   if (!initialized) return;
   source = FindSource(change.Value as string ?? "");
-  selected = null;
   var chosen = source;
   var searchTask = Search();
   try { await Store.SetSettingAsync(SourceSetting, chosen); }
@@ -242,7 +253,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   failedNextPage = false;
   starterCatalogue = false;
   usingAniListFallback = false;
-  if (ShowBuiltIn)
+  if (ShowBuiltIn && !ShowDiscovery)
    return LoadIfSelected();
   request?.Cancel();
   busy = false;
@@ -329,7 +340,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  void Select(Media item)
  {
   if (item.Kind == "MANGA") Navigation.NavigateTo($"/manga/details/{item.Id}");
-  else selected = item;
+  else Navigation.NavigateTo($"/anime/details/{item.Id}");
  }
  public async ValueTask DisposeAsync()
  {

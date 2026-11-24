@@ -168,7 +168,7 @@ internal static class HomeChecks
         home.InvokeAsync(() => home.FindAll(selector).Single(button => button.TextContent.Trim() == label).ClickAsync(new()));
 
     private static void Titles(IRenderedComponent<Home> home, string kind, string[] expected) =>
-        Check(home.FindAll($"#home-{kind} .home-section > header h2").Select(title => title.TextContent).SequenceEqual(expected), "Home uses the requested section order.");
+        Check(home.FindAll($"#home-{kind} .home-section > header h2").Select(title => title.TextContent.Trim()).SequenceEqual(expected), "Home uses the requested section order.");
 
     private static void Check(bool condition, string message)
     {

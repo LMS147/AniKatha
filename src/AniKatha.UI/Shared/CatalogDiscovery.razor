@@ -1,0 +1,81 @@
+@implements IDisposable
+@inject AniListClient Api
+
+@foreach (var shelf in shelves)
+{
+ <section class="catalog-discovery" aria-label="@shelf.Label" @key="shelf.Label">
+  <header class="section-title">
+   <h2>@shelf.Label</h2>
+   @if (shelf.Items.Count > 3 || shelf.Expanded)
+   {
+    <button type="button" class="text-link" @onclick="() => shelf.Expanded = !shelf.Expanded">@(shelf.Expanded ? "Show less" : "View all") ›</button>
+   }
+  </header>
+  @if (shelf.Loading) { <p role="status">Loading titles…</p> }
+  else if (shelf.Failed) { <p role="status">This shelf is unavailable. <button type="button" class="text-link" @onclick="() => Load(shelf)">Retry</button></p> }
+  else if (shelf.Items.Count == 0) { <p>No titles found.</p> }
+  else
+  {
+   <MediaGrid Items="@(shelf.Expanded ? shelf.Items : shelf.Items.Take(6))" Selected="Selected" Shelf="@(!shelf.Expanded)" />
+  }
+ </section>
+}
+
+@code {
+ [Parameter, EditorRequired] public string Kind { get; set; } = "";
+ [Parameter] public EventCallback<Media> Selected { get; set; }
+ readonly CancellationTokenSource stop = new();
+ Shelf[] shelves = [];
+
+ protected override Task OnInitializedAsync()
+ {
+  var now = DateTime.Today;
+  var seasons = new[] { "WINTER", "SPRING", "SUMMER", "FALL" };
+  var current = (now.Month - 1) / 3;
+  var nextYear = current == 3 ? now.Year + 1 : now.Year;
+  shelves = Kind == "ANIME"
+   ? [new("Popular This Season", new(Kind, Year: now.Year, Season: seasons[current], Sort: "POPULARITY_DESC")),
+      new("Upcoming Next Season", new(Kind, Year: nextYear, Season: seasons[(current + 1) % 4], Sort: "POPULARITY_DESC", Status: "NOT_YET_RELEASED")),
+      new("All-Time Popular", new(Kind, Sort: "POPULARITY_DESC")), new("Top Rated", new(Kind, Sort: "SCORE_DESC"))]
+   : [new("Popular Manga", new(Kind, Format: "MANGA", Sort: "POPULARITY_DESC", Country: "JP")),
+      new("Popular Manhwa", new(Kind, Format: "MANGA", Sort: "POPULARITY_DESC", Country: "KR")),
+      new("Popular Light Novels", new(Kind, Format: "NOVEL", Sort: "POPULARITY_DESC", Country: "JP")),
+      new("Top Rated", new(Kind, Sort: "SCORE_DESC"))];
+  return Task.WhenAll(shelves.Select(Load));
+ }
+
+ async Task Load(Shelf shelf)
+ {
+  if (shelf.Loading) return;
+  shelf.Loading = true;
+  shelf.Failed = false;
+  var token = stop.Token;
+  try
+  {
+   var page = await Api.SearchAsync(shelf.Options, token);
+   if (!token.IsCancellationRequested) shelf.Items = page.Items.Where(item => item.Kind == Kind).ToArray();
+  }
+  catch when (token.IsCancellationRequested) { }
+  catch { shelf.Failed = true; }
+  finally
+  {
+   if (!token.IsCancellationRequested)
+   {
+    shelf.Loading = false;
+    StateHasChanged();
+   }
+  }
+ }
+
+ public void Dispose() { stop.Cancel(); stop.Dispose(); }
+
+ sealed class Shelf(string label, SearchOptions options)
+ {
+  public string Label { get; } = label;
+  public SearchOptions Options { get; } = options;
+  public IReadOnlyList<Media> Items { get; set; } = [];
+  public bool Expanded { get; set; }
+  public bool Failed { get; set; }
+  public bool Loading { get; set; }
+ }
+}

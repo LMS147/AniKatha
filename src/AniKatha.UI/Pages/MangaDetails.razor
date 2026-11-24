@@ -4,7 +4,7 @@
 @implements IDisposable
 @inject AniListClient Api
 
-<nav class="detail-toolbar"><a class="text-link" href="@(From == "home" ? "/" : "/manga")">← @(From == "home" ? "Home" : "Browse Manga")</a></nav>
+<article class="template-details"><nav class="detail-toolbar template-detail-top"><a class="text-link" href="@(From == "home" ? "/" : "/manga")" aria-label="@(From == "home" ? "Back to Home" : "Back to Browse Manga")">← Details</a></nav>
 @if (title is { } item)
 {
  <PageTitle>@item.Title · AniKatha</PageTitle>
@@ -15,31 +15,40 @@
  }
  else
  {
-  <header class="design-title-card" id="manga-overview">
+  <section class="design-title-card template-manga-cover" id="manga-overview" aria-label="Cover and summary">
    @if (item.Poster is { } poster && AddonResources.MediaUrl(poster)) { <img src="@poster" alt="" /> }
    <div>
     <span class="eyebrow">@((media?.Format ?? "Manga").Replace('_',' '))</span>
-    <h1>@item.Title</h1>
-    <p class="design-title-facts">
+    <div class="design-title-facts chips">
      @if (media?.Year is int year) { <span>@year</span> }
-     @if (media?.Score is int score) { <span>★ @(score / 10.0) / 10</span> }
+     @if (media?.Status is { } status) { <span>@status.Replace('_', ' ')</span> }
+     @if (media?.Country is { } country) { <span>@country</span> }
      @if (media?.Chapters is int count) { <span>@count chapters</span> }
-    </p>
+    </div>
+    <dl class="template-manga-metrics">
+     @if (media?.Score is int score) { <div><dt>AniList score</dt><dd>★ @(score / 10.0)</dd></div> }
+     @if (media?.Popularity is int popularity) { <div><dt>Tracked on AniList</dt><dd>@popularity.ToString("N0")</dd></div> }
+    </dl>
    </div>
-  </header>
-  <div class="settings-actions">
-   <a class="primary" href="#chapters">Find chapters</a>
+  </section>
+  <section class="template-title-credits"><h1>@item.Title</h1>
+   @if (media?.AlternateTitle is { } alternate && alternate != item.Title) { <p>@alternate</p> }
+  </section>
+  <div class="settings-actions template-title-actions">
+   <a class="primary" href="#chapters"><Icon Name="book" />Find chapters</a>
    @if (saved) { <a class="secondary" href="@($"/library/title/{item.Id}/tracking")">Edit tracking</a> }
    else { <button class="secondary" disabled="@saving" @onclick="Save">Save to library</button> }
   </div>
   @if (media is { } catalogue)
   {
-   <section class="design-detail-section">
-    <h2>Synopsis</h2>
+   <details class="template-synopsis" open><summary>Synopsis</summary>
     <p>@(string.IsNullOrWhiteSpace(catalogue.Description) ? "No synopsis available." : catalogue.Description)</p>
-    <div class="chips">@foreach (var genre in catalogue.Genres) { <span>@genre</span> }</div>
-    <a class="text-link" href="@($"https://anilist.co/manga/{item.Id}")" target="_blank" rel="noopener noreferrer">View on AniList ↗</a>
-   </section>
+   </details>
+   <details class="template-synopsis" open><summary>Details</summary>
+    @if (catalogue.Genres.Length > 0) { <h3>Genres</h3><div class="chips">@foreach (var genre in catalogue.Genres) { <span>@genre</span> }</div> }
+    @if (catalogue.Tags.Count > 0) { <h3>Tags</h3><div class="chips">@foreach (var tag in catalogue.Tags) { <span>@tag</span> }</div> }
+    <h3>Trackers</h3><a class="secondary template-tracker" href="@($"https://anilist.co/manga/{item.Id}")" target="_blank" rel="noopener noreferrer" aria-label="Open title on AniList">AL</a>
+   </details>
   }
   <section id="chapters" class="design-detail-section"><h2>Chapters</h2><TrackedTitleSources @key="item.Id" Title="item"/></section>
  }
@@ -49,6 +58,8 @@ else if (error is null) { <p role="status">Opening manga…</p> }
 {
  <div class="notice" role="alert">@error <button type="button" @onclick="Load">Try again</button></div>
 }
+
+</article>
 
 @code {
  public static string ProviderPath(string provider, string title, string name, string? release = null, string? from = null)
@@ -101,7 +112,7 @@ else if (error is null) { <p role="status">Opening manga…</p> }
    var existing = await Store.FindSavedTitleAsync(id);
    token.ThrowIfCancellationRequested();
    if (existing is { Kind: "MANGA" }) { title = existing; saved = true; }
-   var catalogue = await Api.FindMangaAsync(id, token);
+   var catalogue = await Api.FindTitleAsync(id, "MANGA", token);
    token.ThrowIfCancellationRequested();
    if (catalogue is { Kind: "MANGA" } && catalogue.Id == id)
    {

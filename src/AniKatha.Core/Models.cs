@@ -1,8 +1,15 @@
 using System.Text.Json;
 using SQLite;
 namespace AniKatha.Core;
-public sealed record Media(int Id, string Kind, string Title, string? Poster, string? Banner, string? Description, int? Year, string? Format, int? Score, int? Episodes, int? Chapters, string[] Genres);
-public sealed record SearchOptions(string Kind = "ANIME", string? Search = null, string? Genre = null, int? Year = null, string? Season = null, string? Format = null, string Sort = "TRENDING_DESC", int Page = 1);
+public sealed record Media(int Id, string Kind, string Title, string? Poster, string? Banner, string? Description, int? Year, string? Format, int? Score, int? Episodes, int? Chapters, string[] Genres)
+{
+ public string? Status { get; init; }
+ public string? AlternateTitle { get; init; }
+ public string? Country { get; init; }
+ public int? Popularity { get; init; }
+ public IReadOnlyList<string> Tags { get; init; } = [];
+}
+public sealed record SearchOptions(string Kind = "ANIME", string? Search = null, string? Genre = null, int? Year = null, string? Season = null, string? Format = null, string Sort = "TRENDING_DESC", int Page = 1, string? Status = null, string? Country = null);
 public sealed record MediaPage(List<Media> Items, bool HasNextPage);
 public sealed class SavedTitle
 {

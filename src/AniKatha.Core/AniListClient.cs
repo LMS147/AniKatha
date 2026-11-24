@@ -9,10 +9,10 @@ public sealed partial class AniListClient(HttpClient http)
  public async Task<MediaPage> SearchAsync(SearchOptions options, CancellationToken token = default)
  {
   const string query = """
-  query ($type: MediaType, $search: String, $genre: String, $start: FuzzyDateInt, $end: FuzzyDateInt, $season: MediaSeason, $format: MediaFormat, $sort: [MediaSort], $page: Int) {
+  query ($type: MediaType, $search: String, $genre: String, $start: FuzzyDateInt, $end: FuzzyDateInt, $season: MediaSeason, $format: MediaFormat, $sort: [MediaSort], $page: Int, $status: MediaStatus, $country: CountryCode) {
    Page(page: $page, perPage: 24) {
     pageInfo { hasNextPage }
-    media(type: $type, search: $search, genre: $genre, startDate_greater: $start, startDate_lesser: $end, season: $season, format: $format, sort: $sort, isAdult: false) {
+    media(type: $type, search: $search, genre: $genre, startDate_greater: $start, startDate_lesser: $end, season: $season, format: $format, sort: $sort, status: $status, countryOfOrigin: $country, isAdult: false) {
      id type title { userPreferred } coverImage { large } bannerImage description(asHtml: false)
      startDate { year } format averageScore episodes chapters genres
     }
@@ -22,7 +22,7 @@ public sealed partial class AniListClient(HttpClient http)
   using var response = await http.PostAsJsonAsync(Endpoint, new { query, variables = new {
    type = options.Kind, search = Empty(options.Search), genre = Empty(options.Genre), start = options.Year is int y ? (int?)(y * 10000) : null, end = options.Year is int z ? (int?)((z + 1) * 10000) : null,
    season = options.Kind == "ANIME" ? Empty(options.Season) : null, format = Empty(options.Format),
-   sort = new[] { options.Sort }, page = options.Page
+   sort = new[] { options.Sort }, page = options.Page, status = options.Status, country = options.Country
   } }, token);
   if (response.StatusCode == HttpStatusCode.TooManyRequests)
    throw new InvalidOperationException("AniList is busy. Wait a minute before trying again.");

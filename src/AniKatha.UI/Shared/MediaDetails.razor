@@ -1,27 +1,52 @@
 @inherits ProfileComponent
-@if(Item is not null) {
-<div class="modal-backdrop" @onclick="Close"><section class="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabindex="-1" @onkeydown="HandleKey" @onclick:stopPropagation="true">
- <button class="close" aria-label="Close details" @onclick="Close">✕</button>
- @if(Item.Banner is not null){<img class="detail-banner" src="@Item.Banner" alt="" />}
- <div class="detail-content"><header class="design-title-card">
+@if (Item is not null)
+{
+ if (Standalone)
+ {
+  @DetailsBody(Item)
+ }
+ else
+ {
+  <div class="modal-backdrop" @onclick="Close"><section class="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabindex="-1" @onkeydown="HandleKey" @onclick:stopPropagation="true">
+   <div class="template-detail-top"><button type="button" class="text-link" aria-label="Close details" @onclick="Close">← Details</button></div>
+   @DetailsBody(Item)
+  </section></div>
+ }
+}
+@code {
+ [Parameter] public bool Standalone { get; set; }
+ RenderFragment DetailsBody(Media Item) => @<div>
+ <div class="detail-content template-anime-details"><header class="design-title-card">
  @if (Item.Poster is { } cover && AddonResources.MediaUrl(cover)) { <img src="@cover" alt="" /> }
- <div><span class="eyebrow">@Item.Kind · @Item.Format?.Replace('_',' ')</span><h2 id="detail-title">@Item.Title</h2>
+ <a class="secondary template-tracker" href="@($"https://anilist.co/{(Item.Kind == "ANIME" ? "anime" : "manga")}/{Item.Id}")" target="_blank" rel="noopener noreferrer" aria-label="Open title on AniList">AL</a>
+ <div><span class="eyebrow">@Item.Kind · @Item.Format?.Replace('_',' ')</span>
+ @if (Standalone) { <h1 id="detail-title">@Item.Title</h1> }
+ else { <h2 id="detail-title">@Item.Title</h2> }
+ @if (Item.AlternateTitle is { } alternate && alternate != Item.Title) { <p>@alternate</p> }
  <p class="muted">@Item.Year · @(Item.Score is null ? "Unrated" : $"{Item.Score / 10.0}/10") · @(Item.Kind=="ANIME" ? $"{Item.Episodes?.ToString()??"?"} episodes" : $"{Item.Chapters?.ToString()??"?"} chapters")</p></div></header>
  <div class="chips">@foreach(var genre in Item.Genres){<span>@genre</span>}</div>
- <section class="design-detail-section"><h3>Synopsis</h3><p>@(string.IsNullOrWhiteSpace(Item.Description) ? "No synopsis available." : Item.Description)</p></section><button class="primary" @onclick="Save" disabled="@saved">@(saved?"Saved to library":"Save to library")</button>
+ @if (Standalone && Item.Kind == "ANIME") { <a class="primary template-watch-action" href="#anime-sources"><Icon Name="play" />Find episodes</a> }
+ <div class="settings-actions template-title-actions"><button class="primary" @onclick="Save" disabled="@saved">@(saved?"Saved to library":"Save to library")</button>
  @if (saved) { <a class="secondary" href="@($"/library/title/{Item.Id}/tracking")">Edit tracking</a> }
+ </div>
+ <details class="template-synopsis" open><summary>Synopsis</summary><p>@(string.IsNullOrWhiteSpace(Item.Description) ? "No synopsis available." : Item.Description)</p></details>
  @if(error is not null){<p role="alert">@error</p>}
  @if(Item.Kind == "ANIME")
  {
-  <YouTubeEpisodeList AniListId="Item.Id" FromHome="FromHome"/>
+  <section id="anime-sources">
+   <YouTubeEpisodeList AniListId="Item.Id" FromHome="FromHome"/>
+   @if (Standalone)
+   {
+    <TrackedTitleSources Title="@(new SavedTitle { Id = Item.Id, Kind = "ANIME", Title = Item.Title, Poster = Item.Poster })" />
+   }
+  </section>
  }
  else
  {
   <a class="primary" href="@($"/manga/details/{Item.Id}")">Find chapters</a>
  }
- </div></section></div>
-}
-@code {
+ </div>
+ </div>;
  [Parameter] public bool FromHome { get; set; }
  [Parameter] public Media? Item {get;set;}
  [Parameter] public EventCallback Closed {get;set;}

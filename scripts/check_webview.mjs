@@ -123,7 +123,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           for (let attempt = 0; attempt < 60; attempt++) {
             const heading = document.querySelector('h1')?.textContent.trim();
             const search = document.querySelector('input[aria-label="Search titles"]');
-            if (location.pathname === path && heading === tab &&
+            if (location.pathname === path && heading === (${mode === 'seed'} ? tab : 'Browse ' + tab) &&
                 search?.placeholder === 'Search ' + tab.toLowerCase() + ' titles…') return true;
             await new Promise(resolve => setTimeout(resolve, 100));
           }
@@ -276,7 +276,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           tab('library');
           await wait(() => location.pathname === '/library', 'leave the baseline reader');
           tab('manga');
-          await wait(() => location.pathname === '/manga' && document.querySelector('h1')?.textContent === 'Manga', 'manga catalogue');
+          await wait(() => location.pathname === '/manga' && (document.querySelector('h1')?.textContent === 'Browse Manga' || document.querySelector('h1')?.textContent === 'Manga'), 'manga catalogue');
           await click('The Midnight Lighthouse');
           await click('Chapter 1');
           await click('Read Chapter 1');
@@ -287,7 +287,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await click('Disable');
         await wait(() => button('Enable'), 'disabled source');
         tab('manga');
-        await wait(() => document.querySelector('h1')?.textContent === 'Manga', 'manga tab');
+        await wait(() => (document.querySelector('h1')?.textContent === 'Browse Manga' || document.querySelector('h1')?.textContent === 'Manga'), 'manga tab');
         if (button('The Midnight Lighthouse')) throw new Error('Disabled provider still contributes results');
         await sources();
         await click('Enable');

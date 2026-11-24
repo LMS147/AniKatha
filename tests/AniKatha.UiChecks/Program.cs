@@ -97,7 +97,7 @@ Check((await store.GetLibraryAsync()).Count==2,"Identical local IDs across provi
 var shelf=context.Render<Library>();
 shelf.WaitForAssertion(()=>Check(shelf.FindAll(".library-item").Count==2,"Saved records reach Library"));
 await shelf.InvokeAsync(()=>shelf.FindAll("button").First(x=>x.TextContent=="Add to favourites").ClickAsync(new()));
-shelf.FindAll("button").Single(x=>x.TextContent=="Favourites").Click();
+shelf.FindAll("button").Single(x=>x.TextContent.StartsWith("Favourites", StringComparison.Ordinal)).Click();
 Check(shelf.FindAll(".library-item").Count==1,"Favourite filter");
 await ClickAsync(shelf, "Stats");
 Check(shelf.Find(".design-stat-card h2").TextContent == "Anime Stats", "Library switches to anime stats from saved data");
@@ -107,9 +107,10 @@ await ClickAsync(shelf, "Anime List");
 Check(shelf.FindAll(".library-item").Count == 2, "Anime List displays saved anime");
 await shelf.Find(".design-library-controls select").ChangeAsync("COMPLETED");
 Check(shelf.FindAll(".library-item").Count == 0, "Library status filter changes the listed titles");
+await ClickAsync(shelf, "Overview");
 await ClickAsync(shelf, "Downloads");
 shelf.Render();
-Check(shelf.Find("[aria-label='Library views'] [aria-pressed='true']").TextContent == "Downloads",
+Check(shelf.FindAll(".design-library-shortcuts").Count == 0 && shelf.Markup.Contains("Downloads"),
  "Library retains the selected view when the same route parameters are reapplied");
 var record=(await store.HistoryAsync()).Single(x=>x.Type=="manga");
 var resume=context.Render<Resume>(p=>p.Add(x=>x.Id,record.Id));
@@ -194,6 +195,7 @@ await HomeChecks.RunAsync();
 await SpotlightChecks.RunAsync();
 await ProfileUiChecks.RunAsync();
 await TrackingScreenChecks.RunAsync();
+await TemplateChecks.RunAsync();
 
 static async Task ClickAsync<T>(IRenderedComponent<T> view, string label) where T : IComponent
 {

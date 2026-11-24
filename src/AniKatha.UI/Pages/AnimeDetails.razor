@@ -1,0 +1,47 @@
+@page "/anime/details/{Id:int}"
+@implements IDisposable
+@inject AniListClient Api
+
+<article class="template-details">
+ <nav class="template-detail-top"><a class="text-link" href="/anime" aria-label="Back to Browse Anime">← Details</a></nav>
+ @if (item is { } media)
+ {
+  <PageTitle>@media.Title · AniKatha</PageTitle>
+  <MediaDetails @key="media.Id" Item="media" Standalone="true" />
+ }
+ else if (error is not null)
+ {
+  <div class="notice" role="alert">@error <button type="button" @onclick="Load">Try again</button></div>
+ }
+ else { <p role="status">Opening anime…</p> }
+</article>
+
+@code {
+ [Parameter] public int Id { get; set; }
+ Media? item;
+ string? error;
+ CancellationTokenSource? request;
+
+ protected override Task OnParametersSetAsync() => Load();
+
+ async Task Load()
+ {
+  request?.Cancel();
+  request?.Dispose();
+  request = new();
+  var token = request.Token;
+  var id = Id;
+  item = null;
+  error = null;
+  try
+  {
+   var result = await Api.FindTitleAsync(id, "ANIME", token);
+   if (token.IsCancellationRequested) return;
+   if (result is { Kind: "ANIME" } && result.Id == id) item = result;
+   else error = "This anime could not be found.";
+  }
+  catch { if (!token.IsCancellationRequested) error = "Could not load anime details. Check your connection."; }
+ }
+
+ public void Dispose() { request?.Cancel(); request?.Dispose(); }
+}
