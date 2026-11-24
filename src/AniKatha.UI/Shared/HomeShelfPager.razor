@@ -1,0 +1,17 @@
+@if (Count > PageSize)
+{
+ <div class="home-shelf-pager">
+  <button type="button" aria-label="Previous @Label" disabled="@(Offset == 0)" @onclick="() => Move(-PageSize)">‹</button>
+  <button type="button" aria-label="Next @Label" disabled="@(Offset + PageSize >= Count)" @onclick="() => Move(PageSize)">›</button>
+ </div>
+}
+
+@code {
+ [Parameter, EditorRequired] public string Label { get; set; } = "";
+ [Parameter] public int Count { get; set; }
+ [Parameter] public int PageSize { get; set; } = 2;
+ [Parameter] public int Offset { get; set; }
+ [Parameter] public EventCallback<int> OffsetChanged { get; set; }
+
+ Task Move(int delta) => OffsetChanged.InvokeAsync(Math.Max(0, Offset + delta));
+}

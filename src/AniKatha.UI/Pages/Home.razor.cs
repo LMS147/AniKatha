@@ -19,6 +19,7 @@ public partial class Home
     private static readonly string[] ReleaseOptions = ["New Release", "Newly Added", "Just Completed"];
     private readonly CancellationTokenSource stop = new();
     private readonly Dictionary<DateOnly, Feed<AiringEpisode>> schedule = [];
+    private readonly HashSet<string> hiddenHistory = [];
     private readonly Feed<HomeTitle> trending = new();
     private readonly Feed<HomeCard> watch = new(), latest = new(), upcoming = new(),
         newRelease = new(), completed = new(), followed = new(), reading = new(), discover = new(),
@@ -27,7 +28,8 @@ public partial class Home
     private readonly DateOnly today = DateOnly.FromDateTime(DateTime.Today);
     private DateOnly day = DateOnly.FromDateTime(DateTime.Today);
     private bool manga, mangaLoaded, showTrending, hasFollowed, disposed;
-    private int watchLimit = 4, upcomingLimit = 4, readingLimit = 4;
+    private int watchLimit = 2, upcomingLimit = 2;
+    private int latestOffset, followedOffset, readingOffset, popularOffset, newMangaOffset;
     private string release = ReleaseOptions[0];
     private Media? selected;
     private HomeProviderTitle? selectedProvider;
@@ -35,6 +37,16 @@ public partial class Home
     private List<AddonResources> providers = [], spotlightProviders = [];
     private IReadOnlySet<int> spotlightEmbeddedIds = new HashSet<int>();
     private bool spotlightDetails;
+
+    private IEnumerable<HomeCard> VisibleHistory(Feed<HomeCard> feed) =>
+        feed.Items.Where(card => card.Link is null || !hiddenHistory.Contains(card.Link));
+
+    private void HideHistory(string link)
+    {
+        hiddenHistory.Add(link);
+        var count = VisibleHistory(reading).Count();
+        if (readingOffset >= count) readingOffset = Math.Max(0, readingOffset - 2);
+    }
 
     private Feed<AiringEpisode> ActiveSchedule => schedule[day];
     private IEnumerable<HomeCard> DiscoveryCards => addonManga.Items.Take(4)
@@ -123,6 +135,7 @@ public partial class Home
 
     private Task LatestFilter(bool useTrending)
     {
+        latestOffset = 0;
         showTrending = useTrending;
         return useTrending && !trending.Started ? LoadTrending() : Task.CompletedTask;
     }
@@ -329,13 +342,13 @@ public partial class Home
                     if (label.Length == 0) label = $"Chapter {chosen.Number}";
                     var unitId = Field(chosen.Unit, "id");
                     var canOpen = provider.ResolveUnitProviders("manga", chosen.Unit, enabled).Any();
-                    var previous = prior.Number is not null ? Field(prior.Unit, "title")
+                    var previous = prior.Number is not null ? $"Chapter {prior.Number}"
                         : canonical && title.Progress > 0 ? $"Chapter {title.Progress}" : null;
                     var hasMetadata = root.TryGetProperty("meta", out var metadata);
                     var poster = title.Poster ?? (hasMetadata ? Field(metadata, "poster") : null);
                     var copy = new SavedTitle { Id = title.Id, Kind = title.Kind, Title = title.Title, Poster = poster, ExternalId = id };
-                    result.Add(new(title.Title, poster, true, label, canOpen ? previous is { Length: > 0 } ? $"Last opened · {previous}" : null :
-                        "Open title to check sources", Provider: new(provider, "manga", copy, canOpen ? unitId : null, canonical ? title.Id : null)));
+                    result.Add(new(title.Title, poster, true, label, canOpen ? null : "Open title to check sources",
+                        Provider: new(provider, "manga", copy, canOpen ? unitId : null, canonical ? title.Id : null), Previous: previous));
                     break;
                 }
                 catch (AddonResourceNotFoundException) { }

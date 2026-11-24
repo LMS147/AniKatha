@@ -82,10 +82,15 @@ internal static class HomeChecks
         Titles(home, "anime", ["Continue Watching", "Latest Episodes", "Upcoming Anime", "Release lists", "Estimated Schedule"]);
         if (fixture.PopulateCaptures)
         {
-            home.WaitForAssertion(() => Check(home.FindAll("#home-anime .home-card-target").Count >= 16 &&
+            home.WaitForAssertion(() => Check(home.FindAll("#home-anime .home-card-target").Count >= 10 &&
                 home.FindAll("#home-anime time").Count >= 3 && home.FindAll(".home-spotlight-art").Count == 1 &&
                 home.Find(".home-spotlight-action").TextContent.Contains("Watch now"), "All Anime capture shelves and the spotlight are populated."));
             Capture(captureDirectory!, "anime", home, context);
+            var firstEpisode = home.Find("[aria-labelledby='home-latest-title'] .home-card-target").TextContent;
+            await home.InvokeAsync(() => home.Find("[aria-label='Next episodes']").ClickAsync(new()));
+            Check(home.Find("[aria-labelledby='home-latest-title'] .home-card-target").TextContent != firstEpisode,
+                "The template’s shelf arrow opens another page of real episodes.");
+            await home.InvokeAsync(() => home.Find("[aria-label='Previous episodes']").ClickAsync(new()));
             await Click(home, "[aria-labelledby='home-watch-title'] header button", "View more ›");
             Check(home.FindAll("[aria-labelledby='home-watch-title'] .home-card-target").Count == 5, "Watch history expansion keeps the saved cards.");
             await Click(home, "[aria-labelledby='home-upcoming-title'] header button", "View more ›");
@@ -119,7 +124,7 @@ internal static class HomeChecks
         });
         if (fixture.PopulateCaptures)
         {
-            home.WaitForAssertion(() => Check(home.FindAll("#home-manga .home-card-target").Count >= 15, "All supported Manga shelves are populated."));
+            home.WaitForAssertion(() => Check(home.FindAll("#home-manga .home-card-target").Count >= 8, "All supported Manga shelves are populated."));
             Capture(captureDirectory!, "manga", home, context);
         }
         fixture.Trending.TrySetResult();
@@ -137,6 +142,8 @@ internal static class HomeChecks
         Check(home.Find(".home-day[aria-pressed='true']").TextContent == date &&
             home.FindAll("#home-anime button").Any(x => x.TextContent == "Trending" && x.GetAttribute("aria-pressed") == "true"),
             "Home restores the Anime day and filter selection.");
+        await home.InvokeAsync(() => home.Find("[aria-label='Hide from Continue Watching']").ClickAsync(new()));
+        Check(home.FindAll("a[href='/resume/watch']").Count == 0, "Hiding a card only dismisses it from Home.");
         Check(await store.GetPlaybackPositionAsync(episode) == 84.275 && await store.GetReadingPageAsync(chapter) == 4,
             "Rendering cards does not round stored resume positions.");
         Console.WriteLine("PASS: Home section order, independent filters and asynchronous feeds, resume links, missing artwork, followed chapter, provider failure, and empty schedule.");
