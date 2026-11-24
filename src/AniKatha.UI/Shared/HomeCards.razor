@@ -10,6 +10,11 @@
    {
     <button class="home-card-target" type="button" @onclick="() => Selected.InvokeAsync(card)">@Body(card)</button>
    }
+   @if (Dismissed.HasDelegate && card.Link is { } link)
+   {
+    <button type="button" class="home-dismiss" aria-label="@(card.Manga ? "Hide from Reading History" : "Hide from Continue Watching")"
+            @onclick="() => Dismissed.InvokeAsync(link)">×</button>
+   }
   </article>
  }
 </div>
@@ -18,6 +23,7 @@
  [Parameter, EditorRequired] public IEnumerable<HomeCard> Cards { get; set; } = [];
  [Parameter] public bool Compact { get; set; }
  [Parameter] public EventCallback<HomeCard> Selected { get; set; }
+ [Parameter] public EventCallback<string> Dismissed { get; set; }
 
  RenderFragment Body(HomeCard card) => @<text>
   <span class="home-art">
@@ -27,23 +33,39 @@
     <img src="@poster" alt="" loading="lazy" decoding="async" @onerror="() => failed.Add(card)" hidden="@failed.Contains(card)" />
    }
    @if (!Compact && card.Rank is int rank) { <span class="home-rank" aria-label="@($"Rank {rank}")">#@rank</span> }
+   @if (!Compact && !card.Manga)
+   {
+    @Metadata(card)
+   }
+   @if (!Compact && card.Manga && card.Link is not null && card.Progress is double read)
+   {
+    <span class="home-read-percent" aria-label="@($"{read:P0} read")">@read.ToString("P0")</span>
+   }
+   @if (!Compact && card.Manga && card.Previous is { } previous)
+   {
+    <span class="home-previous"><Icon Name="library" /> @previous</span>
+   }
   </span>
   <span class="home-card-copy">
    @if (Compact) { <strong class="home-card-title">@card.Title</strong> }
-   @if (!string.IsNullOrWhiteSpace(card.Caption) || !string.IsNullOrWhiteSpace(card.Note) || card.Progress.HasValue)
-   {
-    <span class="home-card-meta">
-     @if (!string.IsNullOrWhiteSpace(card.Caption)) { <small class="home-card-label">@card.Caption</small> }
-     @if (!string.IsNullOrWhiteSpace(card.Note)) { <small class="@(card.Link is null ? "home-card-note" : "home-card-note home-card-time")">@card.Note</small> }
-     @if (!Compact && card.Progress is double progress)
-     {
-      <progress class="home-progress" value="@progress" max="1" aria-label="Saved progress"></progress>
-     }
-    </span>
-   }
+   @if (Compact || card.Manga) { @Metadata(card) }
    @if (!Compact) { <strong class="home-card-title">@card.Title</strong> }
   </span>
   @if (Compact) { <span class="home-row-arrow" aria-hidden="true">›</span> }
+ </text>;
+
+ RenderFragment Metadata(HomeCard card) => @<text>
+  @if (!string.IsNullOrWhiteSpace(card.Caption) || !string.IsNullOrWhiteSpace(card.Note) || !card.Manga && card.Progress.HasValue)
+  {
+   <span class="home-card-meta @(card.Link is null ? "" : "home-resume-meta")">
+    @if (!Compact && !card.Manga && card.Progress is double progress)
+    {
+     <progress class="home-progress" value="@progress" max="1" aria-label="Saved progress"></progress>
+    }
+    @if (!string.IsNullOrWhiteSpace(card.Caption)) { <small class="home-card-label">@card.Caption</small> }
+    @if (!string.IsNullOrWhiteSpace(card.Note)) { <small class="@(card.Link is null ? "home-card-note" : "home-card-note home-card-time")">@card.Note</small> }
+   </span>
+  }
  </text>;
 
  readonly HashSet<HomeCard> failed = [];

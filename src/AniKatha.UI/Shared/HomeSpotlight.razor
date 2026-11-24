@@ -19,8 +19,8 @@
      @if (title.Date is { } date) { <li><Icon Name="calendar" /> @date.ToString("MMM d, yyyy")</li> }
      else if (title.Season is { Length: > 0 } season && (title.SeasonYear ?? media.Year) is int year)
      { <li>@($"{char.ToUpperInvariant(season[0])}{season[1..].ToLowerInvariant()} {year}")</li> }
-     @if (media.Score is > 0) { <li><span aria-hidden="true" class="spotlight-star">★</span> @($"{media.Score.Value / 10.0:0.0}/10")</li> }
-     @if (media.Episodes is > 0) { <li>@media.Episodes eps</li> }
+     @if (media.Score is > 0) { <li><span aria-hidden="true" class="spotlight-star">★</span> <span class="home-spotlight-number">@($"{media.Score.Value / 10.0:0.0}/10")</span></li> }
+     @if (media.Episodes is > 0) { <li><Icon Name="play" /> <span class="home-spotlight-number">@media.Episodes eps</span></li> }
     </ul>
     <div class="home-spotlight-footer">
      <button type="button" class="home-spotlight-action" @onclick="Open">

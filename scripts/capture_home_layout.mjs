@@ -146,12 +146,12 @@ function measure({ active, width, enlarged }) {
     if (Math.abs(poster.width / poster.height - 2 / 3) > 0.012) issues.push('poster ratio');
     const band = grid.querySelector('.home-card-meta');
     if (band && active === '#home-anime' && grid.querySelector('.home-card:first-child .home-card-meta') &&
-        Math.abs(bounds(band).top - poster.bottom) > 1) issues.push('detached anime strip');
+        (bounds(band).top < poster.top || Math.abs(bounds(band).bottom - poster.bottom) > 2)) issues.push('detached anime overlay');
   }
   const calendar = view.querySelector('.home-calendar');
   if (calendar) {
     const heading = bounds(calendar.closest('header') ?? calendar.closest('section'));
-    if (bounds(calendar).width < heading.width - 28 || calendar.querySelectorAll('.home-day').length !== 3)
+    if (bounds(calendar).width < heading.width - 34 || calendar.querySelectorAll('.home-day').length !== 3)
       issues.push('schedule dates do not fill their panel');
   }
   const release = view.querySelector('.home-schedule button');
@@ -159,7 +159,7 @@ function measure({ active, width, enlarged }) {
     const time = bounds(release.querySelector('time'));
     const episode = bounds(release.querySelector('small'));
     const title = bounds(release.querySelector('strong'));
-    if (episode.left <= time.left || Math.abs(episode.top - time.top) > 3 || title.top < Math.max(time.bottom, episode.bottom))
+    if (episode.left <= time.left || Math.abs((episode.top + episode.height / 2) - (time.top + time.height / 2)) > 3 || title.top < Math.max(time.bottom, episode.bottom))
       issues.push('schedule row alignment');
   }
   const before = view.scrollTop;

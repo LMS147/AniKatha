@@ -21,25 +21,27 @@
   <div class="home-view" id="home-anime" role="tabpanel" aria-labelledby="home-tab-anime" aria-hidden="@Pressed(manga)" inert="@manga" tabindex="0">
    <section class="home-section" aria-labelledby="home-watch-title">
     <header><h2 id="home-watch-title"><Icon Name="history" /> Continue Watching</h2>
-     @if (watch.Items.Count > watchLimit) { <button class="home-link" @onclick="() => watchLimit += 6">View more <span aria-hidden="true">›</span></button> }
+     @if (VisibleHistory(watch).Count() > watchLimit) { <button class="home-link" @onclick="() => watchLimit += 6">View more <span aria-hidden="true">›</span></button> }
     </header>
-    <HomeCards Cards="watch.Items.Take(watchLimit)" />
-    <HomeFeedState Loading="watch.Loading" Failed="watch.Failed" HasItems="watch.HasItems" Retry="LoadWatch"
+    <HomeCards Cards="VisibleHistory(watch).Take(watchLimit)" Dismissed="HideHistory" />
+    <HomeFeedState Loading="watch.Loading" Failed="watch.Failed" HasItems="VisibleHistory(watch).Any()" Retry="LoadWatch"
                    Empty="Episodes you start will appear here." ActionHref="/anime" ActionLabel="Browse Anime"/>
    </section>
 
    <section class="home-section" aria-labelledby="home-latest-title">
-    <header><h2 id="home-latest-title">Latest Episodes</h2></header>
+    @{
+     var episodeCards = showTrending ? trending.Items.Select(title => FromTitle(title, null, null)) : latest.Items;
+    }
+    <header><h2 id="home-latest-title">Latest Episodes</h2>
+     <HomeShelfPager Count="episodeCards.Count()" Label="episodes" PageSize="4" @bind-Offset="latestOffset" />
+    </header>
     <div class="home-segment home-inline" role="group" aria-label="Latest episode filters">
      <button aria-pressed="@Pressed(!showTrending)" @onclick="() => LatestFilter(false)">All</button>
      <button aria-pressed="@Pressed(showTrending)" @onclick="() => LatestFilter(true)">Trending</button>
      @if (!showTrending && latest.Items.Count > 1) { <button @onclick="RandomEpisode">Random</button> }
     </div>
     @if (showTrending) { <p class="home-description">Trending anime currently airing.</p> }
-    @{
-     var episodeCards = showTrending ? trending.Items.Select(title => FromTitle(title, null, null)) : latest.Items;
-    }
-    <HomeCards Cards="episodeCards.Take(6)" Selected="OpenCard" />
+    <HomeCards Cards="episodeCards.Skip(latestOffset).Take(4)" Selected="OpenCard" />
     <HomeFeedState Loading="@(showTrending ? trending.Loading : latest.Loading)" Failed="@(showTrending ? trending.Failed : latest.Failed)" HasItems="episodeCards.Any()"
                    Error="The latest feed couldn’t be loaded." Empty="No titles in this feed." Retry="RetryLatest"/>
    </section>
@@ -52,19 +54,19 @@
     <HomeFeedState Loading="upcoming.Loading" Failed="upcoming.Failed" HasItems="upcoming.HasItems" Empty="No upcoming titles were found." Retry="LoadUpcoming"/>
    </section>
 
-   <section class="home-section" aria-labelledby="home-releases-title">
-    <header><h2 id="home-releases-title">Release lists</h2></header>
+   <section class="home-section home-release-panel" aria-labelledby="home-releases-title" aria-label="Release lists">
     <div class="home-segment home-release-switch" role="group" aria-label="Release lists">
      @foreach (var tab in ReleaseOptions)
      {
       <button aria-pressed="@Pressed(release == tab)" @onclick="() => ChangeRelease(tab)">@tab</button>
      }
     </div>
+    <header><h2 id="home-releases-title">Release lists</h2><span class="home-release-label" aria-hidden="true">@release <span>→</span></span></header>
     @if (release == "Newly Added") { <div class="home-empty"><p>Catalog addition dates are unavailable.</p></div> }
     else
     {
      var releases = release == "Just Completed" ? completed : newRelease;
-     <HomeCards Cards="releases.Items.Take(5)" Selected="OpenCard" Compact="true"/>
+     <HomeCards Cards="releases.Items.Take(3)" Selected="OpenCard" Compact="true"/>
      <HomeFeedState Loading="releases.Loading" Failed="releases.Failed" HasItems="releases.HasItems" Posters="false" Retry="LoadRelease"
                     Empty="No matches from the last 30 days."/>
     }
@@ -73,6 +75,7 @@
    <section class="home-section home-schedule-section" aria-labelledby="home-schedule-title">
     <header class="home-schedule-heading">
      <h2 id="home-schedule-title">Estimated Schedule</h2>
+    <p class="home-description">Times shown in your local time zone</p>
     <div class="home-calendar" aria-label="Schedule date">
      <button class="home-day-arrow" aria-label="Previous day" @onclick="() => ChangeDay(day.AddDays(-1))">‹</button>
      @foreach (var date in new[] { day.AddDays(-1), day, day.AddDays(1) })
@@ -83,7 +86,6 @@
      }
      <button class="home-day-arrow" aria-label="Next day" @onclick="() => ChangeDay(day.AddDays(1))">›</button>
     </div>
-    <p class="home-description">Times shown in your local time zone.</p>
     </header>
     @if (ActiveSchedule.Items.Count > 0)
     {
@@ -92,7 +94,7 @@
       {
        <li><button @onclick="() => OpenCard(FromAiring(airing))">
         <time datetime="@airing.AirsAt.ToString("O")">@airing.AirsAt.ToLocalTime().ToString("t")</time>
-        <small class="home-schedule-episode">Episode @airing.Episode</small>
+        <small class="home-schedule-episode"><Icon Name="play" /> Episode @airing.Episode</small>
         <strong>@airing.Media.Title</strong>
        </button></li>
       }
@@ -105,38 +107,43 @@
 
   <div class="home-view" id="home-manga" role="tabpanel" aria-labelledby="home-tab-manga" aria-hidden="@Pressed(!manga)" inert="@(!manga)" tabindex="0">
    <section class="home-section" aria-labelledby="home-followed-title">
-    <header><h2 id="home-followed-title">New Chapters from Followed Comics</h2></header>
-    <HomeCards Cards="followed.Items.Take(6)" Selected="OpenCard" />
+    <header><h2 id="home-followed-title">New Chapters from Followed Comics</h2>
+     <HomeShelfPager Count="followed.Items.Count" Label="followed comics" @bind-Offset="followedOffset" />
+    </header>
+    <HomeCards Cards="followed.Items.Skip(followedOffset).Take(2)" Selected="OpenCard" />
     <HomeFeedState Loading="followed.Loading" Failed="followed.Failed" HasItems="followed.HasItems" Retry="LoadFollowed"
                    Empty="@FollowedMessage" ActionHref="@(hasFollowed ? "/library" : "/manga")" ActionLabel="@(hasFollowed ? "Open Library" : "Browse Manga")"/>
    </section>
 
    <section class="home-section" aria-labelledby="home-read-title">
     <header><h2 id="home-read-title">Reading History</h2>
-     @if (reading.Items.Count > readingLimit) { <button class="home-link" @onclick="() => readingLimit += 6">View more <span aria-hidden="true">›</span></button> }
+     <HomeShelfPager Count="VisibleHistory(reading).Count()" Label="reading history" @bind-Offset="readingOffset" />
     </header>
-    <HomeCards Cards="reading.Items.Take(readingLimit)" />
-    <HomeFeedState Loading="reading.Loading" Failed="reading.Failed" HasItems="reading.HasItems" Retry="LoadReading"
+    <HomeCards Cards="VisibleHistory(reading).Skip(readingOffset).Take(2)" Dismissed="HideHistory" />
+    <HomeFeedState Loading="reading.Loading" Failed="reading.Failed" HasItems="VisibleHistory(reading).Any()" Retry="LoadReading"
                    Empty="Chapters you open will appear here." ActionHref="/manga" ActionLabel="Browse Manga"/>
    </section>
 
    <section class="home-section" aria-labelledby="home-discover-title">
     <header><h2 id="home-discover-title">Discover Manga</h2><a class="home-link" href="/manga">View more <span aria-hidden="true">›</span></a></header>
-    <HomeCards Cards="DiscoveryCards" Selected="OpenCard" />
+    <HomeCards Cards="DiscoveryCards.Take(2)" Selected="OpenCard" />
     <HomeFeedState Loading="discover.Loading || addonManga.Loading" HasItems="DiscoveryCards.Any()" Failed="discover.Failed || addonManga.Failed"
                    Error="Some discovery sources couldn’t be loaded." Retry="LoadDiscovery" Empty="No discovery titles were found."/>
    </section>
 
    <section class="home-section" aria-labelledby="home-popular-title">
-    <header><h2 id="home-popular-title">Most Recent Popular</h2></header>
-    <p class="home-description">Popular manga that began in the past year.</p>
-    <HomeCards Cards="popular.Items.Take(6)" Selected="OpenCard" />
+    <header><h2 id="home-popular-title">Most Recent Popular</h2>
+     <HomeShelfPager Count="popular.Items.Count" Label="popular comics" @bind-Offset="popularOffset" />
+    </header>
+    <HomeCards Cards="popular.Items.Skip(popularOffset).Take(2)" Selected="OpenCard" />
     <HomeFeedState Loading="popular.Loading" Failed="popular.Failed" HasItems="popular.HasItems" Empty="No recent popular comics were found." Retry="LoadPopular"/>
    </section>
 
    <section class="home-section" aria-labelledby="home-new-title">
-    <header><h2 id="home-new-title">New Comics</h2></header>
-    <HomeCards Cards="newManga.Items.Take(6)" Selected="OpenCard" />
+    <header><h2 id="home-new-title">New Comics</h2>
+     <HomeShelfPager Count="newManga.Items.Count" Label="new comics" @bind-Offset="newMangaOffset" />
+    </header>
+    <HomeCards Cards="newManga.Items.Skip(newMangaOffset).Take(2)" Selected="OpenCard" />
     <HomeFeedState Loading="newManga.Loading" Failed="newManga.Failed" HasItems="newManga.HasItems" Empty="No new comics were found." Retry="LoadNewManga"/>
    </section>
 
