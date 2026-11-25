@@ -8,6 +8,8 @@ public sealed record CatalogExtra(string Name, bool Required, IReadOnlyList<stri
 public sealed record AddonCatalog(string Type,string Id,string Name,bool Search,bool Skip)
 {
  public IReadOnlyList<CatalogExtra> Extras { get; init; } = [];
+ public string Format { get; init; } = "";
+ public string Ranking { get; init; } = "";
 }
 
 public sealed class AddonResources(InstalledAddon addon)
@@ -77,7 +79,7 @@ public sealed class AddonResources(InstalledAddon addon)
       .Select(option => option.GetString()!).Where(option => option.Length > 0).Distinct().ToArray()))
     .Where(x => x.Name.Length > 0).DistinctBy(x => x.Name).ToList();
    yield return new(type, id, Field(c,"name") is {Length:>0} name ? name : id,
-    extras.Any(x => x.Name == "search"), extras.Any(x => x.Name == "skip")) { Extras = extras };
+    extras.Any(x => x.Name == "search"), extras.Any(x => x.Name == "skip")) { Extras = extras, Format = Field(c, "format"), Ranking = Field(c, "ranking") };
   }
  }
  public IEnumerable<(AddonResources Provider, string UnitId)> ResolveUnitProviders(

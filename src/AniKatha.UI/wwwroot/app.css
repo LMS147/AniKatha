@@ -1382,3 +1382,12 @@ main:has(> .chapter-reading-screen) { padding: 0 0 env(safe-area-inset-bottom); 
 .manga-template-pagination button[aria-current="page"] { border-color: var(--accent); background: var(--selected); }
 main:has(> .manga-details-screen .manga-provider-details) { padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
 .app-shell:has(.manga-details-screen .manga-provider-details) > .bottom-nav { display: none; }
+
+/* Browse Manga discovery */
+.manga-provider-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 10px 16px; color: var(--muted); }
+.manga-provider-picker select { inline-size: auto; max-inline-size: 100%; padding-block: 7px; }
+.manga-discovery-back { margin-block: 8px 12px; }
+.manga-discovery .catalog-card-footer small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manga-discovery .manga-shelf-skeleton { pointer-events: none; }
+.manga-discovery .manga-shelf-skeleton .poster-image { opacity: .55; }
+.manga-shelf-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-block: 6px; }

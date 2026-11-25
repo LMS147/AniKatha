@@ -1,0 +1,20 @@
+  <button class="poster-card" @onclick="Selected">
+   <div class="poster-image">
+    @if (Poster is not null) { <img src="@Poster" alt="" loading="lazy" /> }
+    else { <Icon Name="@(Kind == "ANIME" ? "play" : "book")" /> }
+    @if (Score is int score) { <span class="score"><span aria-hidden="true">★</span> @(score / 10.0)</span> }
+    <strong>@Title</strong>
+   </div>
+   <span class="catalog-card-footer">
+    <small>@Metadata</small>
+    <span class="catalog-card-action" aria-hidden="true">›</span>
+   </span>
+  </button>
+@code {
+ [Parameter, EditorRequired] public string Title { get; set; } = "";
+ [Parameter] public string Kind { get; set; } = "";
+ [Parameter] public string? Poster { get; set; }
+ [Parameter] public int? Score { get; set; }
+ [Parameter] public string Metadata { get; set; } = "";
+ [Parameter] public EventCallback Selected { get; set; }
+}

@@ -1,18 +1,9 @@
 <div class="poster-grid catalog-art-grid @(Shelf ? "catalog-shelf" : null)">
  @foreach (var item in Items)
  {
-  <button class="poster-card" @key="item.Id" @onclick="() => Selected.InvokeAsync(item)">
-   <div class="poster-image">
-    @if (item.Poster is not null) { <img src="@item.Poster" alt="" loading="lazy" /> }
-    else { <Icon Name="@(item.Kind == "ANIME" ? "play" : "book")" /> }
-    @if (item.Score is int score) { <span class="score"><span aria-hidden="true">★</span> @(score / 10.0)</span> }
-    <strong>@item.Title</strong>
-   </div>
-   <span class="catalog-card-footer">
-    <small>@string.Join(" · ", new[] { item.Format?.Replace('_',' '), item.Year?.ToString() }.Where(value => !string.IsNullOrWhiteSpace(value)))</small>
-    <span class="catalog-card-action" aria-hidden="true">›</span>
-   </span>
-  </button>
+  <MediaPoster @key="item.Id" Title="@item.Title" Kind="@item.Kind" Poster="@item.Poster" Score="@item.Score"
+               Metadata="@string.Join(" · ", new[] { item.Format?.Replace('_',' '), item.Year?.ToString() }.Where(value => !string.IsNullOrWhiteSpace(value)))"
+               Selected="() => Selected.InvokeAsync(item)" />
  }
 </div>
 @code {

@@ -190,6 +190,7 @@ Console.WriteLine("PASS: phase 2 fixture covered metadata, explicit unit mapping
 Console.WriteLine("PASS: install via Sources, type routing, pagination, repeat-page stop, chapter reading, page resume, enable/disable, episode source → player.");
 
 await CatalogChecks.RunAsync(new LocalStore(Path.Combine(Path.GetTempPath(), $"anikatha-catalog-{Guid.NewGuid()}.db3")));
+await MangaDiscoveryChecks.RunAsync();
 await DownloadChecks.RunAsync();
 await PlayerChecks.RunAsync();
 await HomeChecks.RunAsync();

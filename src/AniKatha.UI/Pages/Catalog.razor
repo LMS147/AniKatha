@@ -60,11 +60,36 @@
 }
 @if (ShowDiscovery)
 {
- <CatalogDiscovery Kind="@Kind" Selected="Select" />
+ @if (Kind == "MANGA")
+ {
+  @if (source.Length == 0 && httpProviders.Any(provider => provider.Catalogs(Kind).Any()))
+  {
+   <label class="manga-provider-picker">Browse by provider
+    <select value="" @onchange="ChangeSource">
+     <option value="">Choose a provider</option>
+     @foreach (var provider in httpProviders.Where(provider => provider.Catalogs(Kind).Any()))
+     {
+      <option value="@provider.ProviderKey">@provider.Addon.Name</option>
+     }
+    </select>
+   </label>
+  }
+  <MangaDiscovery @key="source" Ready="initialized" Providers="@(source.Length == 0 ? httpProviders : [])" />
+ }
+ else
+ {
+  <CatalogDiscovery Kind="@Kind" Selected="Select" />
+ }
  <section class="catalog-samples" aria-label="Samples">@Featured</section>
 }
 else if (appliedSearch.Length == 0 && source.Length == 0 && !HasFilters) { @Featured }
 
+@if (Kind == "MANGA" && !ShowBuiltIn)
+{
+ <button type="button" class="text-link manga-discovery-back" @onclick="ReturnToMangaDiscovery">‹ All Sources</button>
+}
+@if (Kind != "MANGA" || !ShowDiscovery)
+{
 @foreach(var provider in httpProviders.Where(p => source.Length == 0 || p.ProviderKey == source)){
  @foreach(var catalog in provider.Catalogs(Kind)){
   @if (appliedSearch.Length > 0 && !catalog.Search)
@@ -76,6 +101,8 @@ else if (appliedSearch.Length == 0 && source.Length == 0 && !HasFilters) { @Feat
   <ManifestCatalog @key="(provider.ProviderKey,catalog.Type,catalog.Id,submission)" Source="provider" Catalog="catalog" Providers="httpProviders" SubmittedQuery="@appliedSearch" Filters="appliedFilters" Session="pages" OpenMangaPage="@(Kind == "MANGA")"/>
   }
  }
+}
+
 }
 
 @if (ShowBuiltIn && !ShowDiscovery)
@@ -144,7 +171,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  const string AniListSource = "anilist";
  const string JikanSource = "jikan";
  string SourceSetting => $"catalogue-source-{Kind}";
- bool ShowDiscovery => Featured is not null && ShowBuiltIn && !UsingAddon &&
+ bool ShowDiscovery => Featured is not null && (Kind == "MANGA" ? source is "" or AniListSource : ShowBuiltIn && !UsingAddon) &&
     appliedSearch.Length == 0 && !HasFilters && appliedFilters.Sort == "TRENDING_DESC";
  bool ShowBuiltIn => source is "" or AniListSource or JikanSource;
  bool UsingAddon => source == JikanSource || source.Length == 0 && preferJikan && jikan is not null;
@@ -160,8 +187,11 @@ else { <MediaGrid Items="items" Selected="Select"/> }
    if (disposed) return;
    httpProviders = enabled.Select(x => new AddonResources(x)).ToList();
    jikan = enabled.FirstOrDefault(addon => addon.CatalogueProvider == JikanCatalogue.Provider);
-   var legacyPreference = await Store.GetSettingAsync("catalogue-source");
-   preferJikan = legacyPreference is null || legacyPreference == jikan?.Url;
+   if (jikan is not null)
+   {
+    var legacyPreference = await Store.GetSettingAsync("catalogue-source");
+    preferJikan = legacyPreference is null || legacyPreference == jikan.Url;
+   }
    source = FindSource(saved?.Source ?? await Store.GetSettingAsync(SourceSetting) ?? "");
   }
   catch { /* AniList remains available if local storage cannot be opened. */ }
@@ -214,7 +244,8 @@ else { <MediaGrid Items="items" Selected="Select"/> }
   catch (JSDisconnectedException) { }
  }
 
- Task LoadIfSelected() => ShowBuiltIn ? Load() : Task.CompletedTask;
+ Task LoadIfSelected() => ShowBuiltIn && !ShowDiscovery ? Load() : Task.CompletedTask;
+ Task ReturnToMangaDiscovery() => ChangeSource(new() { Value = string.Empty });
 
  string FindSource(string value) =>
   value == AniListSource || value == JikanSource && jikan is not null ||
