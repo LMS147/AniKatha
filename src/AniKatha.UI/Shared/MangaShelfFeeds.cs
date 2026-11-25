@@ -41,7 +41,9 @@ internal sealed class MangaShelfFeed(string key, string label, MangaShelf? shelf
 
     public bool CouldFeed(MangaShelf target) => shelf is not null
         ? shelf == target
-        : target.Format is null || DeclaredFormat.Length == 0 || DeclaredFormat == target.Format;
+        : target.Format is null || DeclaredFormat is not ("manga" or "manhwa" or "lightnovel")
+            || DeclaredFormat == target.Format
+            || Snapshot?.Cards.Any(card => Normalize(card.Format) == target.Format) == true;
 
     public bool IsRankedFor(MangaShelf target) => target.Format is null
         ? ByScore : DeclaredFormat == target.Format && ByPopularity;

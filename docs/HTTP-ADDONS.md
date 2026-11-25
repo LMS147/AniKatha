@@ -53,7 +53,7 @@ For external anime subtitles, send HTTPS WebVTT or SubRip URLs using the existin
 
 AniKatha reads the following optional fields on catalogs of type `manga`:
 
-- `format`: the catalog's documented scope, such as `Manga`, `Manhwa`, or `Light Novel`. A result can supply its own `format` field. An explicit format that conflicts with the catalog scope is not eligible for that popularity shelf. A `Novel` is not treated as a `Light Novel`.
+- `format`: the catalog's documented scope, such as `Manga`, `Manhwa`, or `Light Novel`. An explicit `format` on a result takes precedence over the catalog's format. A `Novel` is not treated as a `Light Novel`.
 - `ranking`: `popularity` for catalogs already sorted from most to least popular or `score` for catalogs containing only titles with community ratings, sorted from highest to lowest. The order and scope must apply across pages.
 
 A `metas` entry can supply `popularity` (a nonnegative integer, with larger numbers meaning more popular) and `communityScore` (a community rating on a 1–100 scale). A catalog without a declared ranking can qualify individual entries through these fields. AniKatha sorts those entries within the catalog and breaks ties by title ID. Send a personal rating through the Library, never as `communityScore`. Title text, catalog names, and language do not classify or rank results. Unclassified titles can still appear in provider browsing and supported search. AniKatha does not combine rankings from different catalogs into a single rank.

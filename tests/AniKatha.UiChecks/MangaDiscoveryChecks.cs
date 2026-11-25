@@ -13,7 +13,7 @@ internal static class MangaDiscoveryChecks
     public static async Task RunAsync()
     {
         var store = new LocalStore(Path.Combine(Path.GetTempPath(), $"manga-discovery-{Guid.NewGuid():N}.db3"));
-        const string fast = """[{"type":"manga","id":"ranked","extra":[{"name":"skip"}]},{"type":"manga","id":"overlap","format":"Manhwa","ranking":"popularity"},{"type":"manga","id":"community","ranking":"score"}]""";
+        const string fast = """[{"type":"manga","id":"ranked","extra":[{"name":"skip"}]},{"type":"manga","id":"overlap","format":"Manhwa","ranking":"popularity"},{"type":"manga","id":"novels","format":"Novel","ranking":"popularity"},{"type":"manga","id":"community","ranking":"score"}]""";
         const string slow = """[{"type":"manga","id":"slow","format":"Manga","ranking":"popularity"}]""";
         const string failure = """[{"type":"manga","id":"retry","format":"Manga","ranking":"popularity"}]""";
         const string generic = """[{"type":"manga","id":"generic","name":"Popular Manhwa"}]""";
@@ -49,6 +49,7 @@ internal static class MangaDiscoveryChecks
         Has(labels[0], "Fast Manga");
         Has(labels[1], "Fast Manhwa");
         Has(labels[2], "Fast Light Novel");
+        Has(labels[2], "Explicit Light Novel");
         Has(labels[3], "Fast Manga");
         Has(labels[3], "Provider Rating");
         Check(!fixture.Delayed.Task.IsCompleted && !fixture.BuiltIn.Task.IsCompleted, "Fast add-on should render before slower feeds");
@@ -198,6 +199,7 @@ internal static class MangaDiscoveryChecks
                 ],
                 "/catalog/manga/ranked/skip=5.json" => [Card("later", "Later Manga", "Manga", 5), Card("laterlight", "Later Light Novel", "Light Novel", 3)],
                 "/catalog/manga/overlap.json" => [Card("manhwa", "Fast Manhwa")],
+                "/catalog/manga/novels.json" => [Card("explicitlight", "Explicit Light Novel", "Light Novel"), Card("broadnovel", "Generic Novel")],
                 "/catalog/manga/community.json" => [new { id = "provider-score", name = "Provider Rating", type = "manga", poster = Art(2) }],
                 "/catalog/manga/slow.json" => [Card("shared", "Slow Manga")],
                 "/catalog/manga/retry.json" => [Card("again", "Recovered Manga", art: 3)],

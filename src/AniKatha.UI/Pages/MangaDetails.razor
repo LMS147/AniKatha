@@ -147,9 +147,16 @@ else if (error is null) { <p role="status">Opening manga…</p> }
      listing = card?.Listing ?? JsonSerializer.SerializeToElement(new { name });
      if (source.Supports("meta", "manga", Title))
      {
-      var root = await Client.FetchJsonAsync(source.Resource("meta", "manga", Title), token);
+      try
+      {
+       var root = await Client.FetchJsonAsync(source.Resource("meta", "manga", Title), token);
+       if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("meta", out var details)) metadata = details;
+      }
+      catch (Exception) when (!token.IsCancellationRequested)
+      {
+       error = "Could not load more details from this provider.";
+      }
       token.ThrowIfCancellationRequested();
-      if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("meta", out var details)) metadata = details;
      }
     }
     (provider, providers) = (source, found);
