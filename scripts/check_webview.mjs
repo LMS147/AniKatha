@@ -262,7 +262,22 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           await wait(() => document.querySelector('video')?.src === 'https://media.w3.org/2010/05/bunny/trailer.mp4', 'resolved anime video');
           if (${testDownloads}) await click('Download Compatibility clip');
         }
+        const selectMangaProvider = async () => {
+          if (oldProfile) return;
+          const providerName = 'AniKatha Story Sampler';
+          const picker = await wait(() => {
+            const currentSource = document.querySelector('[aria-label="Catalogue source"]');
+            if (currentSource?.selectedOptions[0]?.textContent.trim() === providerName) return true;
+            return document.querySelector('.design-catalog > .manga-provider-picker select');
+          }, 'Browse by provider');
+          if (picker === true) return;
+          const option = [...picker.options].find(item => item.textContent.trim() === providerName);
+          if (!option) throw new Error('Story Sampler is missing from Browse by provider');
+          picker.value = option.value;
+          picker.dispatchEvent(new Event('change', { bubbles: true }));
+        };
         tab('manga');
+        await selectMangaProvider();
         await click('The Midnight Lighthouse');
         await click('Chapter 1');
         if (oldProfile) await click('Read Chapter 1');
@@ -303,6 +318,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await click('Enable');
         await wait(() => button('Disable'), 'enabled source');
         tab('manga');
+        await selectMangaProvider();
         await click('The Midnight Lighthouse');
         await click('Chapter 1');
         await wait(() => imageAt(2) && document.querySelector('.reader-position')?.textContent === 'Page 2 of 3', 'restored reading position');

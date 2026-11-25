@@ -9,7 +9,10 @@ public sealed record Media(int Id, string Kind, string Title, string? Poster, st
  public int? Popularity { get; init; }
  public IReadOnlyList<string> Tags { get; init; } = [];
 }
-public sealed record SearchOptions(string Kind = "ANIME", string? Search = null, string? Genre = null, int? Year = null, string? Season = null, string? Format = null, string Sort = "TRENDING_DESC", int Page = 1, string? Status = null, string? Country = null);
+public sealed record SearchOptions(string Kind = "ANIME", string? Search = null, string? Genre = null, int? Year = null, string? Season = null, string? Format = null, string Sort = "TRENDING_DESC", int Page = 1, string? Status = null, string? Country = null)
+{
+ public int PageSize { get; init; } = 24;
+}
 public sealed record MediaPage(List<Media> Items, bool HasNextPage);
 public sealed class SavedTitle
 {

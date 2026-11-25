@@ -5,6 +5,25 @@ namespace AniKatha.UI.Shared;
 
 public sealed class CatalogSession
 {
+    internal Dictionary<string, MangaShelfSnapshot> MangaShelves { get; } = new(StringComparer.Ordinal);
+    internal HashSet<string> ExpandedMangaShelves { get; } = [];
+    internal Dictionary<string, string> MangaShelfSelections { get; } = new(StringComparer.Ordinal);
+    internal void ReorderMangaProviders(IEnumerable<string> providerKeys)
+    {
+        var keys = providerKeys.SelectMany(provider => MangaShelves.Keys.Where(key =>
+            key.StartsWith(provider + "/", StringComparison.Ordinal))).ToArray();
+        var order = keys.Select(key => MangaShelves[key].Order).Order().ToArray();
+        for (var i = 0; i < keys.Length; i++)
+            MangaShelves[keys[i]] = MangaShelves[keys[i]] with { Order = order[i] };
+    }
+
+    internal int MangaShelfOrder { get; set; }
+    internal void InvalidateMangaProvider(string providerKey)
+    {
+        foreach (var key in MangaShelves.Keys.Where(key => key.StartsWith(providerKey + "/", StringComparison.Ordinal)).ToArray())
+            MangaShelves.Remove(key);
+    }
+
     internal Dictionary<string, CatalogTab> Tabs { get; } = new(StringComparer.Ordinal);
 }
 

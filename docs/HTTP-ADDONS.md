@@ -48,3 +48,14 @@ The add-on author should verify each title and unit against the AniList release,
 For **Library → Find Sources**, a provider can advertise the `anilist:` ID prefix on the appropriate `meta` or `chapters` resource, then accept IDs such as `anilist:12345` on that resource. AniKatha also checks searchable catalogs for candidates found by name or an explicit ID in the catalogue response. In each case the title's detail response must confirm the exact AniList ID before the source is offered. Provider IDs remain the IDs used for subsequent unit requests.
 
 For external anime subtitles, send HTTPS WebVTT or SubRip URLs using the existing subtitle resource or inline stream tracks. An entry can include `label` and `role` alongside `lang` and `url`. Use roles such as `full`, `signs-and-songs`, `forced`, `captions` or `sdh` when the source identifies that role. AniKatha keeps existing requests to that URL, including its query parameters. The Android **Open in external player** action sends the selected stream URL to a video app. It does not attach subtitle URLs or custom extras to the generic Android intent.
+
+### Optional Browse Manga shelf metadata
+
+AniKatha reads the following optional fields on catalogs of type `manga`:
+
+- `format`: the catalog's documented scope, such as `Manga`, `Manhwa`, or `Light Novel`. A result can supply its own `format` field. An explicit format that conflicts with the catalog scope is not eligible for that popularity shelf. A `Novel` is not treated as a `Light Novel`.
+- `ranking`: `popularity` for catalogs already sorted from most to least popular or `score` for catalogs containing only titles with community ratings, sorted from highest to lowest. The order and scope must apply across pages.
+
+A `metas` entry can supply `popularity` (a nonnegative integer, with larger numbers meaning more popular) and `communityScore` (a community rating on a 1–100 scale). A catalog without a declared ranking can qualify individual entries through these fields. AniKatha sorts those entries within the catalog and breaks ties by title ID. Send a personal rating through the Library, never as `communityScore`. Title text, catalog names, and language do not classify or rank results. Unclassified titles can still appear in provider browsing and supported search. AniKatha does not combine rankings from different catalogs into a single rank.
+
+The discovery page makes one initial request per browseable catalog and reuses it across shelves. It does not guess required provider-specific filter values. A catalog supporting `skip` should use the number of raw entries returned so far as its offset, including entries that do not qualify for a shelf.

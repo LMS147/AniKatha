@@ -1,0 +1,203 @@
+@using AniKatha.UI.Pages
+@implements IDisposable
+@inject AniListClient AniList
+@inject AddonClient Client
+@inject NavigationManager Navigation
+
+@foreach (var shelf in MangaShelf.All)
+{
+ var matching = feeds.Where(feed => feed.CouldFeed(shelf)).ToArray();
+ var groups = matching.Where(feed => feed.Snapshot is not null)
+     .OrderBy(feed => feed.Snapshot!.Order).ToArray();
+ var cards = groups.SelectMany(feed => feed.Cards(shelf).Select(card => (Feed: feed, Card: card)))
+     .DistinctBy(entry => (Provider: entry.Feed.Provider?.ProviderKey ?? "anilist", entry.Card.Id)).ToArray();
+ var loading = !Ready || matching.Any(feed => feed.Busy);
+ var failures = matching.Where(feed => feed.Failed || feed.FailedNextPage).ToArray();
+ var paginated = groups.Where(feed => feed.Snapshot!.More && (feed.Provider is null
+     || feed.IsRankedFor(shelf) || feed.Cards(shelf).Any())).ToArray();
+ var open = Expanded.Contains(shelf.Title);
+ var selection = Selections.GetValueOrDefault(shelf.Title, "");
+ var options = matching.Where(feed => cards.Any(entry => entry.Feed == feed)).ToArray();
+ var activeCatalog = options.Any(feed => feed.Key == selection) ? selection : "";
+ var shown = open && activeCatalog.Length > 0
+     ? cards.Where(entry => entry.Feed.Key == activeCatalog).ToArray() : cards;
+
+ <section class="catalog-discovery manga-discovery" aria-label="@shelf.Title" @key="shelf.Title">
+  <header class="section-title">
+   <h2>@shelf.Title</h2>
+   @if (open || cards.Length > 3 || paginated.Length > 0)
+   {
+    <button type="button" class="text-link" aria-expanded="@open.ToString().ToLowerInvariant()"
+            @onclick="() => Toggle(shelf.Title)">@(open ? "Show less" : "View all") ›</button>
+   }
+  </header>
+  @if (cards.Length > 0)
+  {
+   @if (open && options.Length > 1)
+   {
+    <label class="manga-provider-picker">Catalog
+     <select aria-label="@($"Catalog for {shelf.Title}")" value="@activeCatalog"
+             @onchange="args => Selections[shelf.Title] = args.Value as string ?? string.Empty">
+      <option value="">All catalogs</option>
+      @foreach (var feed in options)
+      {
+       <option value="@feed.Key">@feed.Label</option>
+      }
+     </select>
+    </label>
+   }
+   <div class="poster-grid catalog-art-grid @(!open ? "catalog-shelf" : null)">
+    @foreach (var entry in open ? shown : cards.GroupBy(entry => entry.Feed).SelectMany(group => group.Take(6)))
+    {
+     var feed = entry.Feed;
+     var card = entry.Card;
+     var key = (feed.Provider?.ProviderKey ?? "anilist", card.Id);
+     <MediaPoster @key="key" Title="@card.Title" Kind="MANGA" Poster="@card.Poster" Score="@card.Score"
+         Metadata="@Metadata(card, feed, matching.Length > 1)" Selected="() => Open(feed, card)" />
+    }
+   </div>
+   @if (matching.Length > 1)
+   {
+    <small class="muted">Ranked within each catalog.</small>
+   }
+  }
+  else if (loading)
+  {
+   <div class="poster-grid catalog-art-grid catalog-shelf" role="status" aria-label="Loading titles">
+    @for (var i = 0; i < 3; i++)
+    {
+     <div class="poster-card manga-shelf-skeleton" aria-hidden="true"><div class="poster-image"></div><span class="catalog-card-footer"></span></div>
+    }
+   </div>
+  }
+  else if (failures.Length == 0)
+  {
+   <p>No ranked titles found.</p>
+  }
+  else if (groups.Length == 0)
+  {
+   <p role="status">This shelf is unavailable.</p>
+  }
+  else
+  {
+   <p role="status">No titles found in the available catalogs.</p>
+  }
+  @if (open && paginated.Length > 0)
+  {
+   <div class="manga-shelf-actions">
+    @foreach (var feed in paginated.Where(feed => !feed.FailedNextPage && (activeCatalog.Length == 0 || feed.Key == activeCatalog)))
+    {
+     <button type="button" class="secondary" disabled="@feed.Busy"
+             @onclick="() => Load(feed, true)">@(feed.Busy ? "Loading…" : $"More from {feed.Label}")</button>
+    }
+   </div>
+  }
+  @if (failures.Length > 0)
+  {
+   <div class="manga-shelf-actions" role="status">
+    @foreach (var feed in failures)
+    {
+     <button type="button" class="text-link" disabled="@feed.Busy"
+             @onclick="() => Load(feed, feed.FailedNextPage)">Retry @feed.Label</button>
+    }
+   </div>
+  }
+ </section>
+}
+
+@code {
+ [CascadingParameter] public CatalogSession? Session { get; set; }
+ [Parameter] public bool Ready { get; set; }
+ [Parameter] public IReadOnlyList<AddonResources> Providers { get; set; } = [];
+
+ readonly CatalogSession localSession = new();
+ readonly CancellationTokenSource stop = new();
+ readonly SemaphoreSlim slots = new(8);
+ readonly List<MangaShelfFeed> feeds = [];
+ HashSet<string> Expanded => Cache.ExpandedMangaShelves;
+ Dictionary<string, string> Selections => Cache.MangaShelfSelections;
+ bool started;
+
+ CatalogSession Cache => Session ?? localSession;
+ protected override Task OnParametersSetAsync()
+ {
+  if (!Ready || started) return Task.CompletedTask;
+  started = true;
+  foreach (var provider in Providers)
+  {
+   foreach (var catalog in provider.Catalogs("MANGA").Where(catalog => catalog.Extras.All(extra => !extra.Required || extra.Name == "skip")))
+   {
+    var key = $"{provider.ProviderKey}/{catalog.Type}/{Uri.EscapeDataString(catalog.Id)}";
+    feeds.Add(new(key, $"{provider.Addon.Name} · {catalog.Name}", provider: provider, catalog: catalog));
+   }
+  }
+  // Preserve capacity for the four built-in shelves when many add-ons are installed.
+  feeds.Insert(0, BuiltIn(MangaShelf.All[0]));
+  feeds.InsertRange(Math.Min(3, feeds.Count), MangaShelf.All.Skip(1).Select(BuiltIn));
+  foreach (var feed in feeds) feed.Snapshot = Cache.MangaShelves.GetValueOrDefault(feed.Key);
+  var now = DateTimeOffset.UtcNow;
+  return Task.WhenAll(feeds.Where(feed => feed.Snapshot is null || now - feed.Snapshot.Loaded > TimeSpan.FromMinutes(5))
+      .Select(feed => Load(feed, false)));
+ }
+
+ static MangaShelfFeed BuiltIn(MangaShelf shelf) => new($"anilist/{shelf.Title}", "AniList", shelf);
+ void Toggle(string title)
+ {
+  if (!Expanded.Add(title)) Expanded.Remove(title);
+ }
+
+ async Task Load(MangaShelfFeed feed, bool next)
+ {
+  if (feed.Busy) return;
+  feed.Busy = true;
+  feed.Failed = feed.FailedNextPage = false;
+  var token = stop.Token;
+  try
+  {
+   await slots.WaitAsync(token);
+   MangaShelfPage page;
+   try { page = await feed.Fetch(AniList, Client, next, token); }
+   finally { slots.Release(); }
+   token.ThrowIfCancellationRequested();
+
+   var previous = feed.Snapshot;
+   MangaShelfCard[] old = next ? previous!.Cards : [];
+   var ids = old.Select(card => card.Id).ToHashSet(StringComparer.Ordinal);
+   var added = page.Cards.Where(card => ids.Add(card.Id)).ToArray();
+   var offset = (next ? previous!.Offset : 0) + page.RawCount;
+   feed.Snapshot = new([..old, ..added], offset, page.More && (next ? added.Length > 0 : page.RawCount > 0),
+       next ? previous!.Loaded : DateTimeOffset.UtcNow,
+       previous?.Order ?? ++Cache.MangaShelfOrder);
+   Cache.MangaShelves[feed.Key] = feed.Snapshot;
+  }
+  catch (Exception) when (token.IsCancellationRequested) { }
+  catch
+  {
+   if (next) feed.FailedNextPage = true;
+   else feed.Failed = true;
+  }
+  finally
+  {
+   feed.Busy = false;
+   if (!token.IsCancellationRequested) StateHasChanged();
+  }
+ }
+
+ static string Metadata(MangaShelfCard card, MangaShelfFeed feed, bool sourceLabel) =>
+     string.Join(" · ", new[] { card.Format.Replace('_', ' '), card.Year?.ToString(),
+        sourceLabel ? feed.Label : null }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+ void Open(MangaShelfFeed feed, MangaShelfCard card)
+ {
+  if (feed.Provider is { } source && feed.Catalog is { } catalog)
+   Navigation.NavigateTo(MangaDetails.ProviderPath(source.ProviderKey, card.Id, card.Title, catalog: catalog.Id));
+  else
+   Navigation.NavigateTo($"/manga/details/{card.Id}");
+ }
+
+ public void Dispose()
+ {
+  stop.Cancel();
+  stop.Dispose();
+ }
+}

@@ -146,7 +146,7 @@
  void FailInstall(string message) { installError = true; installMessage = message; }
  void Invalidate() { Catalog?.Tabs.Clear(); Cache?.Clear(); }
 
- async Task<bool> Manage(InstalledAddon addon, Func<Task> action, string message)
+ async Task<bool> Manage(InstalledAddon addon, Func<Task> action, string message, bool reorder = false)
  {
   if (!busy.Add(addon.Url)) return false;
   statuses.Remove(addon.Url);
@@ -155,6 +155,10 @@
    await action();
    Invalidate();
    installed = await Store.GetAddonsAsync(true);
+   if (reorder)
+    Catalog?.ReorderMangaProviders(installed.Select(source => new AddonResources(source).ProviderKey));
+   else
+    Catalog?.InvalidateMangaProvider(new AddonResources(addon).ProviderKey);
    statuses[addon.Url] = (message, false);
    return true;
   }
@@ -169,7 +173,7 @@
  Task Refresh(InstalledAddon addon) => Manage(addon,
   async () => await Store.RefreshAddonAsync(await Addons.InspectAsync(addon.Url, lifetime.Token)), "Manifest refreshed.");
  Task Move(InstalledAddon addon, int direction) => Manage(addon, () => Store.MoveAddonAsync(addon.Url, direction),
-  direction < 0 ? "Source moved up." : "Source moved down.");
+  direction < 0 ? "Source moved up." : "Source moved down.", reorder: true);
 
  async Task Remove(InstalledAddon addon)
  {
