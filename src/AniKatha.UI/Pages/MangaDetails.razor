@@ -5,14 +5,18 @@
 @implements IDisposable
 @inject AniListClient Api
 
-<article class="@(Reader is null ? "template-details manga-details-screen" : "chapter-reading-screen")"><nav class="detail-toolbar template-detail-top"><a class="text-link" href="@BackPath" aria-label="@BackLabel">@(Reader is null ? "← Details" : "← Chapters")</a></nav>
+<article class="@(Reader is null ? "template-details manga-details-screen" : "chapter-reading-screen")">
+@if (provider is null || Reader is not null)
+{
+<nav class="detail-toolbar template-detail-top"><a class="text-link" href="@BackPath" aria-label="@BackLabel">@(Reader is null ? "← Details" : "← Chapters")</a></nav>
+}
 @if (title is { } item)
 {
  <PageTitle>@item.Title · AniKatha</PageTitle>
  @if (provider is { } source)
  {
   <ManifestCatalog @key="(source.ProviderKey, item.ExternalId, Release, Reader)" Source="source" Catalog="@(new AddonCatalog("manga", "", "", false, false))"
-                   Providers="providers" InitialTitle="item" InitialUnitId="@Release" AllowSaveInitialTitle="true" ShowDetailActions="true" ReaderProvider="@Reader" From="@From" />
+                   Providers="providers" InitialTitle="item" InitialUnitId="@Release" AllowSaveInitialTitle="true" ShowDetailActions="true" ReaderProvider="@Reader" From="@From" DetailBackPath="@BackPath" DetailBackLabel="@BackLabel" />
  }
  else
  {

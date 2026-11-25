@@ -34,7 +34,7 @@ internal static class HomeChecks
         var fresh = context.Render<Home>();
         fresh.WaitForAssertion(() => Check(fresh.Find("#home-anime").TextContent.Contains("Episodes you start will appear here"),
             "Fresh launch shows compact empty history without an AniList login."));
-        if (fixture.PopulateCaptures) Capture(captureDirectory!, "empty", fresh, context);
+        if (fixture.PopulateCaptures) Capture(captureDirectory!, "empty", fresh.Markup, context);
         fresh.Dispose();
 
         var chapter = ResumeEntry.Key(origin, "manga", "lantern", "first", origin);
@@ -85,7 +85,7 @@ internal static class HomeChecks
             home.WaitForAssertion(() => Check(home.FindAll("#home-anime .home-card-target").Count >= 10 &&
                 home.FindAll("#home-anime time").Count >= 3 && home.FindAll(".home-spotlight-art").Count == 1 &&
                 home.Find(".home-spotlight-action").TextContent.Contains("Watch now"), "All Anime capture shelves and the spotlight are populated."));
-            Capture(captureDirectory!, "anime", home, context);
+            Capture(captureDirectory!, "anime", home.Markup, context);
             var firstEpisode = home.Find("[aria-labelledby='home-latest-title'] .home-card-target").TextContent;
             await home.InvokeAsync(() => home.Find("[aria-label='Next episodes']").ClickAsync(new()));
             Check(home.Find("[aria-labelledby='home-latest-title'] .home-card-target").TextContent != firstEpisode,
@@ -125,7 +125,7 @@ internal static class HomeChecks
         if (fixture.PopulateCaptures)
         {
             home.WaitForAssertion(() => Check(home.FindAll("#home-manga .home-card-target").Count >= 8, "All supported Manga shelves are populated."));
-            Capture(captureDirectory!, "manga", home, context);
+            Capture(captureDirectory!, "manga", home.Markup, context);
         }
         fixture.Trending.TrySetResult();
         await latest;
@@ -138,9 +138,17 @@ internal static class HomeChecks
         var details = context.Render<MangaDetails>();
         details.WaitForAssertion(() => Check(details.Markup.Contains("Read Chapter 2"),
             "The manga details page resolves the exact followed chapter."));
+        Check(details.Find(".manga-template-summary").GetAttribute("aria-label") == "Cover and summary" &&
+            details.Find(".manga-template-sort").TextContent.Contains("Chapter") &&
+            details.Find(".manga-template-pagination").TextContent.Contains("Showing 1 to 2 of 2"), "Template hierarchy and chapter controls render.");
+        await details.Find(".manga-template-note button").ClickAsync(new());
+        await details.Find("textarea[aria-label='My Note']").ChangeAsync("Read the second release.");
+        await details.FindAll(".manga-template-note button").Single(button => button.TextContent.Trim() == "Save note").ClickAsync(new());
+        Check(await store.GetSettingAsync($"manga-note:{origin}/lantern") == "Read the second release.", "Template note is saved to this provider title.");
+        if (captureDirectory is not null) Capture(captureDirectory, "manga-details", details.Markup, context);
         var chapterKey = ResumeEntry.Key(origin, "manga", "lantern", "second", origin);
         await store.SaveReadingPageAsync(chapterKey, 2);
-        await details.FindAll(".design-unit-row button").Single(button => button.TextContent.Trim() == "Chapter 2").ClickAsync(new());
+        await details.FindAll(".design-unit-row button").Single(button => button.GetAttribute("aria-label") == "Chapter 2").ClickAsync(new());
         Check(navigation.Uri.Contains("/manga/read/source?") && navigation.Uri.Contains("release=second"),
             "A single-source chapter opens the dedicated reader directly.");
         var scrollingReader = context.Render<MangaDetails>();
@@ -163,10 +171,10 @@ internal static class HomeChecks
 
     private static string Cover(int index) => $"https://preview.example/art/midnight-lighthouse-{index % 3 + 1}.webp";
 
-    private static void Capture(string directory, string name, IRenderedComponent<Home> home, BunitContext context)
+    private static void Capture(string directory, string name, string content, BunitContext context)
     {
         Directory.CreateDirectory(directory);
-        var markup = home.Markup.Replace("https://preview.example/art/", "art/", StringComparison.Ordinal);
+        var markup = content.Replace("https://preview.example/art/", "art/", StringComparison.Ordinal);
         string IconMarkup(string icon) => context.Render<Icon>(parameters => parameters.Add(component => component.Name, icon)).Markup;
         File.WriteAllText(Path.Combine(directory, $"{name}.html"), $$"""
             <!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -210,7 +218,9 @@ internal static class HomeChecks
                 if (uri.AbsolutePath.Contains("/catalog/", StringComparison.Ordinal))
                     return Json("""{"metas":[{"id":"lantern","type":"manga","name":"The Lantern"},{"id":"bad-type","type":"anime","name":"Wrong type"}]}""");
                 if (uri.AbsolutePath.Contains("/chapters/", StringComparison.Ordinal))
-                    return Json("""{"chapters":[{"id":"first","title":"Chapter 1"},{"id":"second","title":"Chapter 2"}]}""");
+                    return Json(PopulateCaptures ? """
+                      {"meta":{"poster":"https://preview.example/art/midnight-lighthouse-1.webp","format":"Manhwa","anilistId":42,"year":2025,"status":"Releasing","originalLanguage":"KO","rating":8.1,"score":8.5,"genres":["Fantasy","Adventure"],"tags":["Regression"],"author":"Jane Reader","alternateTitle":"Lantern by the Sea","description":"A hidden lighthouse leads two friends into a forgotten city beneath the sea. They follow its beacon through the ruins, searching for a way back before the tide rises."},"chapters":[{"id":"first","title":"Chapter 1","group":"Example team","volume":1,"releasedAt":"2025-06-15T00:00:00Z"},{"id":"second","title":"Chapter 2","group":"Another team","volume":1,"releasedAt":"2025-06-16T00:00:00Z"}]}
+                      """ : """{"chapters":[{"id":"first","title":"Chapter 1"},{"id":"second","title":"Chapter 2"}]}""");
                 return Json("""{"pages":["https://cdn.example/1.webp","https://cdn.example/2.webp","https://cdn.example/3.webp"]}""");
             }
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));

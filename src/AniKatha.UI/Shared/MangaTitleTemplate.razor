@@ -1,0 +1,221 @@
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.JSInterop
+@using static AniKatha.Core.AddonResources
+@inherits ProfileComponent
+@inject IJSRuntime JS
+
+<nav class="detail-toolbar template-detail-top manga-context">
+ <a href="@BackPath" class="text-link" aria-label="@BackLabel">← Details</a>
+ @if (PublicLink is not null)
+ {
+  <button type="button" class="secondary manga-square" aria-label="Share title" @onclick="() => Share(false)"><MangaDetailGlyph Name="share" /></button>
+ }
+</nav>
+<section class="manga-template-summary" aria-label="Cover and summary">
+ <div>
+  <div class="manga-template-cover">
+   @if (Cover is { } cover && failedCover != cover)
+   {
+    <img src="@cover" alt="@($"{Title} cover")" @onerror="() => failedCover = cover" />
+   }
+   else { <Icon Name="book" /> }
+  </div>
+  @if (Covers.Length > 1)
+  {
+   <button type="button" class="secondary manga-covers" aria-label="Show another cover" @onclick="NextCover">
+    <MangaDetailGlyph Name="covers" /> Covers (@Covers.Length)
+   </button>
+  }
+ </div>
+ <div class="manga-template-facts">
+  <p class="manga-metadata-label">Manga / Manhwa</p>
+  <div class="manga-template-pills">
+   @foreach (var fact in Facts) { <span>@fact</span> }
+  </div>
+  <dl class="manga-template-metrics">
+   @Metric("Ranking", "rank", false, "#")
+   @Metric("Rating", "rating", true, "★ ")
+   @Metric("Score", "score", false)
+   @Metric("Followed", "follows", false)
+  </dl>
+ </div>
+</section>
+<section class="manga-template-credits" aria-label="Title and credits">
+ <h1>@Title</h1>
+ @if (Credits.Length > 0) { <p>@Credits</p> }
+ @if (Alternates.Length > 0)
+ {
+  <details class="manga-alternate-titles">
+   <summary><MangaDetailGlyph Name="language" /> <span>@Alternates[0]</span></summary>
+   @if (Alternates.Length > 1)
+   {
+    <ul>@foreach (var alternate in Alternates.Skip(1)) { <li>@alternate</li> }</ul>
+   }
+  </details>
+ }
+</section>
+@Actions
+@if (Synopsis.Length > 0)
+{
+ <section class="manga-template-synopsis" aria-label="Synopsis">
+  <p>@(synopsisOpen || Synopsis.Length <= 240 ? Synopsis : Synopsis[..240].TrimEnd() + "…")</p>
+  @if (Synopsis.Length > 240)
+  {
+   <button type="button" class="text-link" aria-expanded="@(synopsisOpen ? "true" : "false")"
+           @onclick="() => synopsisOpen = !synopsisOpen">@(synopsisOpen ? "Show less" : "Read more")</button>
+  }
+ </section>
+}
+<details class="manga-template-expanded" id="@ExpandedId" @ref="expanded" open>
+ <summary><span class="manga-show-details">Show details</span><span class="manga-hide-details">Hide details</span></summary>
+ @Tags("Genres", "genres")
+ @Tags("Tags", "tags")
+ @Tags("Demographics", "demographics")
+ @Tags("Formats", "formats")
+ @if (PublicLink is not null)
+ {
+  <div class="manga-template-tag-group">
+   <h3 class="manga-metadata-label">Trackers</h3>
+   <div class="manga-tracker-list">
+    @if (AniListUrl is { } anilist) { <a href="@anilist" target="_blank" rel="noreferrer noopener" aria-label="Open AniList">AL</a> }
+    @if (MangaDexUrl is { } mangadex) { <a href="@mangadex" target="_blank" rel="noreferrer noopener" aria-label="Open MangaDex">MD</a> }
+   </div>
+  </div>
+  <div class="manga-template-share">
+   <span class="manga-metadata-label">Share</span>
+   <div>
+    <button type="button" class="secondary" @onclick="() => Share(true)">Copy link</button>
+    <button type="button" class="secondary manga-square" aria-label="Share sheet" @onclick="() => Share(false)"><MangaDetailGlyph Name="share" /></button>
+   </div>
+  </div>
+  @if (shareMessage is { Length: > 0 })
+  {
+   <p role="status">@shareMessage</p>
+   @if (showLink) { <input readonly value="@PublicLink" aria-label="Manga link" /> }
+  }
+ }
+ <section class="manga-template-note" aria-label="My Note">
+  <header><h3><Icon Name="edit" /> My Note</h3><span>On this device</span></header>
+  @if (editing)
+  {
+   <textarea aria-label="My Note" @bind="noteDraft" maxlength="2000" rows="3"></textarea>
+   <div>
+    <button type="button" class="secondary" disabled="@savingNote" @onclick="SaveNote">Save note</button>
+    <button type="button" class="text-link" disabled="@savingNote" @onclick="() => { editing = false; noteError = null; }">Cancel</button>
+   </div>
+  }
+  else
+  {
+   @if (note.Length > 0) { <p>@note</p> }
+   <button type="button" class="text-link" @onclick="() => { editing = true; noteDraft = note; }">@(note.Length > 0 ? "Edit note" : "Add a note")</button>
+  }
+  @if (noteError is not null) { <p role="alert">@noteError</p> }
+ </section>
+</details>
+
+@code {
+ [Parameter] public JsonElement Listing { get; set; }
+ [Parameter] public JsonElement Details { get; set; }
+ [Parameter, EditorRequired] public string Title { get; set; } = "";
+ [Parameter, EditorRequired] public string ProviderKey { get; set; } = "";
+ [Parameter, EditorRequired] public string TitleId { get; set; } = "";
+ [Parameter] public string BackPath { get; set; } = "/manga";
+ [Parameter] public string BackLabel { get; set; } = "Back to Browse Manga";
+ [Parameter] public string ExpandedId { get; set; } = "manga-expanded-details";
+ [Parameter] public RenderFragment? Actions { get; set; }
+
+ ElementReference expanded;
+ int coverIndex;
+ bool synopsisOpen = true, editing, savingNote, showLink;
+ string note = "", noteDraft = "";
+ string? failedCover, noteError, shareMessage;
+ string NoteKey => $"manga-note:{ProviderKey}/{Uri.EscapeDataString(TitleId)}";
+ string[] Covers => new[] { Text("poster") }.Concat(Values("covers")).Where(MediaUrl).Distinct().ToArray();
+ string? Cover => Covers.ElementAtOrDefault(coverIndex) ?? Covers.FirstOrDefault();
+ string Credits => string.Join(" · ", new[] { Credit("Story", "author"), Credit("Art", "artist") }.OfType<string>());
+ string[] Alternates => new[] { Text("alternateTitle") }.Concat(Values("alternateTitles"))
+  .Where(value => value.Length > 0 && value != Title).Distinct().ToArray();
+ string Synopsis => Text("description") is { Length: > 0 } description ? description : Text("synopsis");
+ IEnumerable<string> Facts => new[] { Text("format"), Text("contentRating"), Text("year"), Text("status"), Text("originalLanguage") }
+  .Where(value => value.Length > 0);
+ string? AniListUrl => (AddonAniListProgress.TitleId(Details) ?? AddonAniListProgress.TitleId(Listing)) is int id
+  ? $"https://anilist.co/manga/{id}" : null;
+ string? MangaDexUrl => TitleId.StartsWith("md:", StringComparison.Ordinal) && Guid.TryParseExact(TitleId[3..], "D", out var id)
+  ? $"https://mangadex.org/title/{id:D}" : null;
+ string? PublicLink => MangaDexUrl ?? AniListUrl;
+
+ string? Credit(string role, string field) => Text(field) is { Length: > 0 } name ? $"{role} {name}" : null;
+ string Text(string key)
+ {
+  foreach (var item in new[] { Details, Listing })
+  {
+   if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty(key, out var value)) continue;
+   if (value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text) return text;
+   if (value.ValueKind == JsonValueKind.Number) return value.ToString();
+  }
+  return "";
+ }
+ IEnumerable<string> Values(string key) => new[] { Details, Listing }.SelectMany(item => Items(item, key))
+  .Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString()!)
+  .Where(value => value.Length > 0).Distinct();
+
+ RenderFragment Metric(string label, string field, bool accent, string prefix = "") => @<text>
+  @if (decimal.TryParse(Text(field), NumberStyles.Number, CultureInfo.InvariantCulture, out var value) && value >= 0)
+  {
+   <div><dt>@label</dt><dd class="@(accent ? "manga-metric-accent" : null)">@prefix@value.ToString("0.##")</dd></div>
+  }
+ </text>;
+
+ RenderFragment Tags(string label, string field) => @<text>
+  @if (Values(field).ToArray() is { Length: > 0 } items)
+  {
+   <div class="manga-template-tag-group"><h3 class="manga-metadata-label">@label</h3>
+    <div class="manga-template-pills">@foreach (var value in items) { <span>@value</span> }</div>
+   </div>
+  }
+ </text>;
+
+ protected override async Task OnInitializedAsync()
+ {
+  try { note = await Store.GetSettingAsync(NoteKey) ?? ""; }
+  catch { noteError = "Could not load your note."; }
+ }
+
+ void NextCover()
+ {
+  coverIndex = (coverIndex + 1) % Covers.Length;
+  failedCover = null;
+ }
+
+ async Task SaveNote()
+ {
+  if (savingNote) return;
+  savingNote = true;
+  try { await Store.SetSettingAsync(NoteKey, noteDraft.Trim()); note = noteDraft.Trim(); editing = false; noteError = null; }
+  catch { noteError = "Could not save your note. Try again."; }
+  finally { savingNote = false; }
+ }
+
+ public async Task OpenDetails()
+ {
+  try
+  {
+   await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AniKatha.UI/manga-title.mjs");
+   await module.InvokeVoidAsync("openDetails", expanded);
+  }
+  catch (JSException) { }
+ }
+
+ async Task Share(bool copy)
+ {
+  if (PublicLink is not { } url) return;
+  try
+  {
+   await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AniKatha.UI/manga-title.mjs");
+   (showLink, shareMessage) = (false, await module.InvokeAsync<string>("shareTitle", Title, url, copy));
+  }
+  catch (JSException) { (showLink, shareMessage) = (true, "Copy the link below."); }
+  if (shareMessage is { Length: > 0 }) await OpenDetails();
+ }
+}

@@ -90,7 +90,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
             }
             throw new Error(label);
           }
-          const button = name => [...document.querySelectorAll('button')].find(x => x.textContent.trim() === name && !x.disabled);
+          const button = name => [...document.querySelectorAll('button')].find(x => (x.textContent.trim() === name || x.getAttribute('aria-label') === name) && !x.disabled);
           const tab = name => document.querySelector('.bottom-nav a[href="/' + name + '"]').click();
           tab('profile');
           (await wait(() => document.querySelector('a[href="/profile/sources"]'), 'Sources link')).click();
