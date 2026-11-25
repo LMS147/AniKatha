@@ -14,13 +14,20 @@
 
 @if (ready)
 {
- <section class="manga-reader" aria-label="@ChapterLabel">
+ <section class="manga-reader @(Continuous ? "continuous-reader" : null)" aria-label="@ChapterLabel">
   <p class="reader-position" role="status">Page @currentPage of @PageCount</p>
-  <form class="reader-jump" novalidate @onsubmit="JumpToPage" @onsubmit:preventDefault>
-   <label>Go to page <input type="number" inputmode="numeric" min="1" max="@PageCount" @bind="pageInput" /></label>
-   <button type="submit" class="secondary" disabled="@saving">Go</button>
-  </form>
-  @if (jumpError is not null) { <p role="alert">@jumpError</p> }
+  @if (Continuous)
+  {
+   <details class="continuous-reader-settings">
+    <summary>Reading options</summary>
+    @JumpForm
+    @if (ReloadPages.HasDelegate) { <button type="button" class="text-link" disabled="@saving" @onclick="ReloadPages">Reload chapter pages</button> }
+   </details>
+  }
+  else
+  {
+   @JumpForm
+  <div class="reader-preferences">
   <label>Reading mode
    <select value="@mode" @onchange="ChangeMode">
     <option value="ltr">Left to right</option>
@@ -43,6 +50,8 @@
    @if (titleOverride) { <button class="secondary" @onclick="ClearTitleSettings">Use default layout</button> }
   </div>
   @if (layoutStatus is not null) { <p role="status">@layoutStatus</p> }
+  </div>
+  }
   <div class="reader-viewport @((zoom == 100 && fit == "page") ? "fit-page" : "") @(zoom > 100 ? "zoomed" : "")"
     style="@($"--reader-zoom:{zoom}%")">
   @if (mode == "vertical")
@@ -56,8 +65,10 @@
   }
   else { <img class="reader-page" src="@PageUrl(currentPage)" alt="@PageDescription(currentPage)" /> }
   </div>
+  @if (!Continuous || currentPage == PageCount)
+  {
   <div class="reader-controls @(mode == "rtl" ? "reader-rtl" : "")">
-   <button type="button" class="secondary" disabled="@(currentPage == 1 || saving)" @onclick="() => MoveTo(currentPage - 1)">@(mode == "rtl" ? "Previous →" : "← Previous")</button>
+   @if (!Continuous) { <button type="button" class="secondary" disabled="@(currentPage == 1 || saving)" @onclick="() => MoveTo(currentPage - 1)">@(mode == "rtl" ? "Previous →" : "← Previous")</button> }
    @if (currentPage < PageCount)
    {
     <button type="button" class="primary" disabled="@saving" @onclick="() => MoveTo(currentPage + 1)">@(mode == "rtl" ? "← Next page" : "Next page →")</button>
@@ -71,6 +82,7 @@
     <a class="primary" href="/manga/preview">Back to chapters</a>
    }
   </div>
+  }
   @if (PreviousChapter.HasDelegate || NextChapter.HasDelegate)
   {
    <div class="reader-controls">
@@ -91,6 +103,16 @@ else
 }
 
 @code {
+ [Parameter] public bool Continuous { get; set; }
+ [Parameter] public EventCallback ReloadPages { get; set; }
+ RenderFragment JumpForm => @<div>
+ <form class="reader-jump" novalidate @onsubmit="JumpToPage" @onsubmit:preventDefault>
+   <label>Go to page <input type="number" inputmode="numeric" min="1" max="@PageCount" @bind="pageInput" /></label>
+   <button type="submit" class="secondary" disabled="@saving">Go</button>
+  </form>
+  @if (jumpError is not null) { <p role="alert">@jumpError</p> }
+ </div>;
+
  int currentPage = 1;
  bool ready;
  bool saving, completed;
@@ -186,7 +208,7 @@ else
    readerModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AniKatha.UI/chapter-reader.mjs");
    if (readerModule is null || mode != "vertical" || disposed) return;
    callbacks ??= DotNetObjectReference.Create(this);
-   pageObserver = await readerModule.InvokeAsync<IJSObjectReference>("watchPages", stack, callbacks, currentPage);
+   pageObserver = await readerModule.InvokeAsync<IJSObjectReference>("watchPages", stack, callbacks, currentPage, Continuous && currentPage == 1);
    if (mode != "vertical" || disposed) await StopObserving();
   }
   catch (JSDisconnectedException) { }
@@ -237,7 +259,7 @@ else
    }
    titleOverride = !string.IsNullOrWhiteSpace(await Store.GetSettingAsync(TitleSettingsKey));
    var prefs = await ReaderPreferences.LoadAsync(Store, titleOverride ? TitleSettingsKey : ReaderPreferences.GlobalKey);
-   (mode, fit, zoom) = (prefs.Mode, prefs.Fit, prefs.Zoom);
+   (mode, fit, zoom) = Continuous ? ("vertical", "width", 100) : (prefs.Mode, prefs.Fit, prefs.Zoom);
   }
   catch
   {

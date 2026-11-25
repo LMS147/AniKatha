@@ -1218,3 +1218,59 @@ main:has(> .design-catalog), main:has(> .design-library), main:has(> .profile-ta
 .profile-template .profile-security-note { display: grid; gap: 8px; }
 .app-shell:has(.profile-template) > .bottom-nav { width: min(calc(100% - 24px), var(--screen-width)); }
 .app-shell:has(.profile-template) > .bottom-nav svg { width: 18px; height: 18px; }
+
+/* Provider-backed manga details and the dedicated chapter reader. */
+.manga-details-screen .detail-toolbar, .chapter-reading-screen .detail-toolbar {
+ display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.manga-provider-details .template-manga-cover {
+ display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start;
+}
+.manga-provider-details .template-manga-cover .provider-detail-poster, .manga-cover-placeholder {
+ width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid var(--border);
+ border-radius: var(--radius-lg); background: var(--raised);
+}
+.manga-cover-placeholder { display: grid; place-items: center; color: var(--accent); }
+.manga-provider-details .chips { margin: 0; }
+.manga-provider-details .template-title-credits { margin-block: 16px; }
+.manga-detail-actions { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; margin-bottom: 16px; }
+.manga-detail-actions .primary { grid-column: 1 / -1; min-height: 48px; }
+.manga-detail-actions :is(.primary,.secondary) { border-radius: var(--radius-md); }
+.manga-detail-actions svg { width: 16px; height: 16px; }
+.manga-detail-actions .manga-favorite { padding-inline: 12px; color: var(--accent); }
+.manga-provider-details .manga-provider-synopsis { background: transparent; border: 0; padding: 0; }
+.manga-provider-details .design-units > header h3 { font: var(--headline-sm); margin-bottom: 0; }
+.manga-provider-details .design-units > header span { font: var(--mono-sm); }
+.manga-provider-details .design-unit-tools { display: grid; margin-top: 12px; }
+.manga-provider-details .design-unit-tools :is(input,select) { min-height: 38px; }
+.manga-provider-details .design-unit-row > button {
+ justify-content: space-between; gap: 8px; color: var(--accent); font: var(--title-md);
+}
+.manga-chapter-chevron::before { content: "›"; color: var(--muted); }
+.manga-provider-details .design-unit-row > small { font: var(--body-sm); color: var(--muted); }
+.manga-provider-details .design-chips { margin-top: 10px; }
+.manga-provider-details .design-chips button, .manga-provider-details .design-pagination button { min-height: 36px; }
+
+main:has(> .chapter-reading-screen) { padding: 0 0 env(safe-area-inset-bottom); }
+.app-shell:has(.chapter-reading-screen) > .bottom-nav { display: none; }
+.chapter-reading-screen { max-width: 850px; margin-inline: auto; background: var(--canvas); min-height: 100dvh; }
+.chapter-reading-screen .detail-toolbar {
+ position: sticky; top: 0; z-index: 3; background: var(--canvas); padding-inline: max(16px,env(safe-area-inset-left)) max(16px,env(safe-area-inset-right));
+ border-bottom: 1px solid var(--border);
+}
+.chapter-reading-screen .detail-toolbar a { min-height: 44px; }
+.chapter-reading-screen .reader-header { padding: 12px 16px 0; }
+.chapter-reading-screen .reader-header h1 { font: var(--headline-md); margin-bottom: 4px; overflow-wrap: anywhere; }
+.chapter-reading-screen .reader-header p { margin-bottom: 4px; }
+.chapter-reading-screen :is(.notice,[role="alert"],[role="status"]):not(.reader-position) { margin-inline: 16px; }
+.continuous-reader { max-width: none; }
+.continuous-reader .reader-position { margin: 4px 0 8px; font: var(--mono-sm); }
+.continuous-reader .reader-viewport { padding: 0; overflow: visible; background: var(--canvas); }
+.continuous-reader .reader-stack .reader-page {
+ width: 100%; height: auto; max-height: none; aspect-ratio: auto 2 / 3;
+ object-fit: contain; border-radius: 0; margin: 0; scroll-margin-top: 44px;
+}
+.continuous-reader :is(.reader-controls,.continuous-reader-settings), .chapter-source-tools {
+ margin: 8px 16px 12px; padding: 0; color: var(--muted);
+}
+.continuous-reader-settings summary, .chapter-source-tools summary { cursor: pointer; font: var(--label-md); padding: 6px 0; }

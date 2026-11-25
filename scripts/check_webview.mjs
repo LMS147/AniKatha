@@ -96,11 +96,12 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           (await wait(() => document.querySelector('a[href="/profile/sources"]'), 'Sources link')).click();
           await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler' && button('Disable'), 'Installed source did not survive upgrade');
           tab('manga');
-          for (const name of ['The Midnight Lighthouse', 'Chapter 1', 'Read Chapter 1'])
+          for (const name of ['The Midnight Lighthouse', 'Chapter 1'])
             (await wait(() => button(name), name)).click();
           await wait(() => {
-            const image = document.querySelector('.reader-page');
-            return image?.naturalWidth > 0 && image.src.endsWith('-2.webp');
+            const image = document.querySelector('.continuous-reader [data-reader-page="2"]');
+            return location.pathname === '/manga/read/source' && image?.naturalWidth > 0 &&
+              image.src.endsWith('-2.webp') && document.querySelector('.reader-position')?.textContent === 'Page 2 of 3';
           }, 'Reading position lost during upgrade');
           return true;
         })()`,
@@ -264,13 +265,21 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         tab('manga');
         await click('The Midnight Lighthouse');
         await click('Chapter 1');
-        await click('Read Chapter 1');
+        if (oldProfile) await click('Read Chapter 1');
         const imageAt = number => {
-          const image = document.querySelector('.reader-page');
+          const image = document.querySelector(oldProfile ? '.reader-page' : '[data-reader-page="' + number + '"]');
           return image?.src.includes('raw.githubusercontent.com') && image.src.endsWith('-' + number + '.webp') && image.naturalWidth > 0;
         };
         await wait(() => imageAt(1), 'resolved manga page');
-        await click('Next page →');
+        if (oldProfile) await click('Next page →');
+        else {
+          await wait(() => location.pathname === '/manga/read/source' && document.querySelectorAll('.reader-stack .reader-page').length === 3,
+            'dedicated vertical reader contains all pages');
+          await wait(() => document.querySelector('.reader-stack')?.hasAttribute('data-reader-ready'), 'scroll listener active');
+          if (getComputedStyle(document.querySelector('.bottom-nav')).display !== 'none') throw new Error('Main navigation still shows in the reader');
+          document.querySelector('[data-reader-page="2"]').scrollIntoView({block:'start'});
+          await wait(() => document.querySelector('.reader-position')?.textContent === 'Page 2 of 3', 'scrolling saves page 2');
+        }
         await wait(() => imageAt(2), 'second manga page');
         if (oldProfile) {
           tab('library');
@@ -283,6 +292,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           await wait(() => imageAt(2), 'saved chapter position in baseline APK');
           return true;
         }
+        await open(document.querySelector('[aria-label="Back to chapters"]').getAttribute('href'));
         await sources();
         await click('Disable');
         await wait(() => button('Enable'), 'disabled source');
@@ -295,10 +305,11 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         tab('manga');
         await click('The Midnight Lighthouse');
         await click('Chapter 1');
-        await click('Read Chapter 1');
-        await wait(() => imageAt(2), 'restored reading position');
+        await wait(() => imageAt(2) && document.querySelector('.reader-position')?.textContent === 'Page 2 of 3', 'restored reading position');
         if (${testDownloads}) {
+          (await wait(() => document.querySelector('.chapter-source-tools summary'), 'Chapter source actions')).click();
           await click('Download chapter');
+          await open(document.querySelector('[aria-label="Back to chapters"]').getAttribute('href'));
           tab('library');
           await click('Downloads');
           await wait(() => [...document.querySelectorAll('a')].filter(x => x.textContent.trim() === 'Open offline').length === 2, 'completed downloads');

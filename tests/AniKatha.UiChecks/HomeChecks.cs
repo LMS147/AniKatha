@@ -138,6 +138,18 @@ internal static class HomeChecks
         var details = context.Render<MangaDetails>();
         details.WaitForAssertion(() => Check(details.Markup.Contains("Read Chapter 2"),
             "The manga details page resolves the exact followed chapter."));
+        var chapterKey = ResumeEntry.Key(origin, "manga", "lantern", "second", origin);
+        await store.SaveReadingPageAsync(chapterKey, 2);
+        await details.FindAll(".design-unit-row button").Single(button => button.TextContent.Trim() == "Chapter 2").ClickAsync(new());
+        Check(navigation.Uri.Contains("/manga/read/source?") && navigation.Uri.Contains("release=second"),
+            "A single-source chapter opens the dedicated reader directly.");
+        var scrollingReader = context.Render<MangaDetails>();
+        scrollingReader.WaitForAssertion(() =>
+        {
+            Check(scrollingReader.FindAll(".continuous-reader .reader-page").Count == 3, "All chapter pages share a vertical stack.");
+            Check(scrollingReader.Find(".reader-position").TextContent == "Page 2 of 3", "The dedicated reader restores the saved page.");
+            Check(scrollingReader.FindAll(".design-unit-list, .reader-preferences").Count == 0, "Reading hides the catalogue and paged layout settings.");
+        });
         await home.InvokeAsync(() => home.Find("#home-tab-anime").ClickAsync(new()));
         Check(home.Find(".home-day[aria-pressed='true']").TextContent == date &&
             home.FindAll("#home-anime button").Any(x => x.TextContent == "Trending" && x.GetAttribute("aria-pressed") == "true"),
@@ -199,7 +211,7 @@ internal static class HomeChecks
                     return Json("""{"metas":[{"id":"lantern","type":"manga","name":"The Lantern"},{"id":"bad-type","type":"anime","name":"Wrong type"}]}""");
                 if (uri.AbsolutePath.Contains("/chapters/", StringComparison.Ordinal))
                     return Json("""{"chapters":[{"id":"first","title":"Chapter 1"},{"id":"second","title":"Chapter 2"}]}""");
-                return Json("""{"pages":["https://cdn.example/page.webp"]}""");
+                return Json("""{"pages":["https://cdn.example/1.webp","https://cdn.example/2.webp","https://cdn.example/3.webp"]}""");
             }
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
             var query = body.RootElement.GetProperty("query").GetString()!;

@@ -1,24 +1,64 @@
 @using System.Text.Json
 @using static AniKatha.Core.AddonResources
 
-<header class="design-title-card @(Standalone ? "template-manga-cover" : null)">
- @if (MediaUrl(Poster)) { <img class="provider-detail-poster" src="@Poster" alt="" loading="lazy" /> }
- <div><span class="eyebrow">@(Type == "manga" ? "Manga" : "Anime")</span>
- @if (!Standalone) { <h3>@Name</h3> }
- @if (Count is int count) { <p>@count @UnitLabel(count)</p> }
- @if (Status.Length > 0) { <p>Release status · @Status</p> }</div>
-</header>
-@if (Standalone) { <section class="template-title-credits"><h1>@Name</h1></section> }
-@if (Synopsis.Length > 0) { <details class="template-synopsis" open><summary>Synopsis</summary><p>@Synopsis</p></details> }
-@if (Genres.Length > 0)
+@if (!DescriptionOnly)
 {
- <div class="chips">@foreach (var genre in Genres) { <span>@genre</span> }</div>
+ <header class="design-title-card @(Standalone ? "template-manga-cover" : null)">
+  @if (MediaUrl(Poster) && failedPoster != Poster)
+  {
+   <img class="provider-detail-poster" src="@Poster" alt="" loading="lazy" @onerror="() => failedPoster = Poster" />
+  }
+  else if (Standalone)
+  {
+   <div class="manga-cover-placeholder" aria-hidden="true"><Icon Name="book" /></div>
+  }
+  <div>
+   <span class="eyebrow">@(Type == "manga" ? "Manga" : "Anime")</span>
+   @if (!Standalone) { <h3>@Name</h3> }
+   @if (Standalone)
+   {
+    <div class="chips">
+     @foreach (var fact in Facts) { <span>@fact</span> }
+    </div>
+   }
+   @if (Count is int count) { <p>@count @UnitLabel(count)</p> }
+   @if (!Standalone && Status.Length > 0) { <p>Release status · @Status</p> }
+  </div>
+ </header>
+ @if (Standalone)
+ {
+  <section class="template-title-credits"><h1>@Name</h1>
+   @if (Text("alternateTitle") is { Length: > 0 } alternate && alternate != Name) { <p>@alternate</p> }
+  </section>
+ }
+}
+@if (!HideSynopsis)
+{
+ @if (Synopsis.Length > 0) { <details class="template-synopsis manga-provider-synopsis" open><summary>Synopsis</summary><p>@Synopsis</p></details> }
+ @if (Genres.Length > 0)
+ {
+  @if (DescriptionOnly)
+  {
+   <details class="template-synopsis" open><summary>Details</summary><h3>Genres</h3>
+    <div class="chips">@foreach (var genre in Genres) { <span>@genre</span> }</div>
+   </details>
+  }
+  else { <div class="chips">@foreach (var genre in Genres) { <span>@genre</span> }</div> }
+ }
 }
 
 @code {
  [Parameter] public JsonElement Listing { get; set; }
  [Parameter] public JsonElement Details { get; set; }
  [Parameter] public bool Standalone { get; set; }
+ [Parameter] public bool HideSynopsis { get; set; }
+ [Parameter] public bool DescriptionOnly { get; set; }
+ string? failedPoster;
+ IEnumerable<string> Facts => new[] { Text("format"), Year, Status, Text("originalLanguage") }
+  .Where(value => value.Length > 0);
+ string Year => new[] { Details, Listing }.Where(item => item.ValueKind == JsonValueKind.Object)
+  .Select(item => item.TryGetProperty("year", out var year) && year.ValueKind == JsonValueKind.Number ? year.ToString() : "")
+  .FirstOrDefault(year => year.Length > 0) ?? "";
  [Parameter] public string Type { get; set; } = "";
 
  string Name => Text("name");

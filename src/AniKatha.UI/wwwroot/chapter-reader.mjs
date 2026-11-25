@@ -1,4 +1,4 @@
-export function watchPages(container, callback, page) {
+export function watchPages(container, callback, page, startAtTop = false) {
   const abort = new AbortController();
   const options = { passive: true, signal: abort.signal };
   let scheduled = 0;
@@ -29,13 +29,16 @@ export function watchPages(container, callback, page) {
     if (!scheduled) scheduled = window.requestAnimationFrame(update);
   }
 
-  show(page);
+  if (startAtTop) window.scrollTo(0, 0);
+  else show(page);
   window.addEventListener('scroll', schedule, options);
   window.addEventListener('resize', schedule, options);
+  container.setAttribute('data-reader-ready', '');
   return {
     show,
     dispose() {
       abort.abort();
+      container.removeAttribute('data-reader-ready');
       if (scheduled) window.cancelAnimationFrame(scheduled);
     }
   };
