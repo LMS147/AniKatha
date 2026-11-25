@@ -96,11 +96,12 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           (await wait(() => document.querySelector('a[href="/profile/sources"]'), 'Sources link')).click();
           await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler' && button('Disable'), 'Installed source did not survive upgrade');
           tab('manga');
-          for (const name of ['The Midnight Lighthouse', 'Chapter 1', 'Read Chapter 1'])
+          for (const name of ['The Midnight Lighthouse', 'Chapter 1'])
             (await wait(() => button(name), name)).click();
           await wait(() => {
-            const image = document.querySelector('.reader-page');
-            return image?.naturalWidth > 0 && image.src.endsWith('-2.webp');
+            const image = document.querySelector('.continuous-reader [data-reader-page="2"]');
+            return location.pathname === '/manga/read/source' && image?.naturalWidth > 0 &&
+              image.src.endsWith('-2.webp') && document.querySelector('.reader-position')?.textContent === 'Page 2 of 3';
           }, 'Reading position lost during upgrade');
           return true;
         })()`,
