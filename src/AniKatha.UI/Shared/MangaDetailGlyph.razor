@@ -1,0 +1,20 @@
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+ @switch (Name)
+ {
+  case "share":
+   <circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.7 7.6-4.4m-7.6 7 7.6 4.4"/> break;
+  case "bookmark":
+   <path d="M6 4h12v16l-6-4-6 4z"/> break;
+  case "groups":
+   <circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2m1-15a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/> break;
+  case "language":
+   <circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/> break;
+  case "covers":
+   <rect x="7" y="4" width="13" height="14" rx="2"/><path d="M4 8v12h12m-8-6 4-4 2 2 2-3 4 5"/> break;
+  default:
+   <path d="M5 12h.01m7 0h.01m7 0h.01" stroke-width="3"/> break;
+ }
+</svg>
+@code {
+ [Parameter] public string Name { get; set; } = "";
+}

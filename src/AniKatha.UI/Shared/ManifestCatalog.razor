@@ -41,31 +41,69 @@
  @if(error!=null){<p role="alert">@error <button @onclick="Retry">Retry</button></p>}
  @if(!busy && error==null && selected is null && titles.Count==0 && !MissingRequired){<p>No matching titles.</p>}
  @if(selected!=null){
-  <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type" Standalone="ShowDetailActions" HideSynopsis="ShowDetailActions"/>
-  @if (!ShowDetailActions && (InitialTitle == null || AllowSaveInitialTitle))
-  {
-   <button disabled="@saved" @onclick="SaveTitle">@(saved ? "Saved to library" : "Save to library")</button>
-  }
   @if (ShowDetailActions)
   {
-   <div class="manga-detail-actions">
-    @if (units.Count > 0)
-    {
-     <a class="primary" href="@ReadingAction"><Icon Name="book" />@(continueLink is null ? "Start reading" : "Continue reading")</a>
-    }
-    @if (savedTitle is { } local)
-    {
-     <a class="secondary" href="@($"/library/title/{local.Id}/tracking")">Edit Library entry ›</a>
-     <button type="button" class="secondary manga-favorite" aria-label="Favorite title" aria-pressed="@(local.IsFavourite ? "true" : "false")" @onclick="ToggleFavorite">@(local.IsFavourite ? "★" : "☆")</button>
-    }
-    else if (AllowSaveInitialTitle) { <button class="secondary" @onclick="SaveTitle">Save to library</button> }
-   </div>
-   <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type" Standalone="true" DescriptionOnly="true" />
+   <MangaTitleTemplate @ref="mangaTemplate" @key="(Source.ProviderKey, titleId)" Title="@DisplayTitle" Listing="selected.Value" Details="details"
+      ProviderKey="@Source.ProviderKey" TitleId="@titleId" BackPath="@DetailBackPath" BackLabel="@DetailBackLabel"
+      ExpandedId="@expandedDetails">
+    <Actions>
+     <section class="manga-template-actions" aria-label="Reading and library actions">
+      @if (units.Count > 0)
+      {
+       <div class="manga-template-read">
+        <a class="primary" href="@ReadingAction"><Icon Name="book" />@ReadingActionLabel</a>
+        <button type="button" class="secondary manga-square" aria-label="Choose chapter source" @onclick="ChooseReadingSource"><Icon Name="filters" /></button>
+       </div>
+      }
+      <div class="manga-template-library">
+       @if (savedTitle is { } local)
+       {
+        <a class="secondary" href="@($"/library/title/{local.Id}/tracking")"><MangaDetailGlyph Name="bookmark" /> Edit Library entry</a>
+        <button type="button" class="secondary manga-square manga-favorite" aria-label="Favorite title" aria-pressed="@(local.IsFavourite ? "true" : "false")" @onclick="ToggleFavorite">@(local.IsFavourite ? "★" : "☆")</button>
+       }
+       else if (AllowSaveInitialTitle)
+       {
+        <button type="button" class="secondary" @onclick="SaveTitle"><MangaDetailGlyph Name="bookmark" /> Save to library</button>
+       }
+       <button type="button" class="secondary manga-square" aria-label="More details" @onclick="OpenDetails"><MangaDetailGlyph Name="more" /></button>
+      </div>
+     </section>
+    </Actions>
+   </MangaTitleTemplate>
+  }
+  else
+  {
+   <ProviderTitleDetails Listing="selected.Value" Details="details" Type="@Catalog.Type"/>
+   @if (InitialTitle == null || AllowSaveInitialTitle)
+   {
+    <button disabled="@saved" @onclick="SaveTitle">@(saved ? "Saved to library" : "Save to library")</button>
+   }
   }
   @if (units.Count > 0)
   {
    <section class="design-units" aria-labelledby="@unitHeading">
     <header><h3 id="@unitHeading" tabindex="-1">@(IsManga ? "Chapters" : "Episodes")</h3><span>@units.Count @(IsManga ? "releases" : "episodes")</span></header>
+    @if (ShowDetailActions)
+    {
+     <div class="manga-template-chapter-tools">
+      <label><Icon Name="search" /><input type="search" aria-label="Search chapter" placeholder="Search chapter…" @bind="unitSearch" @bind:event="oninput" @bind:after="ResetUnitPage" /></label>
+      <label><MangaDetailGlyph Name="groups" /><select aria-label="Filter by translation group" @bind="group" @bind:after="ResetUnitPage">
+       <option value="">All groups</option>
+       @foreach (var releaseGroup in ReleaseGroups) { <option>@releaseGroup</option> }
+      </select></label>
+      <div class="manga-template-sort" role="group" aria-label="Sort chapters">
+       @foreach (var sort in ChapterSorts)
+       {
+        <button type="button" aria-pressed="@(releaseSort == sort.Key ? "true" : "false")" disabled="@(!sort.Available)" @onclick="() => SortChapters(sort.Key)">
+         @if (releaseSort == sort.Key) { <span aria-hidden="true">@(reverseUnits ? "↑" : "↓")</span> }
+         @sort.Label
+        </button>
+       }
+      </div>
+     </div>
+    }
+    else
+    {
     <div class="design-unit-tools">
      <label>Search @(IsManga ? "chapters" : "episodes")<input type="search" @bind="unitSearch" @bind:event="oninput" @bind:after="ResetUnitPage" /></label>
      @if (IsManga && ReleaseGroups.Length > 1)
@@ -91,6 +129,7 @@
       <button type="button" class="secondary" aria-pressed="@(!gridUnits ? "true" : "false")" @onclick="() => gridUnits = false">List</button>
      }
     </div>
+    }
     @{
      var results = VisibleUnits.ToArray();
      var start = unitPage * UnitsPerPage;
@@ -100,6 +139,23 @@
   @foreach (var unit in results.Skip(start).Take(UnitsPerPage))
   {
    var id = Field(unit, "id");
+   @if (ShowDetailActions)
+   {
+    var hasProgress = progress.TryGetValue(id, out var seen);
+    var inProgress = hasProgress && !seen.Completed;
+    var metadata = ReleaseSummary(unit);
+    <div class="design-unit-row manga-template-release @(inProgress ? "manga-release-in-progress" : null)" @key="id">
+     <button type="button" class="secondary" aria-label="@Field(unit,"title")" aria-pressed="@(unitId == id ? "true" : "false")" @onclick="() => SelectUnit(unit)">
+      <span><strong>@Field(unit,"title")</strong>
+       @if (inProgress) { <span class="manga-release-progress"> · In progress</span> }
+       @if (metadata.Length > 0) { <small>@metadata</small> }
+      </span>
+      <MangaDetailGlyph Name="bookmark" />
+     </button>
+    </div>
+   }
+   else
+   {
    <div class="design-unit-row" @key="id">
     <button class="secondary @(dimWatched && Catalog.Type != "manga" && progress.TryGetValue(id, out var status) && status.Completed ? "watched-dimmed" : null)" @onclick="() => SelectUnit(unit)" aria-pressed="@(unitId == id ? "true" : "false")"><span>@Field(unit,"title")</span>
     @if (ShowDetailActions) { <span class="manga-chapter-chevron" aria-hidden="true"></span> }</button>
@@ -116,9 +172,28 @@
      }
     }
    </div>
+   }
   }
     </div>
-    @if (results.Length > UnitsPerPage)
+    @if (ShowDetailActions && results.Length > 0)
+    {
+     var totalPages = (results.Length + UnitsPerPage - 1) / UnitsPerPage;
+     <footer class="manga-template-pagination">
+      <p>Showing @(start + 1) to @Math.Min(start + UnitsPerPage, results.Length) of @results.Length items</p>
+      @if (totalPages > 1)
+      {
+       <nav aria-label="Chapter pages">
+        @if (unitPage >= 5) { <button type="button" class="secondary" aria-label="Previous page" @onclick="() => unitPage--">‹</button> }
+        @foreach (var page in Enumerable.Range(unitPage / 5 * 5, Math.Min(5, totalPages - unitPage / 5 * 5)))
+        {
+         <button type="button" class="secondary" aria-current="@(unitPage == page ? "page" : null)" @onclick="() => unitPage = page">@(page + 1)</button>
+        }
+        <button type="button" class="secondary" aria-label="Next page" disabled="@(unitPage + 1 >= totalPages)" @onclick="() => unitPage++">›</button>
+       </nav>
+      }
+     </footer>
+    }
+    else if (results.Length > UnitsPerPage)
     {
      <nav class="design-pagination" aria-label="Release pages">
       <button type="button" class="secondary" disabled="@(unitPage == 0)" @onclick="() => unitPage--">Previous</button>
@@ -180,6 +255,42 @@
  [Parameter] public bool ShowDetailActions { get; set; }
  [Parameter] public string? ReaderProvider { get; set; }
  [Parameter] public string? From { get; set; }
+ [Parameter] public string DetailBackPath { get; set; } = "/manga";
+ [Parameter] public string DetailBackLabel { get; set; } = "Back to Browse Manga";
+ MangaTitleTemplate? mangaTemplate;
+ Task OpenDetails() => mangaTemplate?.OpenDetails() ?? Task.CompletedTask;
+ readonly string expandedDetails = $"manga-details-{Guid.NewGuid():N}";
+ string ReadingActionLabel => readingHistory is { } entry ? $"Continue reading · {entry.Label}" : "Start reading";
+
+ Task ChooseReadingSource()
+ {
+  var unit = units.FirstOrDefault(item => Field(item, "id") == unitId);
+  if (unit.ValueKind == JsonValueKind.Undefined)
+   unit = units.FirstOrDefault(item => Source.ResolveUnitProviders(Catalog.Type, item, Providers).Any());
+  if (unit.ValueKind == JsonValueKind.Undefined) return Task.CompletedTask;
+  Choose(unit);
+  focusSources = true;
+  return Task.CompletedTask;
+ }
+
+ IEnumerable<(string Key, string Label, bool Available)> ChapterSorts =>
+  [("", "Chapter", true), ("volume", "Volume", HasVolume), ("date", "Date", HasReleaseDate)];
+
+ void SortChapters(string sort)
+ {
+  reverseUnits = releaseSort == sort && !reverseUnits;
+  releaseSort = sort;
+  ResetUnitPage();
+ }
+
+ static string ReleaseSummary(JsonElement unit)
+ {
+  var parts = new List<string>();
+  if (ReleaseGroup(unit) is { Length: > 0 } group) parts.Add(group);
+  if (Volume(unit) is decimal volume) parts.Add($"Volume {volume}");
+  if (ReleaseDate(unit) is { } date) parts.Add(date.ToString("MMM d, yyyy"));
+  return string.Join(" · ", parts);
+ }
  SavedTitle? savedTitle;
  string DisplayTitle => Field(details, "name") is { Length: > 0 } name ? name : Field(selected!.Value, "name");
  string ReaderLink(string? release, string provider) =>
@@ -235,7 +346,7 @@
   catch (JSException) { }
  }
  bool IsManga => Catalog.Type == "manga";
- const int UnitsPerPage = 15;
+ int UnitsPerPage => ShowDetailActions ? 7 : 15;
  string unitSearch = "", group = "", releaseSort = "";
  bool reverseUnits, gridUnits;
  int unitPage;
@@ -258,8 +369,19 @@
  {
   "date" => units.OrderByDescending(ReleaseDate),
   "volume" => units.OrderBy(unit => Volume(unit) ?? decimal.MaxValue),
+  _ when ShowDetailActions => units.OrderByDescending(ChapterNumber),
   _ => units
  };
+ static decimal ChapterNumber(JsonElement unit)
+ {
+  var label = Field(unit, "title").AsSpan().TrimStart();
+  if (label.StartsWith("Chapter ", StringComparison.OrdinalIgnoreCase)) label = label[8..].TrimStart();
+  else if (label.StartsWith("Ch. ", StringComparison.OrdinalIgnoreCase)) label = label[4..].TrimStart();
+  var end = 0;
+  while (end < label.Length && (char.IsAsciiDigit(label[end]) || label[end] == '.')) end++;
+  return decimal.TryParse(label[..end], System.Globalization.NumberStyles.AllowDecimalPoint,
+   System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : decimal.MinValue;
+ }
  IEnumerable<JsonElement> VisibleUnits => (reverseUnits ? OrderedUnits.Reverse() : OrderedUnits).Where(unit =>
   (group.Length == 0 || group.Equals(ReleaseGroup(unit), StringComparison.OrdinalIgnoreCase)) &&
   (unitSearch.Trim().Length == 0 || Field(unit, "title").Contains(unitSearch.Trim(), StringComparison.OrdinalIgnoreCase) ||

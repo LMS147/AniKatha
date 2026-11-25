@@ -110,6 +110,22 @@ jobs:
           name: AniKatha-Home-mobile-comparison
           path: artifacts/home-ui
           if-no-files-found: warn
+      - name: Capture Manga Details
+        shell: bash
+        run: |
+          mkdir -p artifacts/manga-details
+          for height in 844 1560; do
+            google-chrome --headless --no-sandbox --disable-gpu --hide-scrollbars \
+              --window-size="390,$height" --user-data-dir="$RUNNER_TEMP/manga-details-chrome-$height" \
+              --screenshot="$PWD/artifacts/manga-details/manga-details-$height.png" \
+              "file://$RUNNER_TEMP/home-ui/manga-details.html"
+            test -s "artifacts/manga-details/manga-details-$height.png"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AniKatha-Manga-Details
+          path: artifacts/manga-details
+          if-no-files-found: error
       - run: python scripts/test_startup_checks.py
       - run: node --test scripts/*.test.mjs
   android:
