@@ -3,13 +3,16 @@
 @using AniKatha.UI.Pages
 @implements IDisposable
 @inject AddonClient Client
+@inject NavigationManager Navigation
 @inherits ProfileComponent
+@if (!DedicatedReader || !reading)
+{
 <div class="notice" id="@sourceId" tabindex="-1"><strong>@Source.Addon.Name</strong> @if (Preferred) { <small>Preferred</small> }
 @if(loading){<p>Loading sources…</p>}
 else if(error){<p>Source request failed. <button @onclick="Load">Retry</button></p>}
 else if (Type == "manga" && pages.Count > 0)
 {
- <button @onclick="Read">Read @Label</button>
+ <button @onclick="OpenReading">Read @Label</button>
  @if (Downloads is not null) { <button @onclick="() => Download(null)">Download chapter</button> }
  @if (translation.Length > 0) { <small>Translation · @translation</small> }
 }
@@ -32,7 +35,21 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
 @if (switchError) { <p role="alert">Could not preserve the current playback position. Try selecting the source again.</p> }
 @if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
 </div>
-@if(reading){<ReadMangaPreview @key="Key" ChapterKey="@Key" TitleSettingsKey="@ReaderTitleKey" Pages="readingPages" Title="@Title" ChapterLabel="@Label" PreviousChapter="PreviousChapter" NextChapter="NextChapter" OnCompleted="ProgressChanged"/>}
+}
+@if(reading)
+{
+ <ReadMangaPreview @key="(Key, readerVersion)" ChapterKey="@Key" TitleSettingsKey="@ReaderTitleKey" Pages="readingPages" Title="@Title" ChapterLabel="@Label" PreviousChapter="PreviousChapter" NextChapter="NextChapter" OnCompleted="ProgressChanged" Continuous="DedicatedReader" ReloadPages="@(DedicatedReader ? EventCallback.Factory.Create(this, ReloadReader) : default)" />
+ @if (DedicatedReader)
+ {
+  <details class="chapter-source-tools">
+   <summary>Chapter source · @Source.Addon.Name</summary>
+   @if (reloadError) { <p role="alert">Couldn’t reload the chapter pages.</p> }
+   @if (Downloads is not null) { <button type="button" class="secondary" @onclick="() => Download(null)">Download chapter</button> }
+   @if (downloadStatus is not null) { <p role="status">@downloadStatus</p> }
+   @if (progressError) { <p role="alert">Your history entry could not be saved.</p> }
+  </details>
+ }
+}
 @if(video!=null){<WatchPreview @key="videoVersion" @ref="videoPlayer" EpisodeKey="@Key" VideoUrl="@video" Subtitles="subtitles" Title="@Title" EpisodeLabel="@Label" TrackCompletion="true" StartPlaying="playImmediately" RefreshSource="RefreshPlayingStream" OnNext="NextEpisode" OnCompleted="ProgressChanged" OnSourceFailed="Invalidate" SourceLabel="@Source.Addon.Name" SourceDetails="@StreamDetails(playingStream)" SourcePickerId="@(SourcePickerId ?? sourceId)" NextEpisodeLabel="@NextEpisodeLabel" OnLeave="LeaveVideo"/>}
 
 @code {
@@ -63,6 +80,8 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  [Parameter] public string Title {get;set;}="";
  [Parameter] public string? Poster { get; set; }
  [Parameter] public bool AutoOpen { get; set; }
+ [Parameter] public bool DedicatedReader { get; set; }
+ [Parameter] public string? ReaderPath { get; set; }
  [Parameter] public EventCallback PreviousChapter { get; set; }
  [Parameter] public EventCallback NextChapter { get; set; }
  [Parameter] public string? SourcePickerId { get; set; }
@@ -80,7 +99,8 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
  [Parameter] public Func<ManifestSources, Task<bool>>? ActivateVideo { get; set; }
  internal bool IsDisposed => disposed;
  readonly CancellationTokenSource stop=new();
- bool loading,reading,error,progressError,disposed;
+ bool loading,reading,error,progressError,disposed,reloadError;
+ int readerVersion;
  string translation = "";
  long playbackRequest;
  static bool IsDubbed(JsonElement stream) =>
@@ -181,6 +201,24 @@ else { <p>No matching @(Type == "manga" ? "chapter" : "episode") from this provi
    progressError = false;
   }
   catch { progressError = true; }
+ }
+
+ Task OpenReading()
+ {
+  if (ReaderPath is null) return Read();
+  Navigation.NavigateTo(ReaderPath);
+  return Task.CompletedTask;
+ }
+
+ async Task ReloadReader()
+ {
+  if (loading || disposed) return;
+  await Refresh();
+  if (disposed) return;
+  reloadError = pages.Count == 0;
+  if (reloadError) return;
+  readingPages = pages;
+  readerVersion++;
  }
 
  async Task Read()
