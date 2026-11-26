@@ -1,0 +1,16 @@
+{
+  "metas": [
+    {
+      "type": "manga",
+      "name": "The Midnight Lighthouse",
+      "id": "lighthouse",
+      "poster": "https://raw.githubusercontent.com/LMS147/AniKatha/6219f9044060b8278432ad77b87fe6b8e7d01cd5/src/AniKatha.UI/wwwroot/manga/midnight-lighthouse-1.webp"
+    },
+    {
+      "type": "manga",
+      "id": "broken-cover",
+      "name": "Missing cover fixture",
+      "poster": "https://raw.githubusercontent.com/LMS147/AniKatha/6219f9044060b8278432ad77b87fe6b8e7d01cd5/src/AniKatha.UI/wwwroot/manga/missing-cover.webp"
+    }
+  ]
+}

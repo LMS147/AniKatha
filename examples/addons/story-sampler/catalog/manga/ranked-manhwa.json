@@ -1,0 +1,10 @@
+{
+  "metas": [
+    {
+      "type": "manga",
+      "name": "Manhwa cover fixture",
+      "id": "ranked-manhwa",
+      "poster": "https://raw.githubusercontent.com/LMS147/AniKatha/6219f9044060b8278432ad77b87fe6b8e7d01cd5/src/AniKatha.UI/wwwroot/manga/midnight-lighthouse-1.webp"
+    }
+  ]
+}

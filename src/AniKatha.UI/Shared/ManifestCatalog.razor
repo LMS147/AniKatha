@@ -32,7 +32,11 @@
  }
  @foreach(var item in titles){
   <button class="secondary design-provider-title" @onclick="() => SelectTitle(item)">
-   @if (Catalog.Type == "manga" && MediaUrl(Field(item, "poster"))) { <img src="@Field(item,"poster")" alt="" loading="lazy" /> }
+   @if (Catalog.Type == "manga")
+   {
+    var poster = Field(item, "poster");
+    <CatalogCover Source="@(MediaUrl(poster) ? poster : null)" />
+   }
    @Field(item,"name")
   </button>
  }

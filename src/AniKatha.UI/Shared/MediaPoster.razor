@@ -1,7 +1,6 @@
   <button class="poster-card" @onclick="Selected">
    <div class="poster-image">
-    @if (Poster is not null) { <img src="@Poster" alt="" loading="lazy" /> }
-    else { <Icon Name="@(Kind == "ANIME" ? "play" : "book")" /> }
+    <CatalogCover Source="@Poster" Placeholder="@(Kind == "ANIME" ? "play" : "book")" />
     @if (Score is int score) { <span class="score"><span aria-hidden="true">★</span> @(score / 10.0)</span> }
     <strong>@Title</strong>
    </div>

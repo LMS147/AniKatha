@@ -44,6 +44,33 @@
       "type": "manga",
       "id": "stories",
       "name": "Stories"
+    },
+    {
+      "type": "manga",
+      "id": "ranked-manga",
+      "name": "Fixture Popular Manga",
+      "ranking": "popularity",
+      "format": "Manga"
+    },
+    {
+      "type": "manga",
+      "id": "ranked-manhwa",
+      "name": "Fixture Popular Manhwa",
+      "ranking": "popularity",
+      "format": "Manhwa"
+    },
+    {
+      "type": "manga",
+      "id": "ranked-light-novels",
+      "name": "Fixture Popular Light Novels",
+      "ranking": "popularity",
+      "format": "Light Novel"
+    },
+    {
+      "type": "manga",
+      "id": "ranked-score",
+      "name": "Fixture Top Rated",
+      "ranking": "score"
     }
   ]
 }
