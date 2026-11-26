@@ -13,18 +13,10 @@ internal static class MangaDiscoveryChecks
     public static async Task RunAsync()
     {
         var store = new LocalStore(Path.Combine(Path.GetTempPath(), $"manga-discovery-{Guid.NewGuid():N}.db3"));
-        const string fast = """[{"type":"manga","id":"ranked","extra":[{"name":"skip"}]},{"type":"manga","id":"overlap","format":"Manhwa","ranking":"popularity"},{"type":"manga","id":"novels","format":"Novel","ranking":"popularity"},{"type":"manga","id":"community","ranking":"score"}]""";
+        const string fast = """[{"type":"manga","id":"ranked","ranking":"popularity","extra":[{"name":"skip"}]},{"type":"manga","id":"overlap","format":"Manhwa","ranking":"popularity"},{"type":"manga","id":"novels","format":"Novel","ranking":"popularity"},{"type":"manga","id":"community","ranking":"score","extra":[{"name":"skip"}]}]""";
         const string slow = """[{"type":"manga","id":"slow","format":"Manga","ranking":"popularity"}]""";
         const string failure = """[{"type":"manga","id":"retry","format":"Manga","ranking":"popularity"}]""";
         const string generic = """[{"type":"manga","id":"generic","name":"Popular Manhwa"}]""";
-        foreach (var (name, catalogs) in new[] { ("fast", fast), ("slow", slow), ("offline", failure), ("generic", generic) })
-        {
-            await store.SaveAddonAsync(new()
-            {
-                Name = name, Url = $"https://{name}.example/manifest.json",
-                ManifestJson = $$"""{"types":["manga"],"resources":["catalog","chapters","pages"],"catalogs":{{catalogs}}}"""
-            });
-        }
         using var fixture = new Fixture();
         using var http = new HttpClient(fixture);
         await using var context = new BunitContext();
@@ -36,40 +28,56 @@ internal static class MangaDiscoveryChecks
         context.Services.AddSingleton(new JikanCatalogue(http));
         context.JSInterop.Mode = JSRuntimeMode.Loose;
 
-        var screen = context.Render<Manga>();
         string[] labels = ["Popular Manga", "Popular Manhwa", "Popular Light Novels", "Top Rated"];
+        var screen = context.Render<Manga>();
+        screen.WaitForAssertion(() =>
+        {
+            Check(screen.FindAll(".manga-discovery h2").Select(x => x.TextContent).SequenceEqual(labels), "Manga shelf order changed");
+            Check(screen.FindAll(".manga-discovery p").Count(p => p.TextContent.Contains("No enabled add-on")) == 4,
+                "All shelves need an add-on empty state");
+            Check(screen.Find("a[href='/profile/sources']").TextContent.Contains("Manage add-ons"), "Sources link missing");
+            Check(fixture.Calls.IsEmpty, "Discovery called a built-in fallback");
+        });
+        screen.Dispose();
+
+        foreach (var (name, catalogs) in new[] { ("fast", fast), ("slow", slow), ("offline", failure), ("generic", generic) })
+        {
+            await store.SaveAddonAsync(new()
+            {
+                Name = name, Url = $"https://{name}.example/manifest.json",
+                ManifestJson = $$"""{"types":["manga"],"resources":["catalog","chapters","pages"],"catalogs":{{catalogs}}}"""
+            });
+        }
+
+        screen = context.Render<Manga>();
         string Shelf(string name) => $".manga-discovery[aria-label='{name}']";
         string[] Titles(string shelf) => screen.FindAll($"{Shelf(shelf)} .poster-card strong").Select(x => x.TextContent).ToArray();
         void Has(string shelf, string title) => screen.WaitForAssertion(() => Check(Titles(shelf).Contains(title), $"Missing {title} in {shelf}"));
         Task Button(string shelf, string startsWith) => screen.InvokeAsync(() => screen
             .FindAll($"{Shelf(shelf)} button").First(element => element.TextContent.Trim().StartsWith(startsWith)).ClickAsync(new()));
 
-        Check(screen.FindAll(".manga-discovery h2").Select(x => x.TextContent).SequenceEqual(labels), "Manga shelf order or initial rendering changed");
         screen.WaitForAssertion(() => Check(!screen.Find("fieldset").HasAttribute("disabled"), "Search did not become usable"));
         Has(labels[0], "Fast Manga");
         Has(labels[1], "Fast Manhwa");
         Has(labels[2], "Fast Light Novel");
         Has(labels[2], "Explicit Light Novel");
-        Has(labels[3], "Fast Manga");
         Has(labels[3], "Provider Rating");
-        Check(!fixture.Delayed.Task.IsCompleted && !fixture.BuiltIn.Task.IsCompleted, "Fast add-on should render before slower feeds");
+        Check(!fixture.Delayed.Task.IsCompleted, "Fast add-on should render before the slow add-on");
         Check(!screen.Markup.Contains("Generic Novel") && !screen.Markup.Contains("Unclassified Reader"), "Unclassified results were ranked");
         Check(screen.FindAll(".design-provider-title").Count == 0, "Add-on catalogs still render in separate blocks");
         Check(Titles(labels[1]).Count(title => title == "Fast Manhwa") == 1, "Same-provider ID was duplicated");
-        Check(!fixture.Calls.Any(uri => uri.AbsolutePath.Contains("/chapters/")), "Discovery fetched chapters per card");
+        Check(!fixture.Calls.Any(uri => uri.AbsolutePath.Contains("/chapters/") || uri.Host is "generic.example" or "graphql.anilist.co"),
+            "Discovery fetched a chapter, a generic catalog or a built-in feed");
 
-        fixture.BuiltIn.SetResult();
         fixture.Delayed.SetResult();
         Has(labels[0], "Slow Manga");
-        Has(labels[0], "AniList Japanese Manga");
         Check(Titles(labels[0]).First() == "Fast Manga", "Late supply shifted a visible card or provider IDs collided");
-        Has(labels[1], "AniList Korean Manhwa");
-        Has(labels[2], "AniList Light Novel");
-        Has(labels[3], "AniList Rated");
-        Check(!Titles(labels[3]).Contains("AniList Unrated"), "Unrated AniList title shown");
+        Check(Titles(labels[3]).SequenceEqual(new[] { "Provider Rating", "Second Rated" }), "Only declared community-rated order belongs on Top Rated");
         await Button(labels[0], "Retry offline");
         Has(labels[0], "Recovered Manga");
         Check(Titles(labels[0]).Contains("Fast Manga"), "Retry cleared data from another feed");
+        Check(fixture.Calls.Count(uri => uri.Host == "offline.example") == 2 &&
+            fixture.Calls.Count(uri => uri.AbsolutePath == "/catalog/manga/ranked.json") == 1, "Retry reloaded an unrelated feed");
 
         var capture = Environment.GetEnvironmentVariable("ANIKATHA_MANGA_CAPTURE_DIRECTORY");
         if (capture is not null)
@@ -88,6 +96,19 @@ internal static class MangaDiscoveryChecks
             Check(!screen.Find($"{Shelf(label)} .catalog-art-grid").ClassList.Contains("catalog-shelf"), "View all did not expand " + label);
             if (label != labels[0]) await Button(label, "Show less");
         }
+        await Button(labels[1], "View all");
+        var selector = $"{Shelf(labels[1])} select";
+        var overlapCatalog = screen.FindAll($"{selector} option").Single(x => x.TextContent.Contains("overlap")).GetAttribute("value");
+        await screen.InvokeAsync(() => screen.Find(selector).ChangeAsync(overlapCatalog));
+        Check(Titles(labels[1]).SequenceEqual(new[] { "Fast Manhwa" }), "Duplicate titles disappeared when selecting their specific catalog");
+        await Button(labels[1], "Show less");
+
+        await Button(labels[3], "View all");
+        await Button(labels[3], "More from fast");
+        Has(labels[3], "More Rated");
+        Check(fixture.Calls.Count(uri => uri.AbsolutePath.Contains("/community/skip=3.json")) == 1, "Rating pagination lost the original provider order or offset");
+        await Button(labels[3], "Show less");
+
         await Button(labels[0], "More from fast");
         Has(labels[0], "Later Manga");
         Has(labels[2], "Later Light Novel");
@@ -132,7 +153,16 @@ internal static class MangaDiscoveryChecks
         await store.SetAddonDisabledAsync("https://fast.example/manifest.json", false);
         screen = context.Render<Manga>();
         Has(labels[0], "Fast Manga");
-        Console.WriteLine("PASS: Manga shelf classification, catalog ranking, progressive rendering, late results, targeted retry, shared pagination, provider navigation and chapter resume, warm cache, and disabled sources.");
+        screen.Dispose();
+        await store.RemoveAddonAsync("https://fast.example/manifest.json");
+        await store.SetAddonDisabledAsync("https://slow.example/manifest.json", true);
+        await store.SetAddonDisabledAsync("https://offline.example/manifest.json", true);
+        var beforeGeneric = fixture.Calls.Count;
+        screen = context.Render<Manga>();
+        screen.WaitForAssertion(() => Check(screen.FindAll(".manga-discovery p").Count(p => p.TextContent.Contains("No enabled add-on")) == 4,
+            "Generic-only setup should have four empty ranked shelves"));
+        Check(fixture.Calls.Count == beforeGeneric, "Generic-only discovery queried a feed");
+        Console.WriteLine("PASS: Manga add-on-only shelves, empty and generic-only states, removal, classification, catalog ranking, progressive rendering, late results, targeted retry, shared pagination, provider navigation and chapter resume, warm cache, and disabled sources.");
     }
 
     private static void Check(bool condition, string message)
@@ -144,7 +174,6 @@ internal static class MangaDiscoveryChecks
     {
         public ConcurrentQueue<Uri> Calls { get; } = new();
         public TaskCompletionSource Delayed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource BuiltIn { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int retries;
         private static string Art(int index) => $"https://art.example/midnight-lighthouse-{index}.webp";
 
@@ -154,27 +183,7 @@ internal static class MangaDiscoveryChecks
             Calls.Enqueue(uri);
             var path = uri.AbsolutePath;
             if (uri.Host == "graphql.anilist.co")
-            {
-                await BuiltIn.Task.WaitAsync(token);
-                using var doc = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
-                var vars = doc.RootElement.GetProperty("variables");
-                var format = vars.GetProperty("format").GetString();
-                var name = (vars.GetProperty("country").GetString(), format) switch
-                {
-                    ("JP", "MANGA") => "Japanese Manga",
-                    ("KR", "MANGA") => "Korean Manhwa",
-                    ("JP", "NOVEL") => "Light Novel",
-                    _ => "Rated"
-                };
-                object Media(int id, string title, int? score) => new
-                {
-                    id, type = "MANGA", title = new { userPreferred = title },
-                    coverImage = new { large = Art(1 + id % 3) }, startDate = new { year = 2025 },
-                    format = format ?? "MANGA", averageScore = score
-                };
-                return Json(new { data = new { Page = new { pageInfo = new { hasNextPage = true },
-                    media = new[] { Media(101, $"AniList {name}", 86), Media(102, "AniList Unrated", null) } } } });
-            }
+                throw new InvalidOperationException("Ranked Manga discovery must not request AniList.");
 
             if (path.StartsWith("/chapters/"))
                 return Json(new { meta = new { id = "shared", name = "Fast Manga" },
@@ -200,10 +209,16 @@ internal static class MangaDiscoveryChecks
                 "/catalog/manga/ranked/skip=5.json" => [Card("later", "Later Manga", "Manga", 5), Card("laterlight", "Later Light Novel", "Light Novel", 3)],
                 "/catalog/manga/overlap.json" => [Card("manhwa", "Fast Manhwa")],
                 "/catalog/manga/novels.json" => [Card("explicitlight", "Explicit Light Novel", "Light Novel"), Card("broadnovel", "Generic Novel")],
-                "/catalog/manga/community.json" => [new { id = "provider-score", name = "Provider Rating", type = "manga", poster = Art(2) }],
+                "/catalog/manga/community.json" =>
+                [
+                    new { id = "provider-score", name = "Provider Rating", type = "manga", poster = Art(2) },
+                    Card("second-score", "Second Rated", communityScore: 85, art: 3),
+                    Card("unrated", "Unrated Entry")
+                ],
+                "/catalog/manga/community/skip=3.json" => [Card("more-score", "More Rated", communityScore: 75)],
                 "/catalog/manga/slow.json" => [Card("shared", "Slow Manga")],
                 "/catalog/manga/retry.json" => [Card("again", "Recovered Manga", art: 3)],
-                "/catalog/manga/generic.json" => [Card("generic", "Unclassified Reader")],
+                "/catalog/manga/generic.json" => [Card("generic", "Unclassified Reader", "Manhwa", 100, 99)],
                 _ => []
             };
             return Json(new { metas = cards });

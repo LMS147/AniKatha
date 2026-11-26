@@ -62,23 +62,23 @@
 {
  @if (Kind == "MANGA")
  {
-  @if (source.Length == 0 && httpProviders.Any(provider => provider.Catalogs(Kind).Any()))
+  @if (MangaProviders.Count > 0)
   {
    <label class="manga-provider-picker">Browse by provider
     <select value="" @onchange="ChangeSource">
      <option value="">Choose a provider</option>
-     @foreach (var provider in httpProviders.Where(provider => provider.Catalogs(Kind).Any()))
+     @foreach (var provider in MangaProviders)
      {
       <option value="@provider.ProviderKey">@provider.Addon.Name</option>
      }
     </select>
    </label>
   }
-  <MangaDiscovery @key="source" Ready="initialized" Providers="@(source.Length == 0 ? httpProviders : [])" />
+  <MangaDiscovery Ready="initialized" Providers="MangaProviders" />
  }
  else
  {
-  <CatalogDiscovery Kind="@Kind" Selected="Select" />
+  <CatalogDiscovery Selected="Select" />
  }
  <section class="catalog-samples" aria-label="Samples">@Featured</section>
 }
@@ -158,6 +158,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  string search="",genre="",season="",format="",sort="TRENDING_DESC";int? year;int page=1;bool busy,hasMore;string? error;List<Media> items=[];
  CancellationTokenSource? request;
  List<AddonResources> httpProviders=[];
+ List<AddonResources> MangaProviders = [];
  InstalledAddon? jikan;
  bool preferJikan;
  List<AddonTitle> addonItems = [];
@@ -171,7 +172,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
  const string AniListSource = "anilist";
  const string JikanSource = "jikan";
  string SourceSetting => $"catalogue-source-{Kind}";
- bool ShowDiscovery => Featured is not null && (Kind == "MANGA" ? source is "" or AniListSource : ShowBuiltIn && !UsingAddon) &&
+ bool ShowDiscovery => Featured is not null && (Kind == "MANGA" ? source.Length == 0 : ShowBuiltIn && !UsingAddon) &&
     appliedSearch.Length == 0 && !HasFilters && appliedFilters.Sort == "TRENDING_DESC";
  bool ShowBuiltIn => source is "" or AniListSource or JikanSource;
  bool UsingAddon => source == JikanSource || source.Length == 0 && preferJikan && jikan is not null;
@@ -186,6 +187,7 @@ else { <MediaGrid Items="items" Selected="Select"/> }
    var enabled = await Store.GetAddonsAsync();
    if (disposed) return;
    httpProviders = enabled.Select(x => new AddonResources(x)).ToList();
+   if (Kind == "MANGA") MangaProviders = httpProviders.Where(provider => provider.Catalogs(Kind).Any()).ToList();
    jikan = enabled.FirstOrDefault(addon => addon.CatalogueProvider == JikanCatalogue.Provider);
    if (jikan is not null)
    {

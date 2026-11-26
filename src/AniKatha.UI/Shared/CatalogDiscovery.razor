@@ -22,7 +22,7 @@
 }
 
 @code {
- [Parameter, EditorRequired] public string Kind { get; set; } = "";
+ const string Kind = "ANIME";
  [Parameter] public EventCallback<Media> Selected { get; set; }
  readonly CancellationTokenSource stop = new();
  Shelf[] shelves = [];
@@ -33,14 +33,10 @@
   var seasons = new[] { "WINTER", "SPRING", "SUMMER", "FALL" };
   var current = (now.Month - 1) / 3;
   var nextYear = current == 3 ? now.Year + 1 : now.Year;
-  shelves = Kind == "ANIME"
-   ? [new("Popular This Season", new(Kind, Year: now.Year, Season: seasons[current], Sort: "POPULARITY_DESC")),
-      new("Upcoming Next Season", new(Kind, Year: nextYear, Season: seasons[(current + 1) % 4], Sort: "POPULARITY_DESC", Status: "NOT_YET_RELEASED")),
-      new("All-Time Popular", new(Kind, Sort: "POPULARITY_DESC")), new("Top Rated", new(Kind, Sort: "SCORE_DESC"))]
-   : [new("Popular Manga", new(Kind, Format: "MANGA", Sort: "POPULARITY_DESC", Country: "JP")),
-      new("Popular Manhwa", new(Kind, Format: "MANGA", Sort: "POPULARITY_DESC", Country: "KR")),
-      new("Popular Light Novels", new(Kind, Format: "NOVEL", Sort: "POPULARITY_DESC", Country: "JP")),
-      new("Top Rated", new(Kind, Sort: "SCORE_DESC"))];
+  shelves =
+   [new("Popular This Season", new(Kind, Year: now.Year, Season: seasons[current], Sort: "POPULARITY_DESC")),
+    new("Upcoming Next Season", new(Kind, Year: nextYear, Season: seasons[(current + 1) % 4], Sort: "POPULARITY_DESC", Status: "NOT_YET_RELEASED")),
+    new("All-Time Popular", new(Kind, Sort: "POPULARITY_DESC")), new("Top Rated", new(Kind, Sort: "SCORE_DESC"))];
   return Task.WhenAll(shelves.Select(Load));
  }
 

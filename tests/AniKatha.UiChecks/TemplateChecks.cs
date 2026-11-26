@@ -17,12 +17,10 @@ internal static class TemplateChecks
         context.Services.AddSingleton(new AddonClient(http));
         context.Services.AddSingleton(new LocalStore(Path.Combine(Path.GetTempPath(), $"anikatha-templates-{Guid.NewGuid():N}.db3")));
 
-        var shelves = context.Render<CatalogDiscovery>(parameters => parameters.Add(component => component.Kind, "MANGA"));
+        var shelves = context.Render<CatalogDiscovery>();
         shelves.WaitForAssertion(() =>
         {
-            Check(shelves.FindAll(".catalog-shelf").Count == 4, "Manga renders four separate horizontal shelves.");
-            Check(handler.FilteredCountries.Contains("KR") && handler.FilteredCountries.Contains("JP"),
-                "Manhwa and Japanese manga use distinct origin filters.");
+            Check(shelves.FindAll(".catalog-shelf").Count == 4, "Anime renders four separate horizontal shelves.");
         });
         var button = shelves.FindAll("button").First(element => element.TextContent.Contains("View all"));
         await shelves.InvokeAsync(() => button.Click());
@@ -47,15 +45,11 @@ internal static class TemplateChecks
 
     private sealed class Feed : HttpMessageHandler
     {
-        public System.Collections.Concurrent.ConcurrentBag<string> FilteredCountries { get; } = [];
-
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
             var variables = body.RootElement.GetProperty("variables");
             var type = variables.GetProperty("type").GetString()!;
-            if (variables.TryGetProperty("country", out var country) && country.GetString() is { } code)
-                FilteredCountries.Add(code);
 
             object Title(int id) => new
             {
