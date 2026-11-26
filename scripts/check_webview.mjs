@@ -7,7 +7,7 @@ export function hasNavigation(snapshot) {
   return !snapshot.errorVisible && expected.every(label => snapshot.links?.includes(label));
 }
 
-const mangaShelfCard = '.manga-discovery[aria-label="Popular Manga"] .poster-card';
+const mangaShelfCard = '.manga-discovery[aria-label="Popular Manga"] a.poster-card[href*="title=lighthouse&"]';
 
 export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
   const mode = process.argv[2] ?? 'fresh';
@@ -280,11 +280,12 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           await wait(() => document.querySelector('#catalog-filters')?.hidden === true, 'closed Manga content filters');
           window.aniKathaMangaCapture = 'ready';
           await wait(() => window.aniKathaMangaCapture === 'done', 'Manga shelf screenshot');
-          (await wait(() => document.querySelector(mangaShelf + ' .poster-card'), 'ranked Manga title')).click();
+          (await wait(() => document.querySelector(${JSON.stringify(mangaShelfCard)}), 'ranked Manga title')).click();
         } else {
           if (oldProfile) await click('The Midnight Lighthouse');
           else (await wait(() => document.querySelector(${JSON.stringify(mangaShelfCard)}), 'ranked Manga title')).click();
         }
+        if (!oldProfile) await wait(() => location.pathname === '/manga/details/source', 'ranked card opens Manga Details');
         await click('Chapter 1');
         if (oldProfile) await click('Read Chapter 1');
         const imageAt = number => {

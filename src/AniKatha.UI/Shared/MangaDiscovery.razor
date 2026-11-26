@@ -1,7 +1,6 @@
 @using AniKatha.UI.Pages
 @implements IDisposable
 @inject AddonClient Client
-@inject NavigationManager Navigation
 
 @if (Ready && feeds.Count == 0)
 {
@@ -38,7 +37,8 @@
      var card = entry.Card;
      var key = (feed.Provider.ProviderKey, card.Id);
      <MediaPoster @key="key" Title="@card.Title" Kind="MANGA" Poster="@card.Poster" Score="@card.Score"
-         Metadata="@Metadata(card, feed, matching.Length > 1)" Selected="() => Open(feed, card)" />
+         Metadata="@Metadata(card, feed, matching.Length > 1)"
+         Href="@MangaDetails.ProviderPath(feed.Provider.ProviderKey, card.Id, card.Title, catalog: feed.Catalog.Id)" />
     }
    </div>
    @if (matching.Length > 1)
@@ -165,9 +165,6 @@
  static string Metadata(MangaShelfCard card, MangaShelfFeed feed, bool sourceLabel) =>
      string.Join(" · ", new[] { card.Format.Replace('_', ' '), card.Year?.ToString(),
         sourceLabel ? feed.Label : null }.Where(value => !string.IsNullOrWhiteSpace(value)));
-
- void Open(MangaShelfFeed feed, MangaShelfCard card) =>
-  Navigation.NavigateTo(MangaDetails.ProviderPath(feed.Provider.ProviderKey, card.Id, card.Title, catalog: feed.Catalog.Id));
 
  public void Dispose()
  {

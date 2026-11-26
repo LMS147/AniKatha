@@ -134,8 +134,9 @@ internal static class MangaDiscoveryChecks
 
         var count = fixture.Calls.Count;
         var nav = context.Services.GetRequiredService<NavigationManager>();
-        await screen.InvokeAsync(() => screen.FindAll($"{Shelf(labels[0])} .poster-card")
-            .Single(button => button.QuerySelector("strong")?.TextContent == "Fast Manga").ClickAsync(new()));
+        var card = screen.FindAll($"{Shelf(labels[0])} a.poster-card")
+            .Single(link => link.QuerySelector("strong")?.TextContent == "Fast Manga");
+        nav.NavigateTo(card.GetAttribute("href")!);
         Check(nav.Uri.Contains("title=shared") && nav.Uri.Contains("catalog=ranked"), "Card did not preserve title and catalog IDs");
         var detail = context.Render<MangaDetails>();
         detail.WaitForAssertion(() => Check(detail.Markup.Contains("Fixture Chapter"), "Provider chapter list did not open"));
