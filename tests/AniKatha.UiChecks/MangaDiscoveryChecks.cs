@@ -79,6 +79,11 @@ internal static class MangaDiscoveryChecks
         Check(fixture.Calls.Count(uri => uri.Host == "offline.example") == 2 &&
             fixture.Calls.Count(uri => uri.AbsolutePath == "/catalog/manga/ranked.json") == 1, "Retry reloaded an unrelated feed");
 
+        var cover = screen.FindComponent<MediaPoster>().FindComponent<CatalogCover>();
+        await cover.InvokeAsync(() => cover.Find("img").TriggerEventAsync("onerror", EventArgs.Empty));
+        Check(cover.Find("[data-cover-state='failed'] svg") is not null && cover.FindAll("img").Count == 0,
+            "A failed shelf cover must leave a placeholder without a broken-image element");
+
         var capture = Environment.GetEnvironmentVariable("ANIKATHA_MANGA_CAPTURE_DIRECTORY");
         if (capture is not null)
         {
@@ -142,6 +147,10 @@ internal static class MangaDiscoveryChecks
         var genericProvider = new AddonResources((await store.GetAddonsAsync()).Single(addon => addon.Name == "generic"));
         await screen.InvokeAsync(() => screen.Find(".design-catalog > .manga-provider-picker select").ChangeAsync(genericProvider.ProviderKey));
         screen.WaitForAssertion(() => Check(screen.FindAll(".design-provider-title").Any(x => x.TextContent.Contains("Unclassified Reader")), "Browse-only catalog became unreachable"));
+        var providerCover = screen.FindComponent<ManifestCatalog>().FindComponent<CatalogCover>();
+        await providerCover.InvokeAsync(() => providerCover.Find("img").TriggerEventAsync("onerror", EventArgs.Empty));
+        Check(providerCover.Find("[data-cover-state='failed'] svg") is not null && providerCover.FindAll("img").Count == 0,
+            "A failed provider-browse cover must leave a placeholder");
         await screen.InvokeAsync(() => screen.Find(".manga-discovery-back").ClickAsync(new()));
         Has(labels[0], "Fast Manga");
         screen.Dispose();

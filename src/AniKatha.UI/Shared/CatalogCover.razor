@@ -1,0 +1,30 @@
+<span class="catalog-cover" data-cover-state="@State" aria-hidden="true">
+ <Icon Name="@Placeholder" />
+ @if (Source is { Length: > 0 } url && !failed)
+ {
+  <img @key="url" src="@url" alt="" loading="lazy" referrerpolicy="no-referrer"
+       @onload="() => Update(url, true)" @onerror="() => Update(url, false)" />
+ }
+</span>
+
+@code {
+ [Parameter] public string? Source { get; set; }
+ [Parameter] public string Placeholder { get; set; } = "book";
+ string? previous;
+ bool loaded, failed;
+ string State => failed ? "failed" : loaded ? "loaded" : string.IsNullOrEmpty(Source) ? "missing" : "loading";
+
+ protected override void OnParametersSet()
+ {
+  if (previous == Source) return;
+  previous = Source;
+  loaded = failed = false;
+ }
+
+ void Update(string url, bool succeeded)
+ {
+  if (Source != url) return;
+  loaded = succeeded;
+  failed = !succeeded;
+ }
+}

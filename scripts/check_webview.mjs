@@ -230,7 +230,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
 
 
     if (mode === 'seed') console.log('Seeding the enabled add-on and chapter position in the baseline APK.');
-    const httpAddon = await command('Runtime.evaluate', {
+    const httpAddonTask = command('Runtime.evaluate', {
       awaitPromise: true, returnByValue: true,
       expression: `(async () => {
         async function wait(find, description) {
@@ -278,8 +278,20 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           if (${testDownloads}) await click('Download Compatibility clip');
         }
         tab('manga');
-        if (!oldProfile) await (${selectMangaProvider.toString()})(wait);
-        await click('The Midnight Lighthouse');
+        if (${testDownloads}) {
+          const mangaShelf = '.manga-discovery[aria-label="Popular Manga"]';
+          await wait(() => document.querySelectorAll('.manga-discovery .poster-card').length === 5 &&
+            document.querySelector(mangaShelf + ' [data-cover-state="loaded"] img')?.naturalWidth > 0 &&
+            document.querySelector(mangaShelf + ' [data-cover-state="failed"] svg') &&
+            !document.querySelector('.design-provider-title') &&
+            document.querySelector('.design-catalog > .manga-provider-picker select')?.value === '', 'automatic ranked Manga shelves and cover fallback');
+          window.aniKathaMangaCapture = 'ready';
+          await wait(() => window.aniKathaMangaCapture === 'done', 'Manga shelf screenshot');
+          (await wait(() => document.querySelector(mangaShelf + ' .poster-card'), 'ranked Manga title')).click();
+        } else {
+          if (!oldProfile) await (${selectMangaProvider.toString()})(wait);
+          await click('The Midnight Lighthouse');
+        }
         await click('Chapter 1');
         if (oldProfile) await click('Read Chapter 1');
         const imageAt = number => {
@@ -334,6 +346,7 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         return true;
       })()`,
     }, 180000);
+    const [httpAddon] = await Promise.all([httpAddonTask, testDownloads ? captureMangaShelves(command) : null]);
     if (httpAddon.result?.value !== true)
       throw new Error(httpAddon.exceptionDetails?.exception?.description ?? 'Installed HTTP add-on workflow failed.');
     console.log('PASS: installed HTTP add-on supplies anime and manga resources and preserves reading progress across disable/enable.');
@@ -488,6 +501,30 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
     socket.close();
     for (const {reject, timer} of pending.values()) {clearTimeout(timer); reject(new Error('Debug connection closed.'));}
   }
+}
+
+async function captureMangaShelves(command) {
+  const capture = async (label, position) => {
+    const result = await command('Runtime.evaluate', {
+      expression: `(async () => {
+        for (let i = 0; i < 1000 && window.aniKathaMangaCapture !== 'ready'; i++)
+          await new Promise(resolve => setTimeout(resolve, 100));
+        if (window.aniKathaMangaCapture !== 'ready') return false;
+        ${position};
+        await new Promise(resolve => setTimeout(resolve, 400));
+        return true;
+      })()`, awaitPromise: true, returnByValue: true,
+    }, 120000);
+    if (result.result?.value !== true) throw new Error('Could not capture the ranked Manga shelves');
+    const image = execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 12 * 1024 * 1024 });
+    await writeFile('artifacts/startup/' + label + '.png', image);
+  };
+  await capture('browse-manga-ranked-top', 'window.scrollTo(0,0)');
+  await capture('browse-manga-ranked-lower', 'document.querySelectorAll(".manga-discovery")[2].scrollIntoView()');
+  await command('Runtime.evaluate', {
+    expression: "window.scrollTo(0,0); window.aniKathaMangaCapture = 'done'",
+  });
+  console.log('PASS: Manga ranked shelves load automatically with a real image and an error placeholder in the Android WebView.');
 }
 
 async function captureProfileScenes(command, scenes) {
