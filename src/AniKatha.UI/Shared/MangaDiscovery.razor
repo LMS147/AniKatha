@@ -1,26 +1,28 @@
 @using AniKatha.UI.Pages
 @implements IDisposable
-@inject AniListClient AniList
 @inject AddonClient Client
 @inject NavigationManager Navigation
+
+@if (Ready && feeds.Count == 0)
+{
+ <p class="notice">@(Providers.Count == 0 ? "Add a manga source to populate these shelves." : "Add a source with ranked manga catalogs to populate these shelves.") <a href="/profile/sources">Manage add-ons</a></p>
+}
 
 @foreach (var shelf in MangaShelf.All)
 {
  var matching = feeds.Where(feed => feed.CouldFeed(shelf)).ToArray();
  var groups = matching.Where(feed => feed.Snapshot is not null)
      .OrderBy(feed => feed.Snapshot!.Order).ToArray();
- var cards = groups.SelectMany(feed => feed.Cards(shelf).Select(card => (Feed: feed, Card: card)))
-     .DistinctBy(entry => (Provider: entry.Feed.Provider?.ProviderKey ?? "anilist", entry.Card.Id)).ToArray();
+ var entries = groups.SelectMany(feed => feed.Cards(shelf).Select(card => (Feed: feed, Card: card))).ToArray();
  var loading = !Ready || matching.Any(feed => feed.Busy);
  var failures = matching.Where(feed => feed.Failed || feed.FailedNextPage).ToArray();
- var paginated = groups.Where(feed => feed.Snapshot!.More && (feed.Provider is null
-     || feed.IsRankedFor(shelf) || feed.Cards(shelf).Any())).ToArray();
- var open = Expanded.Contains(shelf.Title);
+ var paginated = groups.Where(feed => feed.CanPage(shelf)).ToArray();
+ var open = (entries.Length > 0 || paginated.Length > 0) && Expanded.Contains(shelf.Title);
+ var options = matching.Where(feed => paginated.Contains(feed) || entries.Any(entry => entry.Feed == feed)).ToArray();
  var selection = Selections.GetValueOrDefault(shelf.Title, "");
- var options = matching.Where(feed => cards.Any(entry => entry.Feed == feed)).ToArray();
  var activeCatalog = options.Any(feed => feed.Key == selection) ? selection : "";
- var shown = open && activeCatalog.Length > 0
-     ? cards.Where(entry => entry.Feed.Key == activeCatalog).ToArray() : cards;
+ var cards = entries.Where(entry => !open || activeCatalog.Length == 0 || entry.Feed.Key == activeCatalog)
+     .DistinctBy(entry => (entry.Feed.Provider.ProviderKey, entry.Card.Id)).ToArray();
 
  <section class="catalog-discovery manga-discovery" aria-label="@shelf.Title" @key="shelf.Title">
   <header class="section-title">
@@ -31,27 +33,27 @@
             @onclick="() => Toggle(shelf.Title)">@(open ? "Show less" : "View all") ›</button>
    }
   </header>
+  @if (open && options.Length > 1)
+  {
+   <label class="manga-provider-picker">Catalog
+    <select aria-label="@($"Catalog for {shelf.Title}")" value="@activeCatalog"
+            @onchange="args => Selections[shelf.Title] = args.Value as string ?? string.Empty">
+     <option value="">All catalogs</option>
+     @foreach (var feed in options)
+     {
+      <option value="@feed.Key">@feed.Label</option>
+     }
+    </select>
+   </label>
+  }
   @if (cards.Length > 0)
   {
-   @if (open && options.Length > 1)
-   {
-    <label class="manga-provider-picker">Catalog
-     <select aria-label="@($"Catalog for {shelf.Title}")" value="@activeCatalog"
-             @onchange="args => Selections[shelf.Title] = args.Value as string ?? string.Empty">
-      <option value="">All catalogs</option>
-      @foreach (var feed in options)
-      {
-       <option value="@feed.Key">@feed.Label</option>
-      }
-     </select>
-    </label>
-   }
    <div class="poster-grid catalog-art-grid @(!open ? "catalog-shelf" : null)">
-    @foreach (var entry in open ? shown : cards.GroupBy(entry => entry.Feed).SelectMany(group => group.Take(6)))
+    @foreach (var entry in open ? cards : cards.GroupBy(entry => entry.Feed).SelectMany(group => group.Take(6)))
     {
      var feed = entry.Feed;
      var card = entry.Card;
-     var key = (feed.Provider?.ProviderKey ?? "anilist", card.Id);
+     var key = (feed.Provider.ProviderKey, card.Id);
      <MediaPoster @key="key" Title="@card.Title" Kind="MANGA" Poster="@card.Poster" Score="@card.Score"
          Metadata="@Metadata(card, feed, matching.Length > 1)" Selected="() => Open(feed, card)" />
     }
@@ -69,6 +71,10 @@
      <div class="poster-card manga-shelf-skeleton" aria-hidden="true"><div class="poster-image"></div><span class="catalog-card-footer"></span></div>
     }
    </div>
+  }
+  else if (matching.Length == 0)
+  {
+   <p>No enabled add-on supplies this shelf.</p>
   }
   else if (failures.Length == 0)
   {
@@ -124,23 +130,14 @@
   if (!Ready || started) return Task.CompletedTask;
   started = true;
   foreach (var provider in Providers)
-  {
-   foreach (var catalog in provider.Catalogs("MANGA").Where(catalog => catalog.Extras.All(extra => !extra.Required || extra.Name == "skip")))
-   {
-    var key = $"{provider.ProviderKey}/{catalog.Type}/{Uri.EscapeDataString(catalog.Id)}";
-    feeds.Add(new(key, $"{provider.Addon.Name} · {catalog.Name}", provider: provider, catalog: catalog));
-   }
-  }
-  // Preserve capacity for the four built-in shelves when many add-ons are installed.
-  feeds.Insert(0, BuiltIn(MangaShelf.All[0]));
-  feeds.InsertRange(Math.Min(3, feeds.Count), MangaShelf.All.Skip(1).Select(BuiltIn));
+   foreach (var catalog in provider.Catalogs("MANGA").Where(MangaShelfFeed.CanLoad))
+    feeds.Add(new(provider, catalog));
   foreach (var feed in feeds) feed.Snapshot = Cache.MangaShelves.GetValueOrDefault(feed.Key);
   var now = DateTimeOffset.UtcNow;
   return Task.WhenAll(feeds.Where(feed => feed.Snapshot is null || now - feed.Snapshot.Loaded > TimeSpan.FromMinutes(5))
       .Select(feed => Load(feed, false)));
  }
 
- static MangaShelfFeed BuiltIn(MangaShelf shelf) => new($"anilist/{shelf.Title}", "AniList", shelf);
  void Toggle(string title)
  {
   if (!Expanded.Add(title)) Expanded.Remove(title);
@@ -156,7 +153,7 @@
   {
    await slots.WaitAsync(token);
    MangaShelfPage page;
-   try { page = await feed.Fetch(AniList, Client, next, token); }
+   try { page = await feed.Fetch(Client, next, token); }
    finally { slots.Release(); }
    token.ThrowIfCancellationRequested();
 
@@ -187,13 +184,8 @@
      string.Join(" · ", new[] { card.Format.Replace('_', ' '), card.Year?.ToString(),
         sourceLabel ? feed.Label : null }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
- void Open(MangaShelfFeed feed, MangaShelfCard card)
- {
-  if (feed.Provider is { } source && feed.Catalog is { } catalog)
-   Navigation.NavigateTo(MangaDetails.ProviderPath(source.ProviderKey, card.Id, card.Title, catalog: catalog.Id));
-  else
-   Navigation.NavigateTo($"/manga/details/{card.Id}");
- }
+ void Open(MangaShelfFeed feed, MangaShelfCard card) =>
+  Navigation.NavigateTo(MangaDetails.ProviderPath(feed.Provider.ProviderKey, card.Id, card.Title, catalog: feed.Catalog.Id));
 
  public void Dispose()
  {
