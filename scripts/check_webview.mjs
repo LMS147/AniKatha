@@ -7,26 +7,14 @@ export function hasNavigation(snapshot) {
   return !snapshot.errorVisible && expected.every(label => snapshot.links?.includes(label));
 }
 
-async function selectMangaProvider(wait) {
-  const providerName = 'AniKatha Story Sampler';
-  const picker = await wait(() => {
-    const currentSource = document.querySelector('[aria-label="Catalogue source"]');
-    if (currentSource?.selectedOptions[0]?.textContent.trim() === providerName) return true;
-    return document.querySelector('.design-catalog > .manga-provider-picker select');
-  }, 'Browse by provider');
-  if (picker === true) return;
-  const option = [...picker.options].find(item => item.textContent.trim() === providerName);
-  if (!option) throw new Error('Story Sampler is missing from Browse by provider');
-  picker.value = option.value;
-  picker.dispatchEvent(new Event('change', { bubbles: true }));
-}
+const mangaShelfCard = '.manga-discovery[aria-label="Popular Manga"] .poster-card';
 
 export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
   const mode = process.argv[2] ?? 'fresh';
   const aniListConfigured = process.env.ANIKATHA_TEST_ANILIST_CONFIGURED;
   const fixtureRef = process.env.ANIKATHA_TEST_FIXTURE_REF;
   const fixture = 'https://raw.githubusercontent.com/LMS147/AniKatha/' +
-    (fixtureRef ?? '118ce2c1895db30ec2ef2dd7db50e952c4de1bff') + '/examples/addons/story-sampler/manifest.json';
+    (fixtureRef ?? 'f09d1cff87bf154c04795b94480b544b636820b7') + '/examples/addons/story-sampler/manifest.json';
   const testDownloads = mode === 'fresh' && Boolean(fixtureRef);
   const pages = await (await fetch(`${endpoint}/json/list`, {signal: AbortSignal.timeout(10000)})).json();
   const page = pages.find(p => p.type === 'page' && (p.title?.includes('AniKatha') || p.url?.startsWith('https://0.0.0.1')));
@@ -110,9 +98,8 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
           (await wait(() => document.querySelector('a[href="/profile/sources"]'), 'Sources link')).click();
           await wait(() => document.querySelector('.addon-row strong')?.textContent === 'AniKatha Story Sampler' && button('Disable'), 'Installed source did not survive upgrade');
           tab('manga');
-          await (${selectMangaProvider.toString()})(wait);
-          for (const name of ['The Midnight Lighthouse', 'Chapter 1'])
-            (await wait(() => button(name), name)).click();
+          (await wait(() => document.querySelector(${JSON.stringify(mangaShelfCard)}), 'ranked Manga title after upgrade')).click();
+          (await wait(() => button('Chapter 1'), 'Chapter 1')).click();
           await wait(() => {
             const image = document.querySelector('.continuous-reader [data-reader-page="2"]');
             return location.pathname === '/manga/read/source' && image?.naturalWidth > 0 &&
@@ -284,13 +271,19 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
             document.querySelector(mangaShelf + ' [data-cover-state="loaded"] img')?.naturalWidth > 0 &&
             document.querySelector(mangaShelf + ' [data-cover-state="failed"] svg') &&
             !document.querySelector('.design-provider-title') &&
-            document.querySelector('.design-catalog > .manga-provider-picker select')?.value === '', 'automatic ranked Manga shelves and cover fallback');
+            !document.querySelector('.design-catalog select[aria-label="Catalogue source"], .manga-provider-picker'), 'automatic ranked Manga shelves and cover fallback');
+          const filterButton = document.querySelector('.design-catalog [aria-label="Toggle filters"]');
+          filterButton.click();
+          await wait(() => document.querySelector('#catalog-filters')?.hidden === false, 'expanded Manga content filters');
+          if (document.querySelector('#catalog-filters select[aria-label="Catalogue source"]')) throw new Error('Manga filters show a provider picker');
+          filterButton.click();
+          await wait(() => document.querySelector('#catalog-filters')?.hidden === true, 'closed Manga content filters');
           window.aniKathaMangaCapture = 'ready';
           await wait(() => window.aniKathaMangaCapture === 'done', 'Manga shelf screenshot');
           (await wait(() => document.querySelector(mangaShelf + ' .poster-card'), 'ranked Manga title')).click();
         } else {
-          if (!oldProfile) await (${selectMangaProvider.toString()})(wait);
-          await click('The Midnight Lighthouse');
+          if (oldProfile) await click('The Midnight Lighthouse');
+          else (await wait(() => document.querySelector(${JSON.stringify(mangaShelfCard)}), 'ranked Manga title')).click();
         }
         await click('Chapter 1');
         if (oldProfile) await click('Read Chapter 1');
@@ -326,13 +319,12 @@ export async function checkWebView(endpoint = 'http://127.0.0.1:9222') {
         await wait(() => button('Enable'), 'disabled source');
         tab('manga');
         await wait(() => (document.querySelector('h1')?.textContent === 'Browse Manga' || document.querySelector('h1')?.textContent === 'Manga'), 'manga tab');
-        if (button('The Midnight Lighthouse')) throw new Error('Disabled provider still contributes results');
+        if (document.querySelector(${JSON.stringify(mangaShelfCard)})) throw new Error('Disabled provider still contributes results');
         await sources();
         await click('Enable');
         await wait(() => button('Disable'), 'enabled source');
         tab('manga');
-        if (!oldProfile) await (${selectMangaProvider.toString()})(wait);
-        await click('The Midnight Lighthouse');
+        (await wait(() => document.querySelector(${JSON.stringify(mangaShelfCard)}), 'ranked Manga title after enabling source')).click();
         await click('Chapter 1');
         await wait(() => imageAt(2) && document.querySelector('.reader-position')?.textContent === 'Page 2 of 3', 'restored reading position');
         if (${testDownloads}) {

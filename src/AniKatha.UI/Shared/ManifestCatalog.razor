@@ -12,7 +12,7 @@
  {
  @if (!ShowDetailActions) { <h3>@Source.Addon.Name @Catalog.Name</h3> }
  @if (HasFilters) { <p>Filters check loaded titles only. Titles missing the selected metadata are excluded.</p> }
- @if (InitialTitle is null)
+ @if (InitialTitle is null && ShowExtraControls)
  {
   @foreach (var extra in AdditionalExtras)
   {
@@ -255,6 +255,7 @@
  [Parameter] public SavedTitle? InitialTitle {get;set;}
  [Parameter] public bool AllowSaveInitialTitle { get; set; }
  [Parameter] public string? InitialUnitId { get; set; }
+ [Parameter] public bool ShowExtraControls { get; set; } = true;
  [Parameter] public bool OpenMangaPage { get; set; }
  [Parameter] public bool ShowDetailActions { get; set; }
  [Parameter] public string? ReaderProvider { get; set; }

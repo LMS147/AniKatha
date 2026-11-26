@@ -16,7 +16,7 @@ internal static class MangaDiscoveryChecks
         const string fast = """[{"type":"manga","id":"ranked","ranking":"popularity","extra":[{"name":"skip"}]},{"type":"manga","id":"overlap","format":"Manhwa","ranking":"popularity"},{"type":"manga","id":"novels","format":"Novel","ranking":"popularity"},{"type":"manga","id":"community","ranking":"score","extra":[{"name":"skip"}]}]""";
         const string slow = """[{"type":"manga","id":"slow","format":"Manga","ranking":"popularity"}]""";
         const string failure = """[{"type":"manga","id":"retry","format":"Manga","ranking":"popularity"}]""";
-        const string generic = """[{"type":"manga","id":"generic","name":"Popular Manhwa"}]""";
+        const string generic = """[{"type":"manga","id":"generic","extra":[{"name":"search"},{"name":"status","options":["Completed"]}]}]""";
         using var fixture = new Fixture();
         using var http = new HttpClient(fixture);
         await using var context = new BunitContext();
@@ -49,6 +49,9 @@ internal static class MangaDiscoveryChecks
             });
         }
 
+        var genericProvider = new AddonResources((await store.GetAddonsAsync()).Single(addon => addon.Name == "generic"));
+        await store.SetSettingAsync("catalogue-source-MANGA", genericProvider.ProviderKey);
+        context.Services.GetRequiredService<NavigationManager>().NavigateTo($"/manga?source={genericProvider.ProviderKey}");
         screen = context.Render<Manga>();
         string Shelf(string name) => $".manga-discovery[aria-label='{name}']";
         string[] Titles(string shelf) => screen.FindAll($"{Shelf(shelf)} .poster-card strong").Select(x => x.TextContent).ToArray();
@@ -56,8 +59,20 @@ internal static class MangaDiscoveryChecks
         Task Button(string shelf, string startsWith) => screen.InvokeAsync(() => screen
             .FindAll($"{Shelf(shelf)} button").First(element => element.TextContent.Trim().StartsWith(startsWith)).ClickAsync(new()));
 
+        void NoPicker() => Check(screen.FindAll("select[aria-label='Catalogue source'], .manga-discovery select, .manga-provider-picker, .manga-discovery-back").Count == 0
+            && !screen.Markup.Contains("Choose a provider") && !screen.Markup.Contains("Browse by provider"),
+            "Browse Manga rendered a provider picker");
+        async Task Search(string value)
+        {
+            await screen.InvokeAsync(() => screen.Find("input[type='search']").ChangeAsync(value));
+            await screen.InvokeAsync(() => screen.Find("form").SubmitAsync());
+        }
+
         screen.WaitForAssertion(() => Check(!screen.Find("fieldset").HasAttribute("disabled"), "Search did not become usable"));
         Has(labels[0], "Fast Manga");
+        NoPicker();
+        Check(screen.Find(".design-catalog > form + .manga-discovery h2").TextContent == "Popular Manga",
+            "The first shelf did not follow the closed search controls");
         Has(labels[1], "Fast Manhwa");
         Has(labels[2], "Fast Light Novel");
         Has(labels[2], "Explicit Light Novel");
@@ -102,10 +117,8 @@ internal static class MangaDiscoveryChecks
             if (label != labels[0]) await Button(label, "Show less");
         }
         await Button(labels[1], "View all");
-        var selector = $"{Shelf(labels[1])} select";
-        var overlapCatalog = screen.FindAll($"{selector} option").Single(x => x.TextContent.Contains("overlap")).GetAttribute("value");
-        await screen.InvokeAsync(() => screen.Find(selector).ChangeAsync(overlapCatalog));
-        Check(Titles(labels[1]).SequenceEqual(new[] { "Fast Manhwa" }), "Duplicate titles disappeared when selecting their specific catalog");
+        NoPicker();
+        Check(Titles(labels[1]).SequenceEqual(new[] { "Fast Manhwa" }), "Expanded catalog duplicated a same-provider title");
         await Button(labels[1], "Show less");
 
         await Button(labels[3], "View all");
@@ -144,14 +157,31 @@ internal static class MangaDiscoveryChecks
         Has(labels[0], "Later Manga");
         Check(fixture.Calls.Count == catalogCalls, "Warm navigation refetched fresh shelves");
         Check(!screen.Find($"{Shelf(labels[0])} .catalog-art-grid").ClassList.Contains("catalog-shelf"), "Returning from details lost the expanded shelf");
-        var genericProvider = new AddonResources((await store.GetAddonsAsync()).Single(addon => addon.Name == "generic"));
-        await screen.InvokeAsync(() => screen.Find(".design-catalog > .manga-provider-picker select").ChangeAsync(genericProvider.ProviderKey));
-        screen.WaitForAssertion(() => Check(screen.FindAll(".design-provider-title").Any(x => x.TextContent.Contains("Unclassified Reader")), "Browse-only catalog became unreachable"));
+        NoPicker();
+        await screen.InvokeAsync(() => screen.Find("[aria-label='Toggle filters']").ClickAsync(new()));
+        Check(screen.Find("#catalog-filters").HasAttribute("hidden") == false, "Content filter panel did not open");
+        NoPicker();
+        await screen.InvokeAsync(() => screen.Find("#catalog-filters select").ChangeAsync("Action"));
+        await screen.InvokeAsync(() => screen.Find("form").SubmitAsync());
+        Check(screen.FindAll("[aria-label='Clear Genre filter']").Count == 1, "Content filter was not applied");
+        Check(screen.FindAll(".manga-discovery").Count == 0, "Content filter did not switch to results");
+        NoPicker();
+        await screen.InvokeAsync(() => screen.Find("[aria-label='Clear Genre filter']").ClickAsync(new()));
+        Has(labels[0], "Fast Manga");
+
+        await Search("reader");
+        screen.WaitForAssertion(() => Check(screen.FindAll(".design-provider-title").Any(x => x.TextContent.Contains("Unclassified Reader")),
+            "Unified search missed a searchable unranked Manga add-on"));
+        Check(screen.FindAll("label").All(label => !label.TextContent.Contains("Choose status")), "Provider-specific filters appeared in unified results");
+        NoPicker();
         var providerCover = screen.FindComponent<ManifestCatalog>().FindComponent<CatalogCover>();
         await providerCover.InvokeAsync(() => providerCover.Find("img").TriggerEventAsync("onerror", EventArgs.Empty));
         Check(providerCover.Find("[data-cover-state='failed'] svg") is not null && providerCover.FindAll("img").Count == 0,
-            "A failed provider-browse cover must leave a placeholder");
-        await screen.InvokeAsync(() => screen.Find(".manga-discovery-back").ClickAsync(new()));
+            "A failed search-result cover must leave a placeholder");
+        await Search("missing");
+        screen.WaitForAssertion(() => Check(screen.Markup.Contains("No matching titles"), "Missing result did not show an empty state"));
+        NoPicker();
+        await Search("");
         Has(labels[0], "Fast Manga");
         screen.Dispose();
         await store.SetAddonDisabledAsync("https://fast.example/manifest.json", true);
@@ -227,7 +257,7 @@ internal static class MangaDiscoveryChecks
                 "/catalog/manga/community/skip=3.json" => [Card("more-score", "More Rated", communityScore: 75)],
                 "/catalog/manga/slow.json" => [Card("shared", "Slow Manga")],
                 "/catalog/manga/retry.json" => [Card("again", "Recovered Manga", art: 3)],
-                "/catalog/manga/generic.json" => [Card("generic", "Unclassified Reader", "Manhwa", 100, 99)],
+                "/catalog/manga/generic/search=reader.json" => [Card("generic", "Unclassified Reader", "Manhwa", 100, 99)],
                 _ => []
             };
             return Json(new { metas = cards });
