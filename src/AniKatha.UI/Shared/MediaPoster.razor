@@ -1,4 +1,22 @@
-  <button class="poster-card" @onclick="Selected">
+@if (Href is { } href)
+{
+ <a class="poster-card" href="@href">@Content</a>
+}
+else
+{
+ <button type="button" class="poster-card" @onclick="Selected">@Content</button>
+}
+
+@code {
+ [Parameter, EditorRequired] public string Title { get; set; } = "";
+ [Parameter] public string Kind { get; set; } = "";
+ [Parameter] public string? Poster { get; set; }
+ [Parameter] public int? Score { get; set; }
+ [Parameter] public string Metadata { get; set; } = "";
+ [Parameter] public EventCallback Selected { get; set; }
+ [Parameter] public string? Href { get; set; }
+
+ RenderFragment Content => @<text>
    <div class="poster-image">
     <CatalogCover Source="@Poster" Placeholder="@(Kind == "ANIME" ? "play" : "book")" />
     @if (Score is int score) { <span class="score"><span aria-hidden="true">★</span> @(score / 10.0)</span> }
@@ -8,12 +26,5 @@
     <small>@Metadata</small>
     <span class="catalog-card-action" aria-hidden="true">›</span>
    </span>
-  </button>
-@code {
- [Parameter, EditorRequired] public string Title { get; set; } = "";
- [Parameter] public string Kind { get; set; } = "";
- [Parameter] public string? Poster { get; set; }
- [Parameter] public int? Score { get; set; }
- [Parameter] public string Metadata { get; set; } = "";
- [Parameter] public EventCallback Selected { get; set; }
+ </text>;
 }

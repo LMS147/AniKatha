@@ -1,7 +1,6 @@
 @using AniKatha.UI.Pages
 @implements IDisposable
 @inject AddonClient Client
-@inject NavigationManager Navigation
 
 @if (Ready && feeds.Count == 0)
 {
@@ -18,11 +17,7 @@
  var failures = matching.Where(feed => feed.Failed || feed.FailedNextPage).ToArray();
  var paginated = groups.Where(feed => feed.CanPage(shelf)).ToArray();
  var open = (entries.Length > 0 || paginated.Length > 0) && Expanded.Contains(shelf.Title);
- var options = matching.Where(feed => paginated.Contains(feed) || entries.Any(entry => entry.Feed == feed)).ToArray();
- var selection = Selections.GetValueOrDefault(shelf.Title, "");
- var activeCatalog = options.Any(feed => feed.Key == selection) ? selection : "";
- var cards = entries.Where(entry => !open || activeCatalog.Length == 0 || entry.Feed.Key == activeCatalog)
-     .DistinctBy(entry => (entry.Feed.Provider.ProviderKey, entry.Card.Id)).ToArray();
+ var cards = entries.DistinctBy(entry => (entry.Feed.Provider.ProviderKey, entry.Card.Id)).ToArray();
 
  <section class="catalog-discovery manga-discovery" aria-label="@shelf.Title" @key="shelf.Title">
   <header class="section-title">
@@ -33,19 +28,6 @@
             @onclick="() => Toggle(shelf.Title)">@(open ? "Show less" : "View all") ›</button>
    }
   </header>
-  @if (open && options.Length > 1)
-  {
-   <label class="manga-provider-picker">Catalog
-    <select aria-label="@($"Catalog for {shelf.Title}")" value="@activeCatalog"
-            @onchange="args => Selections[shelf.Title] = args.Value as string ?? string.Empty">
-     <option value="">All catalogs</option>
-     @foreach (var feed in options)
-     {
-      <option value="@feed.Key">@feed.Label</option>
-     }
-    </select>
-   </label>
-  }
   @if (cards.Length > 0)
   {
    <div class="poster-grid catalog-art-grid @(!open ? "catalog-shelf" : null)">
@@ -55,7 +37,8 @@
      var card = entry.Card;
      var key = (feed.Provider.ProviderKey, card.Id);
      <MediaPoster @key="key" Title="@card.Title" Kind="MANGA" Poster="@card.Poster" Score="@card.Score"
-         Metadata="@Metadata(card, feed, matching.Length > 1)" Selected="() => Open(feed, card)" />
+         Metadata="@Metadata(card, feed, matching.Length > 1)"
+         Href="@MangaDetails.ProviderPath(feed.Provider.ProviderKey, card.Id, card.Title, catalog: feed.Catalog.Id)" />
     }
    </div>
    @if (matching.Length > 1)
@@ -91,7 +74,7 @@
   @if (open && paginated.Length > 0)
   {
    <div class="manga-shelf-actions">
-    @foreach (var feed in paginated.Where(feed => !feed.FailedNextPage && (activeCatalog.Length == 0 || feed.Key == activeCatalog)))
+    @foreach (var feed in paginated.Where(feed => !feed.FailedNextPage))
     {
      <button type="button" class="secondary" disabled="@feed.Busy"
              @onclick="() => Load(feed, true)">@(feed.Busy ? "Loading…" : $"More from {feed.Label}")</button>
@@ -121,7 +104,6 @@
  readonly SemaphoreSlim slots = new(8);
  readonly List<MangaShelfFeed> feeds = [];
  HashSet<string> Expanded => Cache.ExpandedMangaShelves;
- Dictionary<string, string> Selections => Cache.MangaShelfSelections;
  bool started;
 
  CatalogSession Cache => Session ?? localSession;
@@ -183,9 +165,6 @@
  static string Metadata(MangaShelfCard card, MangaShelfFeed feed, bool sourceLabel) =>
      string.Join(" · ", new[] { card.Format.Replace('_', ' '), card.Year?.ToString(),
         sourceLabel ? feed.Label : null }.Where(value => !string.IsNullOrWhiteSpace(value)));
-
- void Open(MangaShelfFeed feed, MangaShelfCard card) =>
-  Navigation.NavigateTo(MangaDetails.ProviderPath(feed.Provider.ProviderKey, card.Id, card.Title, catalog: feed.Catalog.Id));
 
  public void Dispose()
  {

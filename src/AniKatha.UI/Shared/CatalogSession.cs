@@ -7,7 +7,6 @@ public sealed class CatalogSession
 {
     internal Dictionary<string, MangaShelfSnapshot> MangaShelves { get; } = new(StringComparer.Ordinal);
     internal HashSet<string> ExpandedMangaShelves { get; } = [];
-    internal Dictionary<string, string> MangaShelfSelections { get; } = new(StringComparer.Ordinal);
     internal void ReorderMangaProviders(IEnumerable<string> providerKeys)
     {
         var keys = providerKeys.SelectMany(provider => MangaShelves.Keys.Where(key =>
